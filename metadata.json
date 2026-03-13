@@ -1,0 +1,5 @@
+{
+  "name": "ViTTA Health & Wellness",
+  "description": "Plataforma completa de saúde e bem-estar. Agende consultas, acesse ofertas exclusivas e cuide da sua saúde com os melhores benefícios.",
+  "requestFramePermissions": ["geolocation"]
+}
