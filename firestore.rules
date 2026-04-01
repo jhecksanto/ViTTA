@@ -64,6 +64,8 @@ service cloud.firestore {
     //   - title: string (required)
     //   - discount: string (required)
     //   - partner: string (optional)
+    //   - imageUrl: string (optional)
+    //   - description: string (optional)
     //   - createdAt: string (optional)
     //
     // Collection: categories
@@ -203,10 +205,12 @@ service cloud.firestore {
 
     match /offers/{offerId} {
       function isValidOffer(data) {
-        return hasOnlyAllowedFields(['title', 'discount', 'partner', 'createdAt']) &&
+        return hasOnlyAllowedFields(['title', 'discount', 'partner', 'imageUrl', 'description', 'createdAt']) &&
                data.title is string && data.title.size() > 0 &&
                data.discount is string && data.discount.size() > 0 &&
                (!('partner' in data) || data.partner is string) &&
+               (!('imageUrl' in data) || data.imageUrl is string) &&
+               (!('description' in data) || data.description is string) &&
                (!('createdAt' in data) || isValidDateString(data.createdAt));
       }
 

@@ -79,6 +79,8 @@
         "title": { "type": "string" },
         "discount": { "type": "string" },
         "partner": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "discount"]

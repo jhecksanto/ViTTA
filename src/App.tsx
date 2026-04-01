@@ -540,17 +540,6 @@ const AdminView = ({ user }: { user: any }) => {
           Exames
         </button>
         <button 
-          onClick={() => setSubTab('offers')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
-            subTab === 'offers' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-          }`}
-        >
-          <Tag size={18} />
-          Ofertas
-        </button>
-        <button 
           onClick={() => setSubTab('config')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'config' 
@@ -724,7 +713,6 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === 'partnerships' && <PartnershipsView setSubTab={setSubTab} />}
           {subTab === 'professionals' && <ProfessionalsManagementView />}
           {subTab === 'exams' && <ExamsManagementView />}
-          {subTab === 'offers' && <OffersManagementView />}
           {subTab === 'config' && <UserConfigView />}
         </motion.div>
       </AnimatePresence>
@@ -1209,7 +1197,7 @@ const getIcon = (iconName: string, size = 24, className = "text-white") => {
   return <IconComp size={size} className={className} />;
 };
 
-const PartnersView = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }) => {
+const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => void, user?: any }) => {
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1250,6 +1238,14 @@ const PartnersView = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }
 
   const getPartnersCount = (categoryName: string) => {
     return partners.filter(p => p.category === categoryName).length;
+  };
+
+  const handleGetDiscount = (partner: any) => {
+    if (!user) return;
+    const phoneNumber = '5528999881386';
+    const message = `Olá! Sou afiliado ViTTA e gostaria de obter o desconto no parceiro.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Parceiro:*\nNome: ${partner.name}\nDesconto: ${partner.discount}`;
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   if (selectedCategory) {
@@ -1301,7 +1297,10 @@ const PartnersView = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20">
+                <button 
+                  onClick={() => handleGetDiscount(partner)}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+                >
                   Obter Desconto
                 </button>
                 <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
@@ -1421,16 +1420,24 @@ const PartnersView = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }
   );
 };
 
-const OffersView = () => {
+const OffersView = ({ user }: { user?: any }) => {
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const handleRedeem = (offer: any) => {
+    if (!user) return;
+    const phoneNumber = '5528999881386';
+    const message = `Olá! Sou afiliado ViTTA e gostaria de resgatar uma oferta.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Oferta:*\nTítulo: ${offer.title}\nParceiro: ${offer.partner}\nDesconto: ${offer.discount}`;
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'partners'), (snapshot) => {
+    const unsubscribe = onSnapshot(collection(db, 'offers'), (snapshot) => {
       setOffers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'partners');
+      handleFirestoreError(error, OperationType.GET, 'offers');
     });
     return () => unsubscribe();
   }, []);
@@ -1450,18 +1457,21 @@ const OffersView = () => {
             className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col"
           >
             <div className="relative h-48">
-              <img src={offer.imageUrl} alt={offer.name} className="w-full h-full object-cover" />
+              <img src={offer.imageUrl || 'https://picsum.photos/seed/offer/400/300'} alt={offer.title} className="w-full h-full object-cover" />
               <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 shadow-sm">
-                {offer.category}
+                {offer.partner}
               </div>
               <div className="absolute bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
                 {offer.discount}
               </div>
             </div>
             <div className="p-6 flex-1 flex flex-col">
-              <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.name}</h3>
+              <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.title}</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
-              <button className="w-full py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors">
+              <button 
+                onClick={() => handleRedeem(offer)}
+                className="w-full py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors"
+              >
                 Resgatar Cupom
               </button>
             </div>
@@ -1770,16 +1780,35 @@ const ExamsManagementView = () => {
 
 const OffersManagementView = () => {
   const [offers, setOffers] = useState<any[]>([]);
+  const [professionals, setProfessionals] = useState<any[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
-  const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '' });
+  const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'offers'), (snapshot) => {
+    const unsubscribeOffers = onSnapshot(collection(db, 'offers'), (snapshot) => {
       setOffers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'offers');
     });
-    return () => unsubscribe();
+
+    const unsubscribeProfessionals = onSnapshot(collection(db, 'professionals'), (snapshot) => {
+      setProfessionals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'professionals');
+    });
+
+    const unsubscribePartners = onSnapshot(collection(db, 'partners'), (snapshot) => {
+      setPartners(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'partners');
+    });
+
+    return () => {
+      unsubscribeOffers();
+      unsubscribeProfessionals();
+      unsubscribePartners();
+    };
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -1790,7 +1819,7 @@ const OffersManagementView = () => {
         createdAt: new Date().toISOString()
       });
       setIsCreating(false);
-      setNewItem({ title: '', discount: '', partner: '' });
+      setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
     } catch (err) {
       console.error('Erro ao criar oferta:', err);
     }
@@ -1843,12 +1872,38 @@ const OffersManagementView = () => {
                 onChange={(e) => setNewItem({ ...newItem, discount: e.target.value })}
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
               />
-              <input 
-                type="text" 
-                placeholder="Parceiro"
+              <select 
                 required
                 value={newItem.partner}
                 onChange={(e) => setNewItem({ ...newItem, partner: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+              >
+                <option value="" disabled>Selecione um Parceiro/Profissional</option>
+                <optgroup label="Profissionais">
+                  {professionals.map(prof => (
+                    <option key={prof.id} value={prof.name}>{prof.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Estabelecimentos">
+                  {partners.map(partner => (
+                    <option key={partner.id} value={partner.name}>{partner.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input 
+                type="text" 
+                placeholder="URL da Imagem (Opcional)"
+                value={newItem.imageUrl}
+                onChange={(e) => setNewItem({ ...newItem, imageUrl: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+              />
+              <input 
+                type="text" 
+                placeholder="Descrição (Opcional)"
+                value={newItem.description}
+                onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
               />
             </div>
@@ -1897,7 +1952,7 @@ const OffersManagementView = () => {
 };
 
 const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) => void, setActiveTab?: (tab: string) => void }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'establishments' | 'categories' | 'vitta-health'>('establishments');
+  const [activeSubTab, setActiveSubTab] = useState<'establishments' | 'categories' | 'offers' | 'vitta-health'>('establishments');
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -1974,7 +2029,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
   const filteredProfessionals = professionals.filter(prof => {
     const matchesSearch = prof.name.toLowerCase().includes(profSearchQuery.toLowerCase()) || 
                           prof.specialty.toLowerCase().includes(profSearchQuery.toLowerCase());
-    return matchesSearch && prof.vittaHealthDiscount;
+    return matchesSearch && prof.vittaHealthDiscount && prof.vittaHealthDiscount !== '0%';
   });
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -2188,6 +2243,17 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           Categorias
         </button>
         <button 
+          onClick={() => setActiveSubTab('offers')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+            activeSubTab === 'offers' 
+              ? 'border-emerald-500 text-emerald-500' 
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <Tag size={18} />
+          Ofertas
+        </button>
+        <button 
           onClick={() => setActiveSubTab('vitta-health')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'vitta-health' 
@@ -2200,7 +2266,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
         </button>
       </div>
 
-      {activeSubTab === 'establishments' ? (
+      {activeSubTab === 'establishments' && (
         <>
           <div className="flex justify-between items-center">
             <button 
@@ -2291,7 +2357,9 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             ))}
           </div>
         </>
-      ) : (
+      )}
+
+      {activeSubTab === 'categories' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <button 
@@ -2566,6 +2634,10 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             </table>
           </div>
         </div>
+      )}
+
+      {activeSubTab === 'offers' && (
+        <OffersManagementView />
       )}
 
       {activeSubTab === 'vitta-health' && (
@@ -3867,7 +3939,7 @@ export default function App() {
       case 'dashboard': return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
       case 'professionals': return <ProfessionalsView user={user} />;
       case 'appointments': return <AppointmentsView user={user} />;
-      case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} />;
+      case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} user={user} />;
       case 'wallets': return <PlaceholderView title="Carteiras" />;
       case 'voucher': return <PlaceholderView title="Compra Voucher" />;
       case 'pharmacies': return <PlaceholderView title="Farmácias de Plantão" />;
@@ -3885,7 +3957,7 @@ export default function App() {
       case 'profile': return <SettingsView isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />;
       case 'support': return <SupportView />;
       case 'exams': return <ExamsView />;
-      case 'offers': return <OffersView />;
+      case 'offers': return <OffersView user={user} />;
       default: return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
     }
   };
