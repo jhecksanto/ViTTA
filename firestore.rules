@@ -1,0 +1,234 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - name: string (required)
+    //   - email: string (required)
+    //   - role: string (required, enum: ['admin', 'user'])
+    //   - status: string (required)
+    //   - plan: string (required)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: appointments
+    // Document ID: {appointmentId}
+    // Fields:
+    //   - userId: string (required)
+    //   - professionalId: number (required)
+    //   - professionalName: string (required)
+    //   - specialty: string (required)
+    //   - date: string (required)
+    //   - time: string (required)
+    //   - status: string (required)
+    //
+    // Collection: professionals
+    // Document ID: {professionalId}
+    // Fields:
+    //   - name: string (required)
+    //   - specialty: string (required)
+    //   - rating: number (optional)
+    //   - reviews: number (optional)
+    //   - imageUrl: string (optional)
+    //
+    // Collection: partners
+    // Document ID: {partnerId}
+    // Fields:
+    //   - name: string (required)
+    //   - category: string (required)
+    //   - discount: string (required)
+    //   - imageUrl: string (optional)
+    //   - address: string (optional)
+    //   - phone: string (optional)
+    //   - rating: number (optional)
+    //   - reviews: number (optional)
+    //
+    // Collection: exams
+    // Document ID: {examId}
+    // Fields:
+    //   - name: string (required)
+    //   - price: string (required)
+    //   - description: string (optional)
+    //   - createdAt: string (optional)
+    //
+    // Collection: offers
+    // Document ID: {offerId}
+    // Fields:
+    //   - title: string (required)
+    //   - discount: string (required)
+    //   - partner: string (optional)
+    //   - createdAt: string (optional)
+    //
+    // Collection: categories
+    // Document ID: {categoryId}
+    // Fields:
+    //   - name: string (required)
+    //   - slug: string (required)
+    //   - type: string (required, enum: ['professional', 'partner'])
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "jhecksanto@gmail.com"));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      function isValidUser(data) {
+        return hasOnlyAllowedFields(['uid', 'name', 'email', 'role', 'status', 'plan', 'createdAt']) &&
+               data.uid is string && data.uid.size() > 0 &&
+               data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+               data.email is string && isValidEmail(data.email) &&
+               data.role in ['admin', 'user'] &&
+               data.status in ['Ativo', 'Pendente', 'Inativo'] &&
+               data.plan in ['Premium', 'Básico', 'Free'];
+      }
+
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    ((isOwner(userId) && request.resource.data.role == 'user') || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      function isValidAppointment(data) {
+        return hasOnlyAllowedFields(['userId', 'professionalId', 'professionalName', 'specialty', 'date', 'time', 'status']) &&
+               data.userId is string && data.userId.size() > 0 &&
+               data.professionalId is number &&
+               data.professionalName is string && data.professionalName.size() > 0 &&
+               data.specialty is string && data.specialty.size() > 0 &&
+               data.date is string && data.date.size() > 0 &&
+               data.time is string && data.time.size() > 0 &&
+               data.status in ['Confirmado', 'Pendente', 'Cancelado'];
+      }
+
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidAppointment(request.resource.data) && 
+                    (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && isValidAppointment(request.resource.data) && 
+                    (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /professionals/{professionalId} {
+      function isValidProfessional(data) {
+        return hasOnlyAllowedFields(['name', 'specialty', 'rating', 'reviews', 'imageUrl']) &&
+               data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+               data.specialty is string && data.specialty.size() > 0 &&
+               (!('rating' in data) || data.rating is number) &&
+               (!('reviews' in data) || data.reviews is number) &&
+               (!('imageUrl' in data) || data.imageUrl is string);
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidProfessional(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /partners/{partnerId} {
+      function isValidPartner(data) {
+        return hasOnlyAllowedFields(['name', 'category', 'discount', 'imageUrl', 'address', 'phone', 'rating', 'reviews', 'createdAt']) &&
+               data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+               data.category is string && data.category.size() > 0 &&
+               data.discount is string && data.discount.size() > 0 &&
+               (!('imageUrl' in data) || data.imageUrl is string) &&
+               (!('address' in data) || data.address is string) &&
+               (!('phone' in data) || data.phone is string) &&
+               (!('rating' in data) || data.rating is number) &&
+               (!('reviews' in data) || data.reviews is number) &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidPartner(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /exams/{examId} {
+      function isValidExam(data) {
+        return hasOnlyAllowedFields(['name', 'price', 'description', 'createdAt']) &&
+               data.name is string && data.name.size() > 0 &&
+               data.price is string && data.price.size() > 0 &&
+               (!('description' in data) || data.description is string) &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidExam(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /offers/{offerId} {
+      function isValidOffer(data) {
+        return hasOnlyAllowedFields(['title', 'discount', 'partner', 'createdAt']) &&
+               data.title is string && data.title.size() > 0 &&
+               data.discount is string && data.discount.size() > 0 &&
+               (!('partner' in data) || data.partner is string) &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidOffer(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      function isValidCategory(data) {
+        return hasOnlyAllowedFields(['name', 'slug', 'type', 'icon', 'color', 'description', 'createdAt']) &&
+               data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+               data.slug is string && data.slug.size() > 0 &&
+               data.type in ['professional', 'partner'] &&
+               (!('icon' in data) || data.icon is string) &&
+               (!('color' in data) || data.color is string) &&
+               (!('description' in data) || data.description is string) &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /config/radio {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "status": { "type": "string", "enum": ["Ativo", "Pendente", "Inativo"] },
+        "plan": { "type": "string", "enum": ["Premium", "Básico", "Free"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled appointment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "professionalId": { "type": "number" },
+        "professionalName": { "type": "string" },
+        "specialty": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "status": { "type": "string", "enum": ["Confirmado", "Pendente", "Cancelado"] }
+      },
+      "required": ["userId", "professionalId", "date", "time"]
+    },
+    "Professional": {
+      "title": "Professional",
+      "description": "Healthcare professional",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "specialty": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviews": { "type": "number" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["name", "specialty"]
+    },
+    "Partner": {
+      "title": "Partner",
+      "description": "Commercial partner/establishment",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "discount": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviews": { "type": "number" }
+      },
+      "required": ["name", "category"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Medical exam definition",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price"]
+    },
+    "Offer": {
+      "title": "Offer",
+      "description": "Special offer or promotion",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "discount": { "type": "string" },
+        "partner": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "discount"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Category for professionals or partners",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "type": { "type": "string", "enum": ["professional", "partner"] }
+      },
+      "required": ["name", "slug", "type"]
+    },
+    "RadioConfig": {
+      "title": "RadioConfig",
+      "description": "Configuration for the radio stream",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "Streaming URL" }
+      },
+      "required": ["url"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "User appointments"
+    },
+    "/professionals/{professionalId}": {
+      "schema": "Professional",
+      "description": "List of professionals"
+    },
+    "/partners/{partnerId}": {
+      "schema": "Partner",
+      "description": "List of partners"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "System categories"
+    },
+    "/exams/{examId}": {
+      "schema": "Exam",
+      "description": "List of available exams"
+    },
+    "/offers/{offerId}": {
+      "schema": "Offer",
+      "description": "List of special offers"
+    },
+    "/config/radio": {
+      "schema": "RadioConfig",
+      "description": "Radio stream configuration"
+    }
+  }
+}
