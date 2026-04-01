@@ -45,6 +45,7 @@ import {
   LogOut,
   Phone,
   Info,
+  Activity,
   Glasses,
   ShoppingCart,
   Shirt,
@@ -82,6 +83,9 @@ import {
   onAuthStateChanged, 
   signInWithPopup, 
   signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { 
@@ -163,6 +167,131 @@ async function testConnection() {
 }
 testConnection();
 
+const ConfirmModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  title, 
+  message, 
+  confirmText = "Excluir", 
+  cancelText = "Cancelar",
+  variant = "danger"
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: () => void, 
+  title: string, 
+  message: string,
+  confirmText?: string,
+  cancelText?: string,
+  variant?: "danger" | "primary"
+}) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+      >
+        <div className="p-6 text-center space-y-4">
+          <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center ${variant === 'danger' ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-500' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-500'}`}>
+            {variant === 'danger' ? <Trash2 size={32} /> : <Info size={32} />}
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold dark:text-white">{title}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{message}</p>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button 
+              onClick={onClose}
+              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              {cancelText}
+            </button>
+            <button 
+              onClick={() => { onConfirm(); onClose(); }}
+              className={`flex-1 py-3 text-white rounded-2xl font-bold shadow-lg transition-all ${variant === 'danger' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-500/20'}`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const BookingModal = ({ 
+  isOpen, 
+  onClose, 
+  professional, 
+  user 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  professional: any, 
+  user: any 
+}) => {
+  const handleConfirm = () => {
+    if (!user || !professional) return;
+    
+    const phoneNumber = '5528999881386';
+    const message = `Olá! Gostaria de agendar um atendimento.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Profissional selecionado:*\nNome: ${professional.name}\nEspecialidade: ${professional.specialty}`;
+    
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+      >
+        <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
+          <h3 className="text-xl font-bold dark:text-white">Confirmar Atendimento</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
+            <X size={20} className="text-slate-400" />
+          </button>
+        </div>
+        <div className="p-6 space-y-6">
+          <p className="text-slate-600 dark:text-slate-400 text-sm">
+            Você será redirecionado para o nosso WhatsApp para finalizar o agendamento com o profissional abaixo:
+          </p>
+          <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+            <img src={professional.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={professional.name} className="w-12 h-12 rounded-xl object-cover" />
+            <div>
+              <h4 className="font-bold dark:text-white">{professional.name}</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{professional.specialty}</p>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleConfirm}
+              className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+            >
+              <MessageSquare size={18} />
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active?: boolean, onClick: () => void }) => (
   <button
     onClick={onClick}
@@ -224,13 +353,14 @@ const StatCard = ({ stat }: any) => {
   );
 };
 
-const AdminView = () => {
+const AdminView = ({ user }: { user: any }) => {
   const [subTab, setSubTab] = useState<'overview' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'offers' | 'config'>('overview');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [usersCount, setUsersCount] = useState(0);
   const [editingApt, setEditingApt] = useState<any>(null);
+  const [bookingProfessional, setBookingProfessional] = useState<any>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'appointments'), orderBy('date', 'desc'));
@@ -338,6 +468,12 @@ const AdminView = () => {
             </motion.div>
           </div>
         )}
+        <BookingModal 
+          isOpen={!!bookingProfessional} 
+          onClose={() => setBookingProfessional(null)} 
+          professional={bookingProfessional} 
+          user={user} 
+        />
       </AnimatePresence>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -500,7 +636,10 @@ const AdminView = () => {
                         </div>
                       </motion.div>
                     ))}
-                    <button className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 font-medium hover:border-emerald-200 dark:hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/5 transition-all flex items-center justify-center gap-2">
+                    <button 
+                      onClick={() => setBookingProfessional(professionals[0])}
+                      className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 font-medium hover:border-emerald-200 dark:hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/5 transition-all flex items-center justify-center gap-2"
+                    >
                       <Calendar size={18} />
                       Agendar nova consulta
                     </button>
@@ -566,7 +705,10 @@ const AdminView = () => {
                       <div className="p-5">
                         <h3 className="font-bold text-lg mb-1 dark:text-white">{offer.name}</h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">{offer.description || 'Aproveite esta oferta exclusiva.'}</p>
-                        <button className="w-full py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors dark:text-white">
+                        <button 
+                          onClick={() => alert('Benefício resgatado com sucesso! Apresente este código no estabelecimento: VITTA-' + Math.random().toString(36).substring(7).toUpperCase())}
+                          className="w-full py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors dark:text-white"
+                        >
                           Resgatar Benefício
                         </button>
                       </div>
@@ -579,7 +721,7 @@ const AdminView = () => {
             </div>
           )}
           {subTab === 'users' && <UsersView />}
-          {subTab === 'partnerships' && <PartnershipsView />}
+          {subTab === 'partnerships' && <PartnershipsView setSubTab={setSubTab} />}
           {subTab === 'professionals' && <ProfessionalsManagementView />}
           {subTab === 'exams' && <ExamsManagementView />}
           {subTab === 'offers' && <OffersManagementView />}
@@ -675,7 +817,7 @@ const ProfessionalsManagementView = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isCreating, setIsCreating] = useState<'professional' | 'category' | null>(null);
-  const [newItem, setNewItem] = useState({ name: '', specialty: 'Médico' });
+  const [newItem, setNewItem] = useState({ name: '', specialty: 'Médico', vittaHealthDiscount: '' });
 
   useEffect(() => {
     const unsubscribeProfs = onSnapshot(collection(db, 'professionals'), (snapshot) => {
@@ -722,7 +864,7 @@ const ProfessionalsManagementView = () => {
       await updateDoc(doc(db, collectionName, id), data);
       setEditingItem(null);
     } catch (err) {
-      console.error('Erro ao salvar edição:', err);
+      handleFirestoreError(err, OperationType.WRITE, `professionals/${editingItem.id}`);
     }
   };
 
@@ -733,19 +875,22 @@ const ProfessionalsManagementView = () => {
         await addDoc(collection(db, 'professionals'), {
           name: newItem.name,
           specialty: newItem.specialty,
+          vittaHealthDiscount: newItem.vittaHealthDiscount || '0%',
           rating: 5.0,
           reviews: 0,
-          imageUrl: 'https://picsum.photos/seed/prof/400/300'
+          imageUrl: 'https://picsum.photos/seed/prof/400/300',
+          createdAt: new Date().toISOString()
         });
       } else if (isCreating === 'category') {
         await addDoc(collection(db, 'categories'), {
           name: newItem.name,
           slug: newItem.name.toLowerCase().replace(/\s+/g, '-'),
-          type: 'professional'
+          type: 'professional',
+          createdAt: new Date().toISOString()
         });
       }
       setIsCreating(null);
-      setNewItem({ name: '', specialty: 'Médico' });
+      setNewItem({ name: '', specialty: 'Médico', vittaHealthDiscount: '' });
     } catch (err) {
       console.error('Erro ao criar item:', err);
     }
@@ -787,19 +932,34 @@ const ProfessionalsManagementView = () => {
                   />
                 </div>
                 {(isCreating === 'professional' || (editingItem && editingItem.type === 'professional')) && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Especialidade</label>
-                    <input 
-                      type="text" 
-                      required
-                      value={editingItem ? editingItem.specialty : newItem.specialty}
-                      onChange={(e) => editingItem 
-                        ? setEditingItem({ ...editingItem, specialty: e.target.value })
-                        : setNewItem({ ...newItem, specialty: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Especialidade</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={editingItem ? editingItem.specialty : newItem.specialty}
+                        onChange={(e) => editingItem 
+                          ? setEditingItem({ ...editingItem, specialty: e.target.value })
+                          : setNewItem({ ...newItem, specialty: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Desconto ViTTA Health</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: 20% OFF"
+                        value={editingItem ? editingItem.vittaHealthDiscount : newItem.vittaHealthDiscount}
+                        onChange={(e) => editingItem 
+                          ? setEditingItem({ ...editingItem, vittaHealthDiscount: e.target.value })
+                          : setNewItem({ ...newItem, vittaHealthDiscount: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                      />
+                    </div>
+                  </>
                 )}
                 <div className="flex gap-3 pt-4">
                   <button 
@@ -875,11 +1035,22 @@ const ProfessionalsManagementView = () => {
                   <div>
                     <h3 className="font-bold text-slate-900 dark:text-white">{prof.name}</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    {prof.vittaHealthDiscount && (
+                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                        Desconto: {prof.vittaHealthDiscount}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-1">
                   <button 
-                    onClick={() => setEditingItem({ type: 'professional', id: prof.id, name: prof.name, specialty: prof.specialty })}
+                    onClick={() => setEditingItem({ 
+                      type: 'professional', 
+                      id: prof.id, 
+                      name: prof.name, 
+                      specialty: prof.specialty,
+                      vittaHealthDiscount: prof.vittaHealthDiscount || ''
+                    })}
                     className="p-2 text-slate-400 hover:text-blue-500 transition-colors"
                   >
                     <Edit size={16} />
@@ -938,9 +1109,10 @@ const ProfessionalsManagementView = () => {
   );
 };
 
-const ProfessionalsView = () => {
+const ProfessionalsView = ({ user }: { user: any }) => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bookingProfessional, setBookingProfessional] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'professionals'), (snapshot) => {
@@ -983,12 +1155,17 @@ const ProfessionalsView = () => {
             whileHover={{ y: -4 }}
             className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
           >
-            <div className="flex items-center gap-4">
-              <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
-              <div>
-                <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
-                <div className="flex items-center gap-1 text-amber-500 mt-1">
+              <div className="flex items-center gap-4">
+                <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
+                <div>
+                  <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                  {prof.vittaHealthDiscount && (
+                    <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
+                      ViTTA Health: {prof.vittaHealthDiscount}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-amber-500 mt-1">
                   <Star size={14} fill="currentColor" />
                   <span className="text-xs font-bold">{prof.rating} ({prof.reviews} avaliações)</span>
                 </div>
@@ -1004,12 +1181,22 @@ const ProfessionalsView = () => {
                 ))}
               </div>
             </div>
-            <button className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20">
+            <button 
+              onClick={() => setBookingProfessional(prof)}
+              className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+            >
               Agendar Consulta
             </button>
           </motion.div>
         ))}
       </div>
+
+      <BookingModal 
+        isOpen={!!bookingProfessional} 
+        onClose={() => setBookingProfessional(null)} 
+        professional={bookingProfessional} 
+        user={user} 
+      />
     </div>
   );
 };
@@ -1022,7 +1209,7 @@ const getIcon = (iconName: string, size = 24, className = "text-white") => {
   return <IconComp size={size} className={className} />;
 };
 
-const PartnersView = () => {
+const PartnersView = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }) => {
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1144,6 +1331,27 @@ const PartnersView = () => {
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-cyan-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
+      </section>
+
+      {/* ViTTA Health Section */}
+      <section className="bg-emerald-50 dark:bg-emerald-900/10 rounded-[2.5rem] p-8 border border-emerald-100 dark:border-emerald-800/30">
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center shadow-lg shadow-emerald-500/20 flex-shrink-0">
+            <Stethoscope size={48} className="text-white" />
+          </div>
+          <div className="flex-1 text-center md:text-left space-y-2">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">ViTTA Health</h2>
+            <p className="text-slate-600 dark:text-slate-400">
+              Acesse nossa rede exclusiva de profissionais de saúde com descontos especiais para afiliados ViTTA.
+            </p>
+          </div>
+          <button 
+            onClick={() => setActiveTab?.('professionals')}
+            className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 whitespace-nowrap"
+          >
+            Ver Profissionais
+          </button>
+        </div>
       </section>
 
       {/* Stats Bar */}
@@ -1688,11 +1896,13 @@ const OffersManagementView = () => {
   );
 };
 
-const PartnershipsView = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'establishments' | 'categories'>('establishments');
+const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) => void, setActiveTab?: (tab: string) => void }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'establishments' | 'categories' | 'vitta-health'>('establishments');
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [professionals, setProfessionals] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [profSearchQuery, setProfSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState<'partner' | 'category' | null>(null);
   const [newItem, setNewItem] = useState({ 
     name: '', 
@@ -1720,9 +1930,15 @@ const PartnershipsView = () => {
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'categories');
     });
+    const unsubscribeProfessionals = onSnapshot(collection(db, 'professionals'), (snapshot) => {
+      setProfessionals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'professionals');
+    });
     return () => {
       unsubscribePartners();
       unsubscribeCategories();
+      unsubscribeProfessionals();
     };
   }, []);
 
@@ -1755,6 +1971,12 @@ const PartnershipsView = () => {
     return matchesSearch && matchesCategory;
   });
 
+  const filteredProfessionals = professionals.filter(prof => {
+    const matchesSearch = prof.name.toLowerCase().includes(profSearchQuery.toLowerCase()) || 
+                          prof.specialty.toLowerCase().includes(profSearchQuery.toLowerCase());
+    return matchesSearch && prof.vittaHealthDiscount;
+  });
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem) return;
@@ -1764,7 +1986,7 @@ const PartnershipsView = () => {
       await updateDoc(doc(db, collectionName, id), data);
       setEditingItem(null);
     } catch (err) {
-      console.error('Erro ao salvar edição:', err);
+      handleFirestoreError(err, OperationType.WRITE, `partners/${editingItem.id}`);
     }
   };
 
@@ -1780,7 +2002,8 @@ const PartnershipsView = () => {
           phone: newItem.phone || '',
           rating: 5.0,
           reviews: 0,
-          imageUrl: newItem.imageUrl || 'https://picsum.photos/seed/partner/400/300'
+          imageUrl: newItem.imageUrl || 'https://picsum.photos/seed/partner/400/300',
+          createdAt: new Date().toISOString()
         });
       } else if (isCreating === 'category') {
         await addDoc(collection(db, 'categories'), {
@@ -1963,6 +2186,17 @@ const PartnershipsView = () => {
         >
           <Tag size={18} />
           Categorias
+        </button>
+        <button 
+          onClick={() => setActiveSubTab('vitta-health')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+            activeSubTab === 'vitta-health' 
+              ? 'border-emerald-500 text-emerald-500' 
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <Activity size={18} />
+          ViTTA Health
         </button>
       </div>
 
@@ -2330,6 +2564,88 @@ const PartnershipsView = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'vitta-health' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <button 
+              onClick={() => {
+                if (setSubTab) setSubTab('professionals');
+                if (setActiveTab) setActiveTab('professionals');
+              }}
+              className="flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+            >
+              <Stethoscope size={20} />
+              Gerenciar Profissionais
+            </button>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Buscar profissional na rede ViTTA Health..." 
+                value={profSearchQuery}
+                onChange={(e) => setProfSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProfessionals.map((prof) => (
+              <motion.div 
+                key={prof.id}
+                whileHover={{ y: -4 }}
+                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+              >
+                <div className="flex items-center gap-4">
+                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
+                  <div>
+                    <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
+                      ViTTA Health: {prof.vittaHealthDiscount}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-amber-500">
+                      <Star size={14} fill="currentColor" />
+                      <span className="text-xs font-bold">{prof.rating}</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      {prof.reviews} avaliações
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20">
+                    Ver Detalhes
+                  </button>
+                  <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <Calendar size={18} />
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+            
+            {filteredProfessionals.length === 0 && (
+              <div className="col-span-full py-20 text-center bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
+                <div className="w-16 h-16 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <Activity className="text-slate-300" size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Nenhum profissional encontrado</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">Tente ajustar sua busca ou adicione descontos ViTTA Health aos profissionais.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2833,22 +3149,27 @@ const UserConfigView = () => {
   );
 };
 
-const AppointmentsView = () => {
+const AppointmentsView = ({ user }: { user: any }) => {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // In a real app, we would filter by user ID. 
-    // For now, we'll show all appointments or filter if we have user info.
-    const q = query(collection(db, 'appointments'), orderBy('date', 'desc'));
+    if (!user) return;
+    const q = query(
+      collection(db, 'appointments'), 
+      where('userId', '==', user.uid)
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort client-side to avoid index requirement for now
+      data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setAppointments(data);
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'appointments');
     });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   return (
     <div className="space-y-8">
@@ -3181,11 +3502,47 @@ const LoginView = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError('Login com e-mail/senha não implementado. Use o Google Login.');
-    setIsLoading(false);
+    setError(null);
+    try {
+      if (view === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const user = result.user;
+        
+        // Update profile with name
+        await updateProfile(user, { displayName: name });
+        
+        // Create user in Firestore
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          name: name || 'Usuário',
+          email: user.email,
+          role: 'user',
+          status: 'Ativo',
+          plan: 'Free',
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Este e-mail já está em uso.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('E-mail inválido.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('A senha deve ter pelo menos 6 caracteres.');
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        setError('E-mail ou senha incorretos.');
+      } else {
+        setError('Ocorreu um erro. Tente novamente.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -3507,10 +3864,10 @@ export default function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return isAdmin ? <AdminView /> : <PlaceholderView title="Dashboard Paciente" />;
-      case 'professionals': return <ProfessionalsView />;
-      case 'appointments': return <AppointmentsView />;
-      case 'plans': return isAdmin ? <PartnershipsView /> : <PartnersView />;
+      case 'dashboard': return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
+      case 'professionals': return <ProfessionalsView user={user} />;
+      case 'appointments': return <AppointmentsView user={user} />;
+      case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} />;
       case 'wallets': return <PlaceholderView title="Carteiras" />;
       case 'voucher': return <PlaceholderView title="Compra Voucher" />;
       case 'pharmacies': return <PlaceholderView title="Farmácias de Plantão" />;
@@ -3529,7 +3886,7 @@ export default function App() {
       case 'support': return <SupportView />;
       case 'exams': return <ExamsView />;
       case 'offers': return <OffersView />;
-      default: return <AdminView />;
+      default: return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
     }
   };
 

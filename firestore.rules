@@ -32,9 +32,11 @@ service cloud.firestore {
     // Fields:
     //   - name: string (required)
     //   - specialty: string (required)
+    //   - vittaHealthDiscount: string (optional)
     //   - rating: number (optional)
     //   - reviews: number (optional)
     //   - imageUrl: string (optional)
+    //   - createdAt: string (optional)
     //
     // Collection: partners
     // Document ID: {partnerId}
@@ -87,8 +89,10 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-          (request.auth.token.email == "jhecksanto@gmail.com"));
+        (request.auth.uid == "E30ao1D3wdPgDLPYX556x41PDr93" ||
+         request.auth.token.email == "jhecksanto@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function isValidEmail(email) {
@@ -149,12 +153,14 @@ service cloud.firestore {
 
     match /professionals/{professionalId} {
       function isValidProfessional(data) {
-        return hasOnlyAllowedFields(['name', 'specialty', 'rating', 'reviews', 'imageUrl']) &&
+        return hasOnlyAllowedFields(['name', 'specialty', 'vittaHealthDiscount', 'rating', 'reviews', 'imageUrl', 'createdAt']) &&
                data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
                data.specialty is string && data.specialty.size() > 0 &&
+               (!('vittaHealthDiscount' in data) || data.vittaHealthDiscount is string) &&
                (!('rating' in data) || data.rating is number) &&
                (!('reviews' in data) || data.reviews is number) &&
-               (!('imageUrl' in data) || data.imageUrl is string);
+               (!('imageUrl' in data) || data.imageUrl is string) &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
       }
 
       allow read: if isAuthenticated();
