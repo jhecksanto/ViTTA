@@ -3779,6 +3779,7 @@ export default function App() {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    if (!isAuthReady || !user) return;
     const unsubscribe = onSnapshot(doc(db, 'config', 'radio'), (snapshot) => {
       if (snapshot.exists()) {
         setRadioConfig(snapshot.data() as any);
@@ -3787,7 +3788,7 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'config/radio');
     });
     return () => unsubscribe();
-  }, []);
+  }, [isAuthReady, user]);
 
   useEffect(() => {
     if (audioRef.current) {
