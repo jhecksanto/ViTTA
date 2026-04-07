@@ -75,6 +75,14 @@ service cloud.firestore {
     //   - slug: string (required)
     //   - type: string (required, enum: ['professional', 'partner'])
     //
+    // Collection: health_metrics
+    // Document ID: {metricId}
+    // Fields:
+    //   - userId: string (required)
+    //   - date: string (required)
+    //   - steps: number (required)
+    //   - createdAt: timestamp (optional)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -114,15 +122,46 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
 
+    match /pharmacies/{pharmacyId} {
+      function isValidPharmacy(data) {
+        return hasOnlyAllowedFields(['name', 'address', 'phone', 'onCallDate', 'isActive', 'createdAt']) &&
+               data.name is string && data.name.size() > 0 &&
+               data.address is string && data.address.size() > 0 &&
+               data.phone is string && data.phone.size() > 0 &&
+               data.onCallDate is string && data.onCallDate.size() > 0 &&
+               data.isActive is bool &&
+               (!('createdAt' in data) || isValidDateString(data.createdAt));
+      }
+
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidPharmacy(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     match /users/{userId} {
       function isValidUser(data) {
-        return hasOnlyAllowedFields(['uid', 'name', 'email', 'role', 'status', 'plan', 'createdAt']) &&
+        return hasOnlyAllowedFields(['uid', 'name', 'email', 'role', 'status', 'plan', 'createdAt', 'phone', 'city', 'state', 'zip', 'street', 'number', 'complement', 'neighborhood', 'cpf', 'rg', 'photoURL', 'deletionRequested', 'updatedAt', 'deletionRequestedAt', 'twoFactorEnabled']) &&
                data.uid is string && data.uid.size() > 0 &&
                data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
                data.email is string && isValidEmail(data.email) &&
                data.role in ['admin', 'user'] &&
                data.status in ['Ativo', 'Pendente', 'Inativo'] &&
-               data.plan in ['Premium', 'Básico', 'Free'];
+               data.plan in ['Premium', 'Básico', 'Free'] &&
+               (!('phone' in data) || data.phone is string) &&
+               (!('city' in data) || data.city is string) &&
+               (!('state' in data) || data.state is string) &&
+               (!('zip' in data) || data.zip is string) &&
+               (!('street' in data) || data.street is string) &&
+               (!('number' in data) || data.number is string) &&
+               (!('complement' in data) || data.complement is string) &&
+               (!('neighborhood' in data) || data.neighborhood is string) &&
+               (!('cpf' in data) || data.cpf is string) &&
+               (!('rg' in data) || data.rg is string) &&
+               (!('photoURL' in data) || data.photoURL is string) &&
+               (!('deletionRequested' in data) || data.deletionRequested is bool) &&
+               (!('twoFactorEnabled' in data) || data.twoFactorEnabled is bool) &&
+               (!('updatedAt' in data) || data.updatedAt is string) &&
+               (!('deletionRequestedAt' in data) || data.deletionRequestedAt is string);
       }
 
       allow read: if isOwner(userId) || isAdmin();
@@ -155,13 +194,17 @@ service cloud.firestore {
 
     match /professionals/{professionalId} {
       function isValidProfessional(data) {
-        return hasOnlyAllowedFields(['name', 'specialty', 'vittaHealthDiscount', 'rating', 'reviews', 'imageUrl', 'createdAt']) &&
+        return hasOnlyAllowedFields(['name', 'specialty', 'vittaHealthDiscount', 'rating', 'reviews', 'imageUrl', 'createdAt', 'registrationNumber', 'availableDays', 'price', 'city']) &&
                data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
                data.specialty is string && data.specialty.size() > 0 &&
                (!('vittaHealthDiscount' in data) || data.vittaHealthDiscount is string) &&
                (!('rating' in data) || data.rating is number) &&
                (!('reviews' in data) || data.reviews is number) &&
                (!('imageUrl' in data) || data.imageUrl is string) &&
+               (!('registrationNumber' in data) || data.registrationNumber is string) &&
+               (!('availableDays' in data) || data.availableDays is list || data.availableDays is string) &&
+               (!('price' in data) || data.price is number || data.price is string) &&
+               (!('city' in data) || data.city is string) &&
                (!('createdAt' in data) || isValidDateString(data.createdAt));
       }
 
@@ -239,6 +282,46 @@ service cloud.firestore {
     match /config/radio {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+    
+    match /health_metrics/{metricId} {
+      function isValidHealthMetric(data) {
+        return hasOnlyAllowedFields(['userId', 'date', 'steps', 'weight', 'height', 'bloodPressure', 'glucose', 'sleepHours', 'createdAt']) &&
+               data.userId is string && data.userId.size() > 0 &&
+               data.date is string && data.date.size() > 0 &&
+               (!('steps' in data) || data.steps is number) &&
+               (!('weight' in data) || data.weight is number) &&
+               (!('height' in data) || data.height is number) &&
+               (!('bloodPressure' in data) || data.bloodPressure is string) &&
+               (!('glucose' in data) || data.glucose is number) &&
+               (!('sleepHours' in data) || data.sleepHours is number) &&
+               (!('createdAt' in data) || data.createdAt is timestamp);
+      }
+
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidHealthMetric(request.resource.data) && 
+                    (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && isValidHealthMetric(request.resource.data) && 
+                    (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      function isValidNotification(data) {
+        return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+               data.userId is string && data.userId.size() > 0 &&
+               data.title is string && data.title.size() > 0 &&
+               data.message is string && data.message.size() > 0 &&
+               data.type in ['exam', 'appointment', 'system'] &&
+               data.read is bool &&
+               (!('createdAt' in data) || data.createdAt is timestamp);
+      }
+
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }

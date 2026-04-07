@@ -11,6 +11,21 @@
         "role": { "type": "string", "enum": ["admin", "user"] },
         "status": { "type": "string", "enum": ["Ativo", "Pendente", "Inativo"] },
         "plan": { "type": "string", "enum": ["Premium", "Básico", "Free"] },
+        "phone": { "type": "string" },
+        "zip": { "type": "string" },
+        "street": { "type": "string" },
+        "number": { "type": "string" },
+        "complement": { "type": "string" },
+        "neighborhood": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "cpf": { "type": "string" },
+        "rg": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "deletionRequested": { "type": "boolean" },
+        "deletionRequestedAt": { "type": "string", "format": "date-time" },
+        "twoFactorEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "name", "email", "role"]
@@ -104,6 +119,37 @@
         "url": { "type": "string", "description": "Streaming URL" }
       },
       "required": ["url"]
+    },
+    "HealthMetric": {
+      "title": "HealthMetric",
+      "description": "Daily health metric snapshot for a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string", "description": "ISO date string" },
+        "steps": { "type": "number" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "bloodPressure": { "type": "string" },
+        "glucose": { "type": "number" },
+        "sleepHours": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "date"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["exam", "appointment", "system"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "read"]
     }
   },
   "firestore": {
@@ -134,6 +180,14 @@
     "/offers/{offerId}": {
       "schema": "Offer",
       "description": "List of special offers"
+    },
+    "/health_metrics/{metricId}": {
+      "schema": "HealthMetric",
+      "description": "User health metrics history"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
     },
     "/config/radio": {
       "schema": "RadioConfig",

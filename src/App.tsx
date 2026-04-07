@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -19,8 +19,12 @@ import {
   X,
   FileText,
   Download,
+  ClipboardList,
   Filter,
   Plus,
+  Check,
+  Scale,
+  Thermometer,
   ShieldCheck,
   UserCog,
   CreditCard,
@@ -74,11 +78,26 @@ import {
   Home,
   Smartphone,
   Calculator,
-  Scissors
+  Scissors,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  AreaChart,
+  Area
+} from 'recharts';
 import { MOCK_APPOINTMENTS, MOCK_STATS, MOCK_OFFERS, MOCK_PROFESSIONALS, MOCK_EXAMS, MOCK_PARTNERS, MOCK_CATEGORIES } from './constants';
-import { auth, db, googleProvider } from './firebase';
+import { auth, db, storage, googleProvider } from './firebase';
+import { initializeApp, getApps } from 'firebase/app';
+import firebaseConfig from '../firebase-applet-config.json';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -86,6 +105,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  updatePassword,
+  getAuth,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { 
@@ -98,12 +119,19 @@ import {
   where,
   orderBy,
   limit,
+  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
   Timestamp,
   getDocFromServer
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import AuditLogsList from './components/Admin/AuditLogsList';
+
+const Skeleton = ({ className, ...props }: { className?: string, [key: string]: any }) => (
+  <div className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl ${className}`} {...props} />
+);
 
 enum OperationType {
   CREATE = 'create',
@@ -155,6 +183,20 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+const logAdminAction = async (action: string, description: string) => {
+  try {
+    await addDoc(collection(db, 'audit_logs'), {
+      adminId: auth.currentUser?.uid,
+      adminName: auth.currentUser?.displayName || auth.currentUser?.email || 'Admin',
+      action,
+      description,
+      timestamp: Timestamp.now()
+    });
+  } catch (err) {
+    console.error('Erro ao registrar log de auditoria:', err);
+  }
+};
 
 async function testConnection() {
   try {
@@ -222,6 +264,243 @@ const ConfirmModal = ({
   );
 };
 
+const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onClose: () => void }) => {
+  const [passwords, setPasswords] = useState({
+    new: '',
+    confirm: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleUpdate = async () => {
+    if (!user) return;
+    if (passwords.new.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (passwords.new !== passwords.confirm) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+    try {
+      await updatePassword(user, passwords.new);
+      alert('Senha atualizada com sucesso!');
+      onClose();
+    } catch (err: any) {
+      console.error('Erro ao atualizar senha:', err);
+      if (err.code === 'auth/requires-recent-login') {
+        setError('Esta operação requer um login recente. Por favor, saia e entre novamente.');
+      } else {
+        setError('Erro ao atualizar senha. Tente novamente.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold dark:text-white">Alterar Senha</h2>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+              <X size={20} className="text-slate-400" />
+            </button>
+          </div>
+
+          {error && (
+            <div className="p-4 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-800 rounded-2xl flex items-center gap-3 text-rose-600 dark:text-rose-400 text-sm">
+              <XCircle size={18} />
+              <p>{error}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nova Senha</label>
+              <input 
+                type="password" 
+                value={passwords.new}
+                onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                placeholder="••••••••"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Confirmar Nova Senha</label>
+              <input 
+                type="password" 
+                value={passwords.confirm}
+                onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          <button 
+            onClick={handleUpdate}
+            disabled={isSaving}
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Check size={20} />
+                Atualizar Senha
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => void }) => {
+  const [metrics, setMetrics] = useState({
+    weight: '',
+    height: '',
+    bloodPressure: '',
+    glucose: '',
+    sleepHours: '',
+    steps: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const data: any = {
+        userId: user.uid,
+        date: today,
+        createdAt: Timestamp.now()
+      };
+      if (metrics.weight) data.weight = Number(metrics.weight);
+      if (metrics.height) data.height = Number(metrics.height);
+      if (metrics.bloodPressure) data.bloodPressure = metrics.bloodPressure;
+      if (metrics.glucose) data.glucose = Number(metrics.glucose);
+      if (metrics.sleepHours) data.sleepHours = Number(metrics.sleepHours);
+      if (metrics.steps) data.steps = Number(metrics.steps);
+
+      await addDoc(collection(db, 'health_metrics'), data);
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'health_metrics');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+      >
+        <div className="p-8 space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold dark:text-white">Registrar Saúde</h2>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+              <X size={20} className="text-slate-400" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Peso (kg)</label>
+              <input 
+                type="number" 
+                value={metrics.weight}
+                onChange={(e) => setMetrics({ ...metrics, weight: e.target.value })}
+                placeholder="0.0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Altura (cm)</label>
+              <input 
+                type="number" 
+                value={metrics.height}
+                onChange={(e) => setMetrics({ ...metrics, height: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Pressão (mmHg)</label>
+              <input 
+                type="text" 
+                value={metrics.bloodPressure}
+                onChange={(e) => setMetrics({ ...metrics, bloodPressure: e.target.value })}
+                placeholder="120/80"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Glicose (mg/dL)</label>
+              <input 
+                type="number" 
+                value={metrics.glucose}
+                onChange={(e) => setMetrics({ ...metrics, glucose: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Sono (horas)</label>
+              <input 
+                type="number" 
+                value={metrics.sleepHours}
+                onChange={(e) => setMetrics({ ...metrics, sleepHours: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Passos</label>
+              <input 
+                type="number" 
+                value={metrics.steps}
+                onChange={(e) => setMetrics({ ...metrics, steps: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+          </div>
+
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Check size={20} />
+                Salvar Métricas
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const BookingModal = ({ 
   isOpen, 
   onClose, 
@@ -233,15 +512,57 @@ const BookingModal = ({
   professional: any, 
   user: any 
 }) => {
-  const handleConfirm = () => {
+  const [isBooking, setIsBooking] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
+  const [selectedTime, setSelectedTime] = useState('09:00');
+
+  const handleConfirm = async () => {
     if (!user || !professional) return;
     
-    const phoneNumber = '5528999881386';
-    const message = `Olá! Gostaria de agendar um atendimento.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Profissional selecionado:*\nNome: ${professional.name}\nEspecialidade: ${professional.specialty}`;
-    
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
-    onClose();
+    setIsBooking(true);
+    try {
+      // 1. Save to Firestore
+      await addDoc(collection(db, 'appointments'), {
+        userId: user.uid,
+        professionalId: professional.id,
+        professionalName: professional.name,
+        specialty: professional.specialty,
+        imageUrl: professional.imageUrl || 'https://picsum.photos/seed/prof/400/300',
+        date: selectedDate,
+        time: selectedTime,
+        status: 'upcoming',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+      // 1.1 Create Notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Consulta Agendada',
+        message: `Sua consulta com ${professional.name} foi agendada para ${new Date(selectedDate).toLocaleDateString('pt-BR')} às ${selectedTime}.`,
+        type: 'appointment',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      // 2. Open WhatsApp
+      const phoneNumber = '5528999881386';
+      const formattedDate = new Date(selectedDate).toLocaleDateString('pt-BR');
+      const message = `Olá! Gostaria de agendar um atendimento.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Profissional selecionado:*\nNome: ${professional.name}\nEspecialidade: ${professional.specialty}\n\n*Data e Hora:*\n${formattedDate} às ${selectedTime}`;
+      
+      const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
+      
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'appointments');
+    } finally {
+      setIsBooking(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -261,33 +582,375 @@ const BookingModal = ({
         </div>
         <div className="p-6 space-y-6">
           <p className="text-slate-600 dark:text-slate-400 text-sm">
-            Você será redirecionado para o nosso WhatsApp para finalizar o agendamento com o profissional abaixo:
+            Selecione a data e hora desejada. Você será redirecionado para o nosso WhatsApp para finalizar o agendamento.
           </p>
-          <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Data</label>
+              <input 
+                type="date" 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Hora</label>
+              <input 
+                type="time" 
+                value={selectedTime}
+                onChange={(e) => setSelectedTime(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
             <img src={professional.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={professional.name} className="w-12 h-12 rounded-xl object-cover" />
             <div>
               <h4 className="font-bold dark:text-white">{professional.name}</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400">{professional.specialty}</p>
             </div>
           </div>
+
           <div className="flex gap-3 pt-2">
             <button 
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              disabled={isBooking}
+              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
             <button 
               onClick={handleConfirm}
-              className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+              disabled={isBooking}
+              className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <MessageSquare size={18} />
-              Confirmar
+              {isBooking ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <MessageSquare size={18} />
+                  Confirmar
+                </>
+              )}
             </button>
           </div>
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) => {
+  const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([]);
+  const [recentExams, setRecentExams] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isMetricsModalOpen, setIsMetricsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Fetch Health Metrics History (for the chart)
+    const metricsQuery = query(
+      collection(db, 'health_metrics'),
+      where('userId', '==', user.uid),
+      orderBy('date', 'asc'),
+      limit(7)
+    );
+
+    const unsubscribeMetrics = onSnapshot(metricsQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMetricsHistory(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'health_metrics');
+    });
+
+    // 2. Fetch Upcoming Appointments
+    const appointmentsQuery = query(
+      collection(db, 'appointments'),
+      where('userId', '==', user.uid),
+      where('status', '==', 'upcoming'),
+      orderBy('date', 'asc'),
+      limit(3)
+    );
+
+    const unsubscribeAppointments = onSnapshot(appointmentsQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUpcomingAppointments(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'appointments');
+    });
+
+    // 3. Fetch Recent Exams
+    const examsQuery = query(
+      collection(db, 'exams'),
+      where('userId', '==', user.uid),
+      where('status', '==', 'ready'),
+      orderBy('updatedAt', 'desc'),
+      limit(2)
+    );
+
+    const unsubscribeExams = onSnapshot(examsQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRecentExams(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'exams');
+    });
+
+    return () => {
+      unsubscribeMetrics();
+      unsubscribeAppointments();
+      unsubscribeExams();
+    };
+  }, [user]);
+
+  const latestMetric = metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1] : null;
+
+  const metrics = {
+    steps: latestMetric?.steps || userData?.healthMetrics?.steps || 0,
+    heartRate: latestMetric?.heartRate || userData?.healthMetrics?.heartRate || 0,
+    waterIntake: latestMetric?.waterIntake || userData?.healthMetrics?.waterIntake || 0,
+    sleepHours: latestMetric?.sleepHours || userData?.healthMetrics?.sleepHours || 0,
+    weight: latestMetric?.weight || userData?.healthMetrics?.weight || 0,
+    bloodPressure: latestMetric?.bloodPressure || userData?.healthMetrics?.bloodPressure || '--/--',
+    glucose: latestMetric?.glucose || userData?.healthMetrics?.glucose || 0,
+  };
+
+  const stats = [
+    { label: 'Passos', value: metrics.steps.toLocaleString(), icon: Footprints, color: 'emerald', change: 12 },
+    { label: 'Sono', value: `${metrics.sleepHours}h`, icon: Moon, color: 'indigo', change: -5 },
+    { label: 'Peso', value: `${metrics.weight}kg`, icon: Scale, color: 'amber' },
+    { label: 'Pressão', value: metrics.bloodPressure, icon: Activity, color: 'rose' },
+    { label: 'Glicose', value: `${metrics.glucose}mg/dL`, icon: Thermometer, color: 'blue' },
+    { label: 'Hidratação', value: `${metrics.waterIntake}ml`, icon: Droplets, color: 'blue', change: 8 },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight dark:text-white">Olá, {userData?.name?.split(' ')[0] || 'Usuário'}!</h1>
+          <p className="text-slate-500 dark:text-slate-400">Como está o seu bem-estar hoje?</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsMetricsModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+          >
+            <Plus size={20} />
+            Registrar Saúde
+          </button>
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600">
+              <Activity size={20} />
+            </div>
+            <div className="pr-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status Geral</p>
+              <p className="text-sm font-bold dark:text-white">Excelente</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+        {stats.map((stat, idx) => (
+          <StatCard key={idx} stat={stat} />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          <section className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-xl font-bold dark:text-white">Evolução de Passos</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Seu desempenho nos últimos 7 dias</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Passos</span>
+              </div>
+            </div>
+            
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={metricsHistory.length > 0 ? metricsHistory : [
+                  { date: 'Seg', steps: 4000 },
+                  { date: 'Ter', steps: 3000 },
+                  { date: 'Qua', steps: 2000 },
+                  { date: 'Qui', steps: 2780 },
+                  { date: 'Sex', steps: 1890 },
+                  { date: 'Sáb', steps: 2390 },
+                  { date: 'Dom', steps: 3490 },
+                ]}>
+                  <defs>
+                    <linearGradient id="colorSteps" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="date" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#94a3b8', fontSize: 12 }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#94a3b8', fontSize: 12 }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#fff', 
+                      borderRadius: '16px', 
+                      border: 'none', 
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' 
+                    }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="steps" 
+                    stroke="#3b82f6" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorSteps)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold dark:text-white">Próximas Consultas</h3>
+                <Calendar size={20} className="text-blue-500" />
+              </div>
+              <div className="space-y-4">
+                {upcomingAppointments.length > 0 ? upcomingAppointments.map((apt) => (
+                  <div key={apt.id} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <img src={apt.imageUrl || 'https://picsum.photos/seed/prof/100/100'} alt={apt.professionalName} className="w-10 h-10 rounded-xl object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold dark:text-white truncate">{apt.professionalName}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{apt.specialty}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-blue-500">{new Date(apt.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</p>
+                      <p className="text-[10px] text-slate-400">{apt.time}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">Nenhuma consulta agendada.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold dark:text-white">Exames Recentes</h3>
+                <FileText size={20} className="text-emerald-500" />
+              </div>
+              <div className="space-y-4">
+                {recentExams.length > 0 ? recentExams.map((exam) => (
+                  <div key={exam.id} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600">
+                      <FileText size={20} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold dark:text-white truncate">{exam.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{exam.lab || 'Laboratório ViTTA'}</p>
+                    </div>
+                    <button className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
+                      <Download size={18} />
+                    </button>
+                  </div>
+                )) : (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">Nenhum exame pronto.</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-8">
+          {isMetricsModalOpen && (
+            <HealthMetricsInputModal 
+              user={user} 
+              onClose={() => setIsMetricsModalOpen(false)} 
+            />
+          )}
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-[2.5rem] text-white relative overflow-hidden group">
+            <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-500">
+              <Zap size={180} />
+            </div>
+            <div className="relative z-10 space-y-4">
+              <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                <Zap size={24} />
+              </div>
+              <h3 className="text-2xl font-bold">Dica do Dia</h3>
+              <p className="text-blue-100 text-sm leading-relaxed">
+                Beber água regularmente ajuda a manter sua energia e foco durante o dia. Tente beber pelo menos 2 litros hoje!
+              </p>
+              <button className="px-6 py-2 bg-white text-blue-600 rounded-xl text-sm font-bold hover:bg-blue-50 transition-colors">
+                Saber Mais
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+            <h3 className="text-lg font-bold dark:text-white mb-6">Metas Diárias</h3>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium dark:text-slate-300">Passos</span>
+                  <span className="font-bold dark:text-white">{Math.round((metrics.steps / 8000) * 100)}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min((metrics.steps / 8000) * 100, 100)}%` }}
+                    className="h-full bg-emerald-500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium dark:text-slate-300">Água</span>
+                  <span className="font-bold dark:text-white">{Math.round((metrics.waterIntake / 2000) * 100)}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min((metrics.waterIntake / 2000) * 100, 100)}%` }}
+                    className="h-full bg-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium dark:text-slate-300">Sono</span>
+                  <span className="font-bold dark:text-white">{Math.round((metrics.sleepHours / 8) * 100)}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min((metrics.sleepHours / 8) * 100, 100)}%` }}
+                    className="h-full bg-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -354,7 +1017,7 @@ const StatCard = ({ stat }: any) => {
 };
 
 const AdminView = ({ user }: { user: any }) => {
-  const [subTab, setSubTab] = useState<'overview' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'offers' | 'config'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'user-exams' | 'offers' | 'config'>('overview');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
@@ -537,7 +1200,18 @@ const AdminView = ({ user }: { user: any }) => {
           }`}
         >
           <FileText size={18} />
-          Exames
+          Tipos de Exames
+        </button>
+        <button 
+          onClick={() => setSubTab('user-exams')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'user-exams' 
+              ? 'border-emerald-500 text-emerald-500' 
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          <ClipboardList size={18} />
+          Exames de Usuários
         </button>
         <button 
           onClick={() => setSubTab('config')}
@@ -713,6 +1387,7 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === 'partnerships' && <PartnershipsView setSubTab={setSubTab} />}
           {subTab === 'professionals' && <ProfessionalsManagementView />}
           {subTab === 'exams' && <ExamsManagementView />}
+          {subTab === 'user-exams' && <UserExamsManagementView />}
           {subTab === 'config' && <UserConfigView />}
         </motion.div>
       </AnimatePresence>
@@ -720,84 +1395,163 @@ const AdminView = ({ user }: { user: any }) => {
   );
 };
 
-const ExamsView = () => (
-  <div className="space-y-8">
-    <section>
-      <h1 className="text-3xl font-bold mb-2 dark:text-white">Meus Exames</h1>
-      <p className="text-slate-500 dark:text-slate-400">Acompanhe seus resultados e histórico de exames.</p>
-    </section>
+const ExamsView = ({ user }: { user: any }) => {
+  const [exams, setExams] = useState<any[]>([]);
+  const [filter, setFilter] = useState<'all' | 'ready' | 'pending'>('all');
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
-    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-      <div className="flex gap-2">
-        <button className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium">Todos</button>
-        <button className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Prontos</button>
-        <button className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Pendentes</button>
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'exams'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setExams(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'exams');
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const filteredExams = useMemo(() => {
+    return exams.filter(exam => {
+      const matchesFilter = filter === 'all' || exam.status === filter;
+      const matchesSearch = exam.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (exam.lab && exam.lab.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesFilter && matchesSearch;
+    });
+  }, [exams, filter, searchQuery]);
+
+  const handleDownload = (url: string | undefined) => {
+    if (url) {
+      window.open(url, '_blank');
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <h1 className="text-3xl font-bold mb-2 dark:text-white">Meus Exames</h1>
+        <p className="text-slate-500 dark:text-slate-400">Acompanhe seus resultados e histórico de exames.</p>
+      </section>
+
+      <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
+        <div className="flex flex-wrap gap-2">
+          <button 
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'all' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          >
+            Todos
+          </button>
+          <button 
+            onClick={() => setFilter('ready')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'ready' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          >
+            Prontos
+          </button>
+          <button 
+            onClick={() => setFilter('pending')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'pending' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          >
+            Pendentes
+          </button>
+        </div>
+        
+        <div className="relative w-full lg:w-80 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={18} />
+          <input 
+            type="text" 
+            placeholder="Buscar exames ou laboratórios..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white shadow-sm"
+          />
+        </div>
       </div>
-      <button className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-        <Filter size={16} />
-        Filtrar
-      </button>
-    </div>
 
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Exame</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Local</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ação</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-            {MOCK_EXAMS.map((exam) => (
-              <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                      <FileText size={18} />
-                    </div>
-                    <span className="font-bold text-sm dark:text-white">{exam.title}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {new Date(exam.date).toLocaleDateString('pt-BR')}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                  {exam.location}
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    exam.status === 'ready' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                    exam.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                    'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                  }`}>
-                    {exam.status === 'ready' ? 'Pronto' :
-                     exam.status === 'pending' ? 'Pendente' : 'Agendado'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  {exam.status === 'ready' ? (
-                    <button className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold text-sm flex items-center gap-1 ml-auto transition-colors">
-                      <Download size={16} />
-                      Baixar
-                    </button>
-                  ) : (
-                    <button className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-bold text-sm transition-colors">
-                      Detalhes
-                    </button>
-                  )}
-                </td>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Exame</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Local</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ação</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <tr key={index}>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-4 w-28" /></td>
+                    <td className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></td>
+                    <td className="px-6 py-4 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
+                  </tr>
+                ))
+              ) : filteredExams.length > 0 ? filteredExams.map((exam) => (
+                <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                        <FileText size={18} />
+                      </div>
+                      <span className="font-bold text-sm dark:text-white">{exam.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                    {exam.scheduledAt ? new Date(exam.scheduledAt.seconds * 1000).toLocaleDateString('pt-BR') : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                    {exam.lab || 'Laboratório ViTTA'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      exam.status === 'ready' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                      exam.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                      'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                    }`}>
+                      {exam.status === 'ready' ? 'Pronto' :
+                       exam.status === 'pending' ? 'Pendente' : 'Agendado'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {exam.status === 'ready' && (
+                      <button 
+                        onClick={() => handleDownload(exam.resultUrl)}
+                        className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold text-sm flex items-center gap-1 ml-auto transition-colors"
+                      >
+                        <Download size={16} />
+                        Baixar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                    Nenhum exame encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ProfessionalsManagementView = () => {
   const [activeSubTab, setActiveSubTab] = useState<'list' | 'categories'>('list');
@@ -805,7 +1559,15 @@ const ProfessionalsManagementView = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isCreating, setIsCreating] = useState<'professional' | 'category' | null>(null);
-  const [newItem, setNewItem] = useState({ name: '', specialty: 'Médico', vittaHealthDiscount: '' });
+  const [newItem, setNewItem] = useState({ 
+    name: '', 
+    specialty: 'Médico', 
+    vittaHealthDiscount: '',
+    registrationNumber: '',
+    availableDays: '',
+    price: '',
+    city: ''
+  });
 
   useEffect(() => {
     const unsubscribeProfs = onSnapshot(collection(db, 'professionals'), (snapshot) => {
@@ -864,6 +1626,10 @@ const ProfessionalsManagementView = () => {
           name: newItem.name,
           specialty: newItem.specialty,
           vittaHealthDiscount: newItem.vittaHealthDiscount || '0%',
+          registrationNumber: newItem.registrationNumber,
+          availableDays: newItem.availableDays,
+          price: newItem.price,
+          city: newItem.city,
           rating: 5.0,
           reviews: 0,
           imageUrl: 'https://picsum.photos/seed/prof/400/300',
@@ -878,7 +1644,15 @@ const ProfessionalsManagementView = () => {
         });
       }
       setIsCreating(null);
-      setNewItem({ name: '', specialty: 'Médico', vittaHealthDiscount: '' });
+      setNewItem({ 
+        name: '', 
+        specialty: 'Médico', 
+        vittaHealthDiscount: '',
+        registrationNumber: '',
+        availableDays: '',
+        price: '',
+        city: ''
+      });
     } catch (err) {
       console.error('Erro ao criar item:', err);
     }
@@ -946,6 +1720,60 @@ const ProfessionalsManagementView = () => {
                         }
                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Número do Registro</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: CRM 12345"
+                        value={editingItem ? editingItem.registrationNumber : newItem.registrationNumber}
+                        onChange={(e) => editingItem 
+                          ? setEditingItem({ ...editingItem, registrationNumber: e.target.value })
+                          : setNewItem({ ...newItem, registrationNumber: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Dias de Atendimento</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: Seg, Qua, Sex"
+                        value={editingItem ? editingItem.availableDays : newItem.availableDays}
+                        onChange={(e) => editingItem 
+                          ? setEditingItem({ ...editingItem, availableDays: e.target.value })
+                          : setNewItem({ ...newItem, availableDays: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Valor (Opcional)</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: R$ 150,00"
+                          value={editingItem ? editingItem.price : newItem.price}
+                          onChange={(e) => editingItem 
+                            ? setEditingItem({ ...editingItem, price: e.target.value })
+                            : setNewItem({ ...newItem, price: e.target.value })
+                          }
+                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Cidade</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: São Paulo"
+                          value={editingItem ? editingItem.city : newItem.city}
+                          onChange={(e) => editingItem 
+                            ? setEditingItem({ ...editingItem, city: e.target.value })
+                            : setNewItem({ ...newItem, city: e.target.value })
+                          }
+                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        />
+                      </div>
                     </div>
                   </>
                 )}
@@ -1023,6 +1851,21 @@ const ProfessionalsManagementView = () => {
                   <div>
                     <h3 className="font-bold text-slate-900 dark:text-white">{prof.name}</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    {prof.registrationNumber && (
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+                        {prof.registrationNumber}
+                      </p>
+                    )}
+                    {prof.city && (
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {prof.city}
+                      </p>
+                    )}
+                    {prof.price && (
+                      <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                        {prof.price}
+                      </p>
+                    )}
                     {prof.vittaHealthDiscount && (
                       <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                         Desconto: {prof.vittaHealthDiscount}
@@ -1101,6 +1944,8 @@ const ProfessionalsView = ({ user }: { user: any }) => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bookingProfessional, setBookingProfessional] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSpecialty, setSelectedSpecialty] = useState('Todos');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'professionals'), (snapshot) => {
@@ -1111,6 +1956,21 @@ const ProfessionalsView = ({ user }: { user: any }) => {
     });
     return () => unsubscribe();
   }, []);
+
+  const filteredProfessionals = useMemo(() => {
+    return professionals.filter(prof => {
+      const matchesSearch = 
+        prof.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        prof.specialty.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSpecialty = selectedSpecialty === 'Todos' || prof.specialty === selectedSpecialty;
+      return matchesSearch && matchesSpecialty;
+    });
+  }, [professionals, searchQuery, selectedSpecialty]);
+
+  const specialties = useMemo(() => {
+    const specs = new Set(professionals.map(p => p.specialty));
+    return ['Todos', ...Array.from(specs)];
+  }, [professionals]);
 
   return (
     <div className="space-y-8">
@@ -1125,59 +1985,105 @@ const ProfessionalsView = ({ user }: { user: any }) => {
           <input 
             type="text" 
             placeholder="Buscar por nome ou especialidade..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
           />
         </div>
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
-          <button className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium whitespace-nowrap">Todos</button>
-          <button className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap">Psicologia</button>
-          <button className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap">Nutrição</button>
-          <button className="px-4 py-2 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 rounded-xl text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap">Cardiologia</button>
+          {specialties.map(spec => (
+            <button 
+              key={spec}
+              onClick={() => setSelectedSpecialty(spec)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
+                selectedSpecialty === spec 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              {spec}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {professionals.map((prof) => (
-          <motion.div 
-            key={prof.id}
-            whileHover={{ y: -4 }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
-          >
-              <div className="flex items-center gap-4">
-                <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
-                <div>
-                  <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
-                  {prof.vittaHealthDiscount && (
-                    <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
-                      ViTTA Health: {prof.vittaHealthDiscount}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1 text-amber-500 mt-1">
-                  <Star size={14} fill="currentColor" />
-                  <span className="text-xs font-bold">{prof.rating} ({prof.reviews} avaliações)</span>
-                </div>
-              </div>
-            </div>
-            <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
-              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Disponibilidade</p>
-              <div className="flex gap-2">
-                {(prof.availability || ['Seg', 'Qua', 'Sex']).map((day: string) => (
-                  <span key={day} className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-[10px] font-bold">
-                    {day}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <button 
-              onClick={() => setBookingProfessional(prof)}
-              className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-64" />
+          ))}
+        </div>
+      ) : filteredProfessionals.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProfessionals.map((prof) => (
+            <motion.div 
+              key={prof.id}
+              whileHover={{ y: -4 }}
+              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
             >
-              Agendar Consulta
-            </button>
-          </motion.div>
-        ))}
-      </div>
+                <div className="flex items-center gap-4">
+                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
+                  <div>
+                    <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    {prof.registrationNumber && (
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+                        {prof.registrationNumber}
+                      </p>
+                    )}
+                    {prof.city && (
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                        <MapPin size={10} />
+                        <span>{prof.city}</span>
+                      </div>
+                    )}
+                    {prof.vittaHealthDiscount && (
+                      <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
+                        ViTTA Health: {prof.vittaHealthDiscount}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 text-amber-500 mt-1">
+                      <Star size={14} fill="currentColor" />
+                      <span className="text-xs font-bold">{prof.rating} ({prof.reviews} avaliações)</span>
+                    </div>
+                    {prof.price && (
+                      <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                        {prof.price}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
+                  <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Disponibilidade</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(prof.availableDays ? (typeof prof.availableDays === 'string' ? prof.availableDays.split(',').map((s: string) => s.trim()) : prof.availableDays) : ['Seg', 'Qua', 'Sex']).map((day: string) => (
+                      <span key={day} className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-[10px] font-bold">
+                        {day}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              <button 
+                onClick={() => setBookingProfessional(prof)}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+              >
+                Agendar Consulta
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+          <Search size={48} className="mx-auto text-slate-300 mb-4" />
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhum profissional encontrado para sua busca.</p>
+          <button 
+            onClick={() => { setSearchQuery(''); setSelectedSpecialty('Todos'); }}
+            className="mt-4 text-emerald-600 font-bold hover:underline"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
 
       <BookingModal 
         isOpen={!!bookingProfessional} 
@@ -1207,7 +2113,6 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
   useEffect(() => {
     const unsubscribePartners = onSnapshot(collection(db, 'partners'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log('DEBUG: PartnersView - Parceiros carregados:', data.length);
       setPartners(data);
       setLoading(false);
     }, (error) => {
@@ -1226,15 +2131,19 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
     };
   }, []);
 
-  const filteredCategories = categories.filter(cat => 
-    cat.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCategories = useMemo(() => {
+    return categories.filter(cat => 
+      cat.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [categories, searchQuery]);
 
-  const filteredPartners = partners.filter(partner => {
-    const matchesSearch = partner.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || partner.category === selectedCategory.name;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredPartners = useMemo(() => {
+    return partners.filter(partner => {
+      const matchesSearch = partner.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = !selectedCategory || partner.category === selectedCategory.name;
+      return matchesSearch && matchesCategory;
+    });
+  }, [partners, searchQuery, selectedCategory]);
 
   const getPartnersCount = (categoryName: string) => {
     return partners.filter(p => p.category === categoryName).length;
@@ -1264,52 +2173,59 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPartners.map((partner) => (
-            <motion.div 
-              key={partner.id}
-              whileHover={{ y: -4 }}
-              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
-            >
-              <div className="flex items-center gap-4">
-                <img src={partner.imageUrl || "https://picsum.photos/seed/partner/100/100"} alt={partner.name} className="w-16 h-16 rounded-2xl object-cover border border-slate-100 dark:border-slate-800" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-lg dark:text-white truncate">{partner.name}</h3>
-                  <p className="text-sm text-emerald-600 font-bold">{partner.discount}</p>
-                  <div className="flex items-center gap-1 text-amber-500 mt-1">
-                    <Star size={14} fill="currentColor" />
-                    <span className="text-xs font-bold">{partner.rating || '5.0'}</span>
+        {filteredPartners.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPartners.map((partner) => (
+              <motion.div 
+                key={partner.id}
+                whileHover={{ y: -4 }}
+                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+              >
+                <div className="flex items-center gap-4">
+                  <img src={partner.imageUrl || "https://picsum.photos/seed/partner/100/100"} alt={partner.name} className="w-16 h-16 rounded-2xl object-cover border border-slate-100 dark:border-slate-800" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-lg dark:text-white truncate">{partner.name}</h3>
+                    <p className="text-sm text-emerald-600 font-bold">{partner.discount}</p>
+                    <div className="flex items-center gap-1 text-amber-500 mt-1">
+                      <Star size={14} fill="currentColor" />
+                      <span className="text-xs font-bold">{partner.rating || '5.0'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-2">
-                <div className="flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <MapPin size={14} className="mt-0.5 flex-shrink-0" />
-                  <span>{partner.address || 'Endereço não informado'}</span>
-                </div>
-                {partner.phone && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <Phone size={14} className="flex-shrink-0" />
-                    <span>{partner.phone}</span>
+                
+                <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-2">
+                  <div className="flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <MapPin size={14} className="mt-0.5 flex-shrink-0" />
+                    <span>{partner.address || 'Endereço não informado'}</span>
                   </div>
-                )}
-              </div>
+                  {partner.phone && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <Phone size={14} className="flex-shrink-0" />
+                      <span>{partner.phone}</span>
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex gap-2 pt-2">
-                <button 
-                  onClick={() => handleGetDiscount(partner)}
-                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
-                >
-                  Obter Desconto
-                </button>
-                <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                  <Info size={20} />
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => handleGetDiscount(partner)}
+                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+                  >
+                    Obter Desconto
+                  </button>
+                  <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <Info size={20} />
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+            <Search size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhum parceiro encontrado nesta categoria.</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -1389,10 +2305,12 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton key={index} className="h-48" />
+            ))}
           </div>
-        ) : (
+        ) : filteredCategories.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredCategories.map((cat) => (
               <motion.div 
@@ -1414,6 +2332,17 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
               </motion.div>
             ))}
           </div>
+        ) : (
+          <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+            <Search size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhuma categoria encontrada para sua busca.</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="mt-4 text-blue-500 font-bold hover:underline"
+            >
+              Limpar busca
+            </button>
+          </div>
         )}
       </section>
     </div>
@@ -1423,6 +2352,7 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
 const OffersView = ({ user }: { user?: any }) => {
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleRedeem = (offer: any) => {
     if (!user) return;
@@ -1442,75 +2372,213 @@ const OffersView = ({ user }: { user?: any }) => {
     return () => unsubscribe();
   }, []);
 
+  const filteredOffers = useMemo(() => {
+    return offers.filter(offer => 
+      offer.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      offer.partner.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (offer.description && offer.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [offers, searchQuery]);
+
   return (
     <div className="space-y-8">
-      <section>
-        <h1 className="text-3xl font-bold mb-2 dark:text-white">Benefícios e Ofertas</h1>
-        <p className="text-slate-500 dark:text-slate-400">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 dark:text-white">Benefícios e Ofertas</h1>
+          <p className="text-slate-500 dark:text-slate-400">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
+        </div>
+        <div className="relative w-full md:w-80 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={20} />
+          <input 
+            type="text" 
+            placeholder="Buscar ofertas ou parceiros..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white shadow-sm"
+          />
+        </div>
       </section>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {offers.map((offer) => (
-          <motion.div 
-            key={offer.id}
-            whileHover={{ scale: 1.02 }}
-            className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col"
-          >
-            <div className="relative h-48">
-              <img src={offer.imageUrl || 'https://picsum.photos/seed/offer/400/300'} alt={offer.title} className="w-full h-full object-cover" />
-              <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 shadow-sm">
-                {offer.partner}
+        {loading ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-80" />
+          ))
+        ) : filteredOffers.length > 0 ? (
+          filteredOffers.map((offer) => (
+            <motion.div 
+              key={offer.id}
+              whileHover={{ scale: 1.02 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col"
+            >
+              <div className="relative h-48">
+                <img src={offer.imageUrl || 'https://picsum.photos/seed/offer/400/300'} alt={offer.title} className="w-full h-full object-cover" />
+                <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 shadow-sm">
+                  {offer.partner}
+                </div>
+                <div className="absolute bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
+                  {offer.discount}
+                </div>
               </div>
-              <div className="absolute bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
-                {offer.discount}
+              <div className="p-6 flex-1 flex flex-col">
+                <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.title}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
+                <button 
+                  onClick={() => handleRedeem(offer)}
+                  className="w-full py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors"
+                >
+                  Resgatar Cupom
+                </button>
               </div>
-            </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.title}</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
-              <button 
-                onClick={() => handleRedeem(offer)}
-                className="w-full py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors"
-              >
-                Resgatar Cupom
-              </button>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          ))
+        ) : (
+          <div className="col-span-full p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+            <Store size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhuma oferta disponível no momento.</p>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-const SettingsView = ({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setIsDarkMode: (v: boolean) => void }) => {
+const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMode: boolean, setIsDarkMode: (v: boolean) => void, user: FirebaseUser | null, userData: any }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [profileData, setProfileData] = useState({
+    name: userData?.name || user?.displayName || '',
+    email: userData?.email || user?.email || '',
+    phone: userData?.phone || '',
+    zip: userData?.zip || '',
+    street: userData?.street || '',
+    number: userData?.number || '',
+    complement: userData?.complement || '',
+    neighborhood: userData?.neighborhood || '',
+    city: userData?.city || '',
+    state: userData?.state || '',
+    cpf: userData?.cpf || '',
+    rg: userData?.rg || '',
+    photoURL: userData?.photoURL || user?.photoURL || 'https://picsum.photos/seed/user/200/200',
+    deletionRequested: userData?.deletionRequested || false,
+    twoFactorEnabled: userData?.twoFactorEnabled || false
+  });
 
-  const handleDeleteAccount = async () => {
-    if (window.confirm('TEM CERTEZA? Esta ação é irreversível e todos os seus dados serão apagados permanentEMENTE.')) {
-      try {
-        const user = auth.currentUser;
-        if (user) {
-          await deleteDoc(doc(db, 'users', user.uid));
-          await user.delete();
-          window.location.reload();
-        }
-      } catch (err) {
-        console.error('Erro ao excluir conta:', err);
-        alert('Para excluir sua conta, você precisa ter feito login recentemente. Por favor, saia e entre novamente antes de tentar excluir.');
+  useEffect(() => {
+    if (userData) {
+      setProfileData(prev => ({
+        ...prev,
+        name: userData.name || prev.name,
+        email: userData.email || prev.email,
+        phone: userData.phone || prev.phone,
+        zip: userData.zip || prev.zip,
+        street: userData.street || prev.street,
+        number: userData.number || prev.number,
+        complement: userData.complement || prev.complement,
+        neighborhood: userData.neighborhood || prev.neighborhood,
+        city: userData.city || prev.city,
+        state: userData.state || prev.state,
+        cpf: userData.cpf || prev.cpf,
+        rg: userData.rg || prev.rg,
+        photoURL: userData.photoURL || prev.photoURL,
+        deletionRequested: userData.deletionRequested || false,
+        twoFactorEnabled: userData.twoFactorEnabled || false
+      }));
+    }
+  }, [userData]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1024 * 1024) { // 1MB limit
+        alert('A imagem deve ter menos de 1MB.');
+        return;
       }
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileData(prev => ({ ...prev, photoURL: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!user) return;
     setIsSaving(true);
-    setTimeout(() => setIsSaving(false), 1500);
+    try {
+      let finalPhotoURL = profileData.photoURL;
+
+      if (selectedFile) {
+        const storageRef = ref(storage, `users/${user.uid}/profile_photo`);
+        await uploadBytes(storageRef, selectedFile);
+        finalPhotoURL = await getDownloadURL(storageRef);
+      }
+
+      const updatedData = {
+        ...userData,
+        ...profileData,
+        photoURL: finalPhotoURL,
+        uid: user.uid,
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'users', user.uid), updatedData, { merge: true });
+      
+      // Also update Auth profile if name or photo changed
+      if (profileData.name !== user.displayName || finalPhotoURL !== user.photoURL) {
+        await updateProfile(user, {
+          displayName: profileData.name,
+          photoURL: finalPhotoURL
+        });
+      }
+      
+      setSelectedFile(null);
+      alert('Perfil atualizado com sucesso!');
+    } catch (err) {
+      console.error('Erro ao salvar perfil:', err);
+      alert('Erro ao salvar perfil. Tente novamente.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggle2FA = async () => {
+    if (!user) return;
+    const newValue = !profileData.twoFactorEnabled;
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        twoFactorEnabled: newValue
+      }, { merge: true });
+      setProfileData(prev => ({ ...prev, twoFactorEnabled: newValue }));
+      alert(newValue ? '2FA ativado com sucesso!' : '2FA desativado.');
+    } catch (err) {
+      console.error('Erro ao alternar 2FA:', err);
+    }
+  };
+
+  const handleRequestDeletion = async () => {
+    if (!user) return;
+    if (window.confirm('Tem certeza que deseja solicitar a exclusão da sua conta? Esta ação será processada pela nossa equipe.')) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          deletionRequested: true,
+          deletionRequestedAt: new Date().toISOString()
+        }, { merge: true });
+        setProfileData(prev => ({ ...prev, deletionRequested: true }));
+        alert('Solicitação de exclusão enviada com sucesso.');
+      } catch (err) {
+        console.error('Erro ao solicitar exclusão:', err);
+      }
+    }
   };
 
   return (
     <div className="max-w-4xl space-y-8">
       <section>
         <h1 className="text-3xl font-bold mb-2 dark:text-white">Meu Perfil</h1>
-        <p className="text-slate-500 dark:text-slate-400">Gerencie suas informações pessoais e segurança.</p>
+        <p className="text-slate-500 dark:text-slate-400">Gerencie suas informações pessoais, endereço e documentos.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1524,48 +2592,175 @@ const SettingsView = ({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setI
             
             <div className="flex flex-col sm:flex-row items-center gap-8">
               <div className="relative group">
-                <img src="https://picsum.photos/seed/user/200/200" alt="Profile" className="w-32 h-32 rounded-[2rem] object-cover border-4 border-slate-50 dark:border-slate-800 shadow-lg" />
-                <button className="absolute -bottom-2 -right-2 p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg border-4 border-white dark:border-slate-900 hover:scale-110 transition-transform">
-                  <Edit size={16} />
-                </button>
+                <img 
+                  src={profileData.photoURL} 
+                  alt="Profile" 
+                  className="w-32 h-32 rounded-[2rem] object-cover border-4 border-slate-50 dark:border-slate-800 shadow-lg" 
+                  referrerPolicy="no-referrer"
+                />
+                <label className="absolute -bottom-2 -right-2 p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg border-4 border-white dark:border-slate-900 hover:scale-110 transition-transform cursor-pointer">
+                  <Camera size={16} />
+                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                </label>
               </div>
               
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome Completo</label>
-                  <input type="text" defaultValue="João Silva" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" />
+                  <input 
+                    type="text" 
+                    value={profileData.name} 
+                    onChange={(e) => setProfileData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" 
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
-                  <input type="email" defaultValue="joao.silva@email.com" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" />
+                  <input 
+                    type="email" 
+                    value={profileData.email} 
+                    disabled
+                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border-none rounded-2xl text-sm text-slate-500 cursor-not-allowed" 
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Telefone</label>
-                  <input type="tel" defaultValue="(11) 98765-4321" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Cidade</label>
-                  <input type="text" defaultValue="São Paulo, SP" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" />
+                  <input 
+                    type="tel" 
+                    value={profileData.phone} 
+                    onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="(00) 00000-0000"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" 
+                  />
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="pt-4 flex justify-end">
-              <button 
-                onClick={handleSave}
-                disabled={isSaving}
-                className="px-8 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-70"
-              >
-                {isSaving ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <Save size={18} />
-                )}
-                Salvar Alterações
-              </button>
+          {/* Address */}
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
+              <h2 className="text-lg font-bold dark:text-white">Endereço</h2>
+              <MapPin className="text-blue-500" size={20} />
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">CEP</label>
+                <input 
+                  type="text" 
+                  value={profileData.zip} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, zip: e.target.value }))}
+                  placeholder="00000-000"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Logradouro</label>
+                <input 
+                  type="text" 
+                  value={profileData.street} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, street: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Número</label>
+                <input 
+                  type="text" 
+                  value={profileData.number} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, number: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Complemento</label>
+                <input 
+                  type="text" 
+                  value={profileData.complement} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, complement: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Bairro</label>
+                <input 
+                  type="text" 
+                  value={profileData.neighborhood} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, neighborhood: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Cidade</label>
+                <input 
+                  type="text" 
+                  value={profileData.city} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, city: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Estado</label>
+                <input 
+                  type="text" 
+                  value={profileData.state} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, state: e.target.value }))}
+                  placeholder="UF"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                />
+              </div>
             </div>
           </div>
 
+          {/* Documents */}
+          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
+              <h2 className="text-lg font-bold dark:text-white">Documentos</h2>
+              <CreditCard className="text-violet-500" size={20} />
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">CPF</label>
+                <input 
+                  type="text" 
+                  value={profileData.cpf} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, cpf: e.target.value }))}
+                  placeholder="000.000.000-00"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-violet-500/20 transition-all" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">RG</label>
+                <input 
+                  type="text" 
+                  value={profileData.rg} 
+                  onChange={(e) => setProfileData(prev => ({ ...prev, rg: e.target.value }))}
+                  placeholder="00.000.000-0"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-violet-500/20 transition-all" 
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button 
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-70"
+            >
+              {isSaving ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Save size={20} />
+              )}
+              Salvar Todas as Alterações
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
           {/* Security */}
           <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
@@ -1580,11 +2775,20 @@ const SettingsView = ({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setI
                     <ShieldCheck size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm dark:text-white">Autenticação em Duas Etapas</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Adicione uma camada extra de segurança.</p>
+                    <p className="font-bold text-sm dark:text-white">2FA</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Camada extra</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold dark:text-white hover:bg-slate-50 transition-colors">Ativar</button>
+                <button 
+                  onClick={handleToggle2FA}
+                  className={`px-3 py-1.5 border rounded-lg text-[10px] font-bold transition-colors ${
+                    profileData.twoFactorEnabled 
+                      ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-white hover:bg-slate-50'
+                  }`}
+                >
+                  {profileData.twoFactorEnabled ? 'Ativo' : 'Ativar'}
+                </button>
               </div>
 
               <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
@@ -1593,17 +2797,20 @@ const SettingsView = ({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setI
                     <Key size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm dark:text-white">Alterar Senha</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Última alteração há 3 meses.</p>
+                    <p className="font-bold text-sm dark:text-white">Senha</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Alterar senha</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold dark:text-white hover:bg-slate-50 transition-colors">Alterar</button>
+                <button 
+                  onClick={() => setIsPasswordModalOpen(true)}
+                  className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-bold dark:text-white hover:bg-slate-50 transition-colors"
+                >
+                  Alterar
+                </button>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-6">
           {/* Preferences */}
           <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
             <h2 className="text-lg font-bold border-b border-slate-50 dark:border-slate-800 pb-4 dark:text-white">Preferências</h2>
@@ -1639,15 +2846,260 @@ const SettingsView = ({ isDarkMode, setIsDarkMode }: { isDarkMode: boolean, setI
           {/* Danger Zone */}
           <div className="bg-rose-50/50 dark:bg-rose-500/5 p-8 rounded-3xl border border-rose-100 dark:border-rose-500/20 space-y-4">
             <h2 className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest">Zona de Perigo</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Uma vez excluída, sua conta não poderá ser recuperada.</p>
-            <button 
-              onClick={handleDeleteAccount}
-              className="w-full py-3 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
-            >
-              Excluir Minha Conta
-            </button>
+            {profileData.deletionRequested ? (
+              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-500/30">
+                <p className="text-xs font-bold text-rose-600 dark:text-rose-400">Solicitação de exclusão em processamento.</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Nossa equipe entrará em contato em breve.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Uma vez solicitada, nossa equipe processará a exclusão dos seus dados.</p>
+                <button 
+                  onClick={handleRequestDeletion}
+                  className="w-full py-3 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                >
+                  Solicitar Exclusão
+                </button>
+              </>
+            )}
           </div>
         </div>
+      </div>
+      {isPasswordModalOpen && (
+        <ChangePasswordModal user={user} onClose={() => setIsPasswordModalOpen(false)} />
+      )}
+    </div>
+  );
+};
+
+const UserExamsManagementView = () => {
+  const [exams, setExams] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [examTypes, setExamTypes] = useState<any[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newItem, setNewItem] = useState({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribeExams = onSnapshot(query(collection(db, 'exams'), orderBy('createdAt', 'desc')), (snapshot) => {
+      setExams(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'exams');
+    });
+
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'users');
+    });
+
+    const unsubscribeExamTypes = onSnapshot(collection(db, 'exams'), (snapshot) => {
+      // Filter out user-specific exams to get only the types
+      // Actually, we should have a separate collection for exam types, but for now we use 'exams'
+      // Wait, the previous ExamsManagementView adds to 'exams' collection too.
+      // This is a bit confusing. Let's assume 'exams' collection stores both types and user exams for now,
+      // but user exams have a 'userId' field.
+      setExamTypes(snapshot.docs.filter(doc => !doc.data().userId).map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubscribeExams();
+      unsubscribeUsers();
+      unsubscribeExamTypes();
+    };
+  }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem.userId || !newItem.name) return;
+
+    try {
+      await addDoc(collection(db, 'exams'), {
+        ...newItem,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+      // Create notification for the user
+      await addDoc(collection(db, 'notifications'), {
+        userId: newItem.userId,
+        title: 'Novo Exame Solicitado',
+        message: `Um novo exame de ${newItem.name} foi registrado em sua conta.`,
+        type: 'exam',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      setIsCreating(false);
+      setNewItem({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'exams');
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, userId: string, examName: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'exams', id), {
+        status: newStatus,
+        updatedAt: Timestamp.now()
+      });
+
+      if (newStatus === 'ready') {
+        await addDoc(collection(db, 'notifications'), {
+          userId,
+          title: 'Resultado de Exame Disponível',
+          message: `O resultado do seu exame de ${examName} já está disponível para visualização.`,
+          type: 'exam',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `exams/${id}`);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Excluir este exame?')) {
+      try {
+        await deleteDoc(doc(db, 'exams', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `exams/${id}`);
+      }
+    }
+  };
+
+  const userExams = exams.filter(e => e.userId);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold dark:text-white">Exames de Usuários</h2>
+        <button 
+          onClick={() => setIsCreating(!isCreating)}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+        >
+          {isCreating ? <X size={20} /> : <Plus size={20} />}
+          {isCreating ? 'Fechar' : 'Registrar Exame'}
+        </button>
+      </div>
+
+      {isCreating && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+        >
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Usuário</label>
+                <select 
+                  required
+                  value={newItem.userId}
+                  onChange={(e) => setNewItem({ ...newItem, userId: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                >
+                  <option value="" disabled>Selecione um Usuário</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Tipo de Exame</label>
+                <select 
+                  required
+                  value={newItem.name}
+                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                >
+                  <option value="" disabled>Selecione o Exame</option>
+                  {examTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Laboratório</label>
+                <input 
+                  type="text" 
+                  value={newItem.lab}
+                  onChange={(e) => setNewItem({ ...newItem, lab: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Status Inicial</label>
+                <select 
+                  value={newItem.status}
+                  onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                >
+                  <option value="pending">Pendente</option>
+                  <option value="ready">Pronto</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20">
+              Registrar Exame para Usuário
+            </button>
+          </form>
+        </motion.div>
+      )}
+
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Usuário / Exame</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i}>
+                  <td className="px-8 py-4"><Skeleton className="h-4 w-48" /></td>
+                  <td className="px-8 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                  <td className="px-8 py-4 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
+                </tr>
+              ))
+            ) : userExams.length > 0 ? userExams.map((exam) => (
+              <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                <td className="px-8 py-4">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm dark:text-white">{users.find(u => u.id === exam.userId)?.name || 'Usuário Desconhecido'}</span>
+                    <span className="text-xs text-slate-400">{exam.name} - {exam.lab}</span>
+                  </div>
+                </td>
+                <td className="px-8 py-4">
+                  <select 
+                    value={exam.status}
+                    onChange={(e) => handleUpdateStatus(exam.id, exam.userId, exam.name, e.target.value)}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-blue-500/20 outline-none ${
+                      exam.status === 'ready' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                    }`}
+                  >
+                    <option value="pending">Pendente</option>
+                    <option value="ready">Pronto</option>
+                  </select>
+                </td>
+                <td className="px-8 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={3} className="px-8 py-12 text-center text-slate-400 text-sm">Nenhum exame de usuário registrado.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1783,10 +3235,12 @@ const OffersManagementView = () => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
   const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const unsubscribeOffers = onSnapshot(collection(db, 'offers'), (snapshot) => {
+    const unsubscribeOffers = onSnapshot(query(collection(db, 'offers'), orderBy('createdAt', 'desc')), (snapshot) => {
       setOffers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'offers');
@@ -1813,24 +3267,54 @@ const OffersManagementView = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newItem.title || !newItem.discount || !newItem.partner) return;
+    
+    setIsSaving(true);
     try {
-      await addDoc(collection(db, 'offers'), {
-        ...newItem,
-        createdAt: new Date().toISOString()
-      });
+      if (editingItem) {
+        await updateDoc(doc(db, 'offers', editingItem.id), {
+          ...newItem,
+          updatedAt: Timestamp.now()
+        });
+      } else {
+        await addDoc(collection(db, 'offers'), {
+          ...newItem,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+      }
       setIsCreating(false);
+      setEditingItem(null);
       setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
-    } catch (err) {
-      console.error('Erro ao criar oferta:', err);
+    } catch (error) {
+      handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'offers');
+    } finally {
+      setIsSaving(false);
     }
   };
 
+  const handleEdit = (offer: any) => {
+    setEditingItem(offer);
+    setNewItem({
+      title: offer.title,
+      discount: offer.discount,
+      partner: offer.partner,
+      imageUrl: offer.imageUrl || '',
+      description: offer.description || ''
+    });
+    setIsCreating(true);
+  };
+
   const handleDelete = async (id: string) => {
-    if (window.confirm('Excluir esta oferta?')) {
+    if (window.confirm('Excluir esta oferta permanentemente?')) {
       try {
         await deleteDoc(doc(db, 'offers', id));
-      } catch (err) {
-        console.error('Erro ao excluir oferta:', err);
+        if (editingItem?.id === id) {
+          setIsCreating(false);
+          setEditingItem(null);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, 'offers');
       }
     }
   };
@@ -1840,11 +3324,15 @@ const OffersManagementView = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold dark:text-white">Gestão de Ofertas</h2>
         <button 
-          onClick={() => setIsCreating(!isCreating)}
+          onClick={() => {
+            setIsCreating(!isCreating);
+            setEditingItem(null);
+            setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+          }}
           className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
         >
-          <Plus size={20} />
-          Nova Oferta
+          {isCreating ? <X size={20} /> : <Plus size={20} />}
+          {isCreating ? 'Fechar' : 'Nova Oferta'}
         </button>
       </div>
 
@@ -1854,98 +3342,154 @@ const OffersManagementView = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
         >
+          <h3 className="text-lg font-bold dark:text-white">{editingItem ? 'Editar Oferta' : 'Nova Oferta'}</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input 
-                type="text" 
-                placeholder="Título da Oferta"
-                required
-                value={newItem.title}
-                onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
-              />
-              <input 
-                type="text" 
-                placeholder="Desconto (ex: 20% OFF)"
-                required
-                value={newItem.discount}
-                onChange={(e) => setNewItem({ ...newItem, discount: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
-              />
-              <select 
-                required
-                value={newItem.partner}
-                onChange={(e) => setNewItem({ ...newItem, partner: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
-              >
-                <option value="" disabled>Selecione um Parceiro/Profissional</option>
-                <optgroup label="Profissionais">
-                  {professionals.map(prof => (
-                    <option key={prof.id} value={prof.name}>{prof.name}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Estabelecimentos">
-                  {partners.map(partner => (
-                    <option key={partner.id} value={partner.name}>{partner.name}</option>
-                  ))}
-                </optgroup>
-              </select>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Título</label>
+                <input 
+                  type="text" 
+                  placeholder="Título da Oferta"
+                  required
+                  value={newItem.title}
+                  onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Desconto</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: 20% OFF"
+                  required
+                  value={newItem.discount}
+                  onChange={(e) => setNewItem({ ...newItem, discount: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Parceiro</label>
+                <select 
+                  required
+                  value={newItem.partner}
+                  onChange={(e) => setNewItem({ ...newItem, partner: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                >
+                  <option value="" disabled>Selecione um Parceiro</option>
+                  <optgroup label="Profissionais">
+                    {professionals.map(prof => (
+                      <option key={prof.id} value={prof.name}>{prof.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Estabelecimentos">
+                    {partners.map(partner => (
+                      <option key={partner.id} value={partner.name}>{partner.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input 
-                type="text" 
-                placeholder="URL da Imagem (Opcional)"
-                value={newItem.imageUrl}
-                onChange={(e) => setNewItem({ ...newItem, imageUrl: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
-              />
-              <input 
-                type="text" 
-                placeholder="Descrição (Opcional)"
-                value={newItem.description}
-                onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
-              />
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">URL da Imagem</label>
+                <input 
+                  type="text" 
+                  placeholder="https://..."
+                  value={newItem.imageUrl}
+                  onChange={(e) => setNewItem({ ...newItem, imageUrl: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Descrição</label>
+                <input 
+                  type="text" 
+                  placeholder="Breve descrição da oferta"
+                  value={newItem.description}
+                  onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                />
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button type="submit" className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all">Salvar</button>
-              <button type="button" onClick={() => setIsCreating(false)} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all">Cancelar</button>
+            <div className="flex gap-3 pt-2">
+              <button 
+                type="submit" 
+                disabled={isSaving}
+                className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSaving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {editingItem ? 'Salvar Alterações' : 'Criar Oferta'}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setIsCreating(false);
+                  setEditingItem(null);
+                }} 
+                className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all"
+              >
+                Cancelar
+              </button>
             </div>
           </form>
         </motion.div>
       )}
 
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Oferta</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Parceiro</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Desconto</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-            {offers.map((offer) => (
-              <tr key={offer.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                <td className="px-8 py-4">
-                  <span className="font-bold text-sm dark:text-white">{offer.title}</span>
-                </td>
-                <td className="px-8 py-4">
-                  <span className="text-sm text-slate-500 dark:text-slate-400">{offer.partner}</span>
-                </td>
-                <td className="px-8 py-4">
-                  <span className="px-2 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-lg">{offer.discount}</span>
-                </td>
-                <td className="px-8 py-4 text-right">
-                  <button onClick={() => handleDelete(offer.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Oferta</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Parceiro</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Desconto</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+              {offers.length > 0 ? offers.map((offer) => (
+                <tr key={offer.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="px-8 py-4">
+                    <div className="flex items-center gap-3">
+                      {offer.imageUrl && (
+                        <img src={offer.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                      )}
+                      <span className="font-bold text-sm dark:text-white">{offer.title}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{offer.partner}</span>
+                  </td>
+                  <td className="px-8 py-4">
+                    <span className="px-2 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-lg">{offer.discount}</span>
+                  </td>
+                  <td className="px-8 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(offer)} 
+                        className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(offer.id)} 
+                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={4} className="px-8 py-12 text-center text-slate-500 dark:text-slate-400">
+                    Nenhuma oferta cadastrada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -2839,6 +4383,16 @@ const SupportView = () => {
 const UsersView = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [newUser, setNewUser] = useState({
+    name: '',
+    email: '',
+    password: '',
+    status: 'Ativo',
+    plan: 'Básico'
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('name'));
@@ -2855,6 +4409,7 @@ const UsersView = () => {
     if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
       try {
         await deleteDoc(doc(db, 'users', id));
+        await logAdminAction('DELETE_USER', `Excluiu o usuário ID: ${id}`);
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
       }
@@ -2866,15 +4421,173 @@ const UsersView = () => {
     try {
       const { id, ...data } = editingUser;
       await updateDoc(doc(db, 'users', id), data);
+      await logAdminAction('UPDATE_USER', `Editou o usuário: ${data.email || id}`);
       setEditingUser(null);
     } catch (err) {
       console.error('Erro ao salvar usuário:', err);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${editingUser.id}`);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      // 1. Create user in Auth using a secondary app instance to avoid signing out current admin
+      const secondaryApp = getApps().find(app => app.name === 'SecondaryApp') || initializeApp(firebaseConfig, 'SecondaryApp');
+      const secondaryAuth = getAuth(secondaryApp);
+      const result = await createUserWithEmailAndPassword(secondaryAuth, newUser.email, newUser.password);
+      const user = result.user;
+      
+      // 2. Update profile
+      await updateProfile(user, { displayName: newUser.name });
+      
+      // 3. Create Firestore document
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: newUser.name,
+        email: newUser.email,
+        status: newUser.status,
+        plan: newUser.plan,
+        role: 'user',
+        createdAt: Timestamp.now()
+      });
+      
+      // 4. Create welcome notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Bem-vindo à ViTTA Health!',
+        message: `Olá ${newUser.name}, seu cadastro foi realizado com sucesso. Explore nossos serviços!`,
+        type: 'info',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+      
+      // 5. Sign out from secondary app
+      await signOut(secondaryAuth);
+      
+      // 6. Log action
+      await logAdminAction('CREATE_USER', `Criou o usuário: ${newUser.email}`);
+      
+      setIsCreatingUser(false);
+      setNewUser({ name: '', email: '', password: '', status: 'Ativo', plan: 'Básico' });
+    } catch (err: any) {
+      console.error('Erro ao criar usuário:', err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Este e-mail já está em uso.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('E-mail inválido.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('A senha deve ter pelo menos 6 caracteres.');
+      } else {
+        setError('Falha ao criar usuário. Tente novamente.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
       <AnimatePresence>
+        {isCreatingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
+                <h3 className="text-xl font-bold dark:text-white">Novo Usuário</h3>
+                <button onClick={() => setIsCreatingUser(false)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-400" />
+                </button>
+              </div>
+              <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+                {error && (
+                  <div className="p-4 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm rounded-2xl border border-rose-100 dark:border-rose-500/20">
+                    {error}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome Completo</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newUser.name}
+                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    placeholder="Ex: João Silva"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
+                  <input 
+                    type="email" 
+                    required
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    placeholder="joao@exemplo.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Senha Inicial</label>
+                  <input 
+                    type="password" 
+                    required
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Status</label>
+                    <select 
+                      value={newUser.status}
+                      onChange={(e) => setNewUser({ ...newUser, status: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    >
+                      <option value="Ativo">Ativo</option>
+                      <option value="Inativo">Inativo</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Plano</label>
+                    <select 
+                      value={newUser.plan}
+                      onChange={(e) => setNewUser({ ...newUser, plan: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    >
+                      <option value="Básico">Básico</option>
+                      <option value="Premium">Premium</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsCreatingUser(false)}
+                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Criando...' : 'Criar Usuário'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
         {editingUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
             <motion.div 
@@ -2955,7 +4668,10 @@ const UsersView = () => {
 
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold dark:text-white">Gestão de Usuários</h2>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors">
+        <button 
+          onClick={() => setIsCreatingUser(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors"
+        >
           <Plus size={18} />
           Novo Usuário
         </button>
@@ -3203,13 +4919,19 @@ const UserConfigView = () => {
           </div>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium dark:text-slate-300">Alertas de novos usuários</span>
+              <div>
+                <p className="text-sm font-bold dark:text-white">Alertas de Sistema</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Receber notificações críticas</p>
+              </div>
               <div className="w-10 h-5 bg-emerald-500 rounded-full relative cursor-pointer">
                 <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium dark:text-slate-300">Relatórios semanais</span>
+              <div>
+                <p className="text-sm font-bold dark:text-white">Relatórios Semanais</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Receber resumo de atividades</p>
+              </div>
               <div className="w-10 h-5 bg-emerald-500 rounded-full relative cursor-pointer">
                 <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
@@ -3217,6 +4939,9 @@ const UserConfigView = () => {
           </div>
         </div>
       </div>
+
+      {/* Audit Logs Section */}
+      <AuditLogsList />
     </div>
   );
 };
@@ -3251,7 +4976,11 @@ const AppointmentsView = ({ user }: { user: any }) => {
       </section>
 
       <div className="space-y-4">
-        {appointments.length > 0 ? appointments.map((apt) => (
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-32" />
+          ))
+        ) : appointments.length > 0 ? appointments.map((apt) => (
           <motion.div 
             key={apt.id}
             whileHover={{ x: 4 }}
@@ -3523,6 +5252,317 @@ const MiniPlayer = ({ isPlaying, setIsPlaying, volume, setVolume }: any) => {
   );
 };
 
+const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
+  const [pharmacies, setPharmacies] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPharmacy, setEditingPharmacy] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    onCallDate: '',
+    isActive: true
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, 'pharmacies'), orderBy('onCallDate', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPharmacies(data);
+      setIsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'pharmacies');
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingPharmacy) {
+        await updateDoc(doc(db, 'pharmacies', editingPharmacy.id), formData);
+      } else {
+        await addDoc(collection(db, 'pharmacies'), {
+          ...formData,
+          createdAt: new Date().toISOString()
+        });
+      }
+      setShowAddModal(false);
+      setEditingPharmacy(null);
+      setFormData({ name: '', address: '', phone: '', onCallDate: '', isActive: true });
+    } catch (error) {
+      console.error('Erro ao salvar farmácia:', error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir esta farmácia?')) {
+      try {
+        await deleteDoc(doc(db, 'pharmacies', id));
+      } catch (error) {
+        console.error('Erro ao excluir farmácia:', error);
+      }
+    }
+  };
+
+  const toggleActive = async (pharmacy: any) => {
+    try {
+      await updateDoc(doc(db, 'pharmacies', pharmacy.id), {
+        isActive: !pharmacy.isActive
+      });
+    } catch (error) {
+      console.error('Erro ao alterar status da farmácia:', error);
+    }
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Logic for sorting and filtering
+  const sortedPharmacies = [...pharmacies].sort((a, b) => {
+    // If one is today, it comes first
+    if (a.onCallDate === today) return -1;
+    if (b.onCallDate === today) return 1;
+    return a.onCallDate.localeCompare(b.onCallDate);
+  });
+
+  const displayPharmacies = isAdmin 
+    ? sortedPharmacies 
+    : sortedPharmacies.filter(p => p.isActive && p.onCallDate >= today);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold dark:text-white">Farmácias de Plantão</h1>
+          <p className="text-slate-500 dark:text-slate-400">Confira as farmácias abertas hoje e nos próximos dias.</p>
+        </div>
+        {isAdmin && (
+          <button 
+            onClick={() => {
+              setEditingPharmacy(null);
+              setFormData({ name: '', address: '', phone: '', onCallDate: '', isActive: true });
+              setShowAddModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+          >
+            <Plus size={20} />
+            Nova Farmácia
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      ) : displayPharmacies.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {displayPharmacies.map((pharmacy) => {
+            const isToday = pharmacy.onCallDate === today;
+            return (
+              <motion.div 
+                key={pharmacy.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`relative overflow-hidden bg-white dark:bg-slate-900 rounded-3xl border-2 transition-all ${
+                  isToday 
+                    ? 'border-blue-500 shadow-xl shadow-blue-500/10' 
+                    : 'border-slate-100 dark:border-slate-800'
+                }`}
+              >
+                {isToday && (
+                  <div className="absolute top-0 right-0 bg-blue-500 text-white px-4 py-1 rounded-bl-2xl text-xs font-bold uppercase tracking-wider">
+                    Plantão de Hoje
+                  </div>
+                )}
+                
+                <div className="p-6 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-2xl text-blue-500">
+                      <Store size={24} />
+                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => toggleActive(pharmacy)}
+                          className={`p-2 rounded-xl transition-colors ${
+                            pharmacy.isActive 
+                              ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10' 
+                              : 'text-slate-400 bg-slate-50 dark:bg-slate-800'
+                          }`}
+                          title={pharmacy.isActive ? 'Desativar' : 'Ativar'}
+                        >
+                          {pharmacy.isActive ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setEditingPharmacy(pharmacy);
+                            setFormData({
+                              name: pharmacy.name,
+                              address: pharmacy.address,
+                              phone: pharmacy.phone,
+                              onCallDate: pharmacy.onCallDate,
+                              isActive: pharmacy.isActive
+                            });
+                            setShowAddModal(true);
+                          }}
+                          className="p-2 text-blue-500 bg-blue-50 dark:bg-blue-500/10 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(pharmacy.id)}
+                          className="p-2 text-red-500 bg-red-50 dark:bg-red-500/10 rounded-xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold dark:text-white">{pharmacy.name}</h3>
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+                        <Calendar size={16} className="text-blue-500" />
+                        <span className="text-sm">
+                          {new Date(pharmacy.onCallDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+                        <MapPin size={16} className="text-blue-500" />
+                        <span className="text-sm line-clamp-1">{pharmacy.address}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+                        <Phone size={16} className="text-blue-500" />
+                        <span className="text-sm">{pharmacy.phone}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => window.open(`tel:${pharmacy.phone.replace(/\D/g, '')}`)}
+                    className="w-full py-3 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Phone size={18} />
+                    Ligar Agora
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+          <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500">
+            <Store size={48} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold dark:text-white">Nenhuma Farmácia de Plantão</h3>
+            <p className="text-slate-500 dark:text-slate-400">Não há farmácias de plantão cadastradas para hoje ou para os próximos dias.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Add/Edit */}
+      <AnimatePresence>
+        {showAddModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-xl font-bold dark:text-white">
+                  {editingPharmacy ? 'Editar Farmácia' : 'Nova Farmácia'}
+                </h3>
+                <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                  <X size={24} />
+                </button>
+              </div>
+              <form onSubmit={handleSave} className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold dark:text-white">Nome da Farmácia</label>
+                  <input 
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    placeholder="Ex: Farmácia São João"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold dark:text-white">Endereço</label>
+                  <input 
+                    type="text"
+                    required
+                    value={formData.address}
+                    onChange={e => setFormData({...formData, address: e.target.value})}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    placeholder="Rua, Número, Bairro"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold dark:text-white">Telefone</label>
+                  <input 
+                    type="text"
+                    required
+                    value={formData.phone}
+                    onChange={e => setFormData({...formData, phone: e.target.value})}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    placeholder="(00) 00000-0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold dark:text-white">Data do Plantão</label>
+                  <input 
+                    type="date"
+                    required
+                    value={formData.onCallDate}
+                    onChange={e => setFormData({...formData, onCallDate: e.target.value})}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input 
+                    type="checkbox"
+                    id="isActive"
+                    checked={formData.isActive}
+                    onChange={e => setFormData({...formData, isActive: e.target.checked})}
+                    className="w-5 h-5 rounded border-slate-200 text-blue-500 focus:ring-blue-500/20"
+                  />
+                  <label htmlFor="isActive" className="text-sm font-bold dark:text-white cursor-pointer">Farmácia Ativa</label>
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const PlaceholderView = ({ title }: { title: string }) => (
   <div className="space-y-6">
     <h1 className="text-3xl font-bold dark:text-white">{title}</h1>
@@ -3771,6 +5811,43 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotifications(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'notifications');
+    });
+    return () => unsubscribe();
+  }, [isAuthReady, user]);
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `notifications/${id}`);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'notifications', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `notifications/${id}`);
+    }
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   // Radio Global State
   const [radioConfig, setRadioConfig] = useState({ url: 'https://icecast.portalviva.com.br/viva_fm_vitoria' });
@@ -3798,13 +5875,16 @@ export default function App() {
 
   useEffect(() => {
     if (audioRef.current) {
-      if (isRadioPlaying) {
-        audioRef.current.play().catch(err => console.error('Erro ao tocar rádio:', err));
+      if (isRadioPlaying && radioConfig.url) {
+        audioRef.current.play().catch(err => {
+          console.error('Erro ao tocar rádio:', err);
+          setIsRadioPlaying(false);
+        });
       } else {
         audioRef.current.pause();
       }
     }
-  }, [isRadioPlaying, radioConfig.url]);
+  }, [isRadioPlaying, radioConfig.url, setIsRadioPlaying]);
 
   useEffect(() => {
     const seedPartners = async () => {
@@ -3879,38 +5959,73 @@ export default function App() {
     if (isAuthReady && user) {
       console.log('DEBUG: App pronto e usuário logado, chamando seedPartners...');
       seedPartners();
+      
+      // Seed health metrics history if empty
+      const seedMetrics = async () => {
+        try {
+          const q = query(collection(db, 'health_metrics'), where('userId', '==', user.uid), limit(1));
+          const snapshot = await getDocs(q);
+          if (snapshot.empty) {
+            console.log('DEBUG: Semeando histórico de métricas...');
+            const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+            const promises = days.map((day, idx) => {
+              return addDoc(collection(db, 'health_metrics'), {
+                userId: user.uid,
+                date: day,
+                steps: Math.floor(Math.random() * 5000) + 2000,
+                createdAt: Timestamp.now()
+              });
+            });
+            await Promise.all(promises);
+          }
+        } catch (err) {
+          console.error('DEBUG: Erro ao semear métricas:', err);
+        }
+      };
+      seedMetrics();
     }
   }, [isAuthReady, user]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubscribeUserData: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
+      
       if (firebaseUser) {
-        // Fetch additional user data from Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUserData(userDoc.data());
-        } else {
-          // Fallback or create if missing (though LoginView should handle it)
-          const newData = {
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || 'Usuário',
-            email: firebaseUser.email,
-            role: 'user',
-            status: 'Ativo',
-            plan: 'Free',
-            createdAt: Timestamp.now()
-          };
-          await setDoc(doc(db, 'users', firebaseUser.uid), newData);
-          setUserData(newData);
-        }
+        // Listen to user data in real-time
+        unsubscribeUserData = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
+          if (snapshot.exists()) {
+            setUserData(snapshot.data());
+          } else {
+            // Create if missing
+            const newData = {
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || 'Usuário',
+              email: firebaseUser.email,
+              role: 'user',
+              status: 'Ativo',
+              plan: 'Free',
+              createdAt: Timestamp.now()
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), newData);
+            setUserData(newData);
+          }
+          setIsAuthReady(true);
+        }, (error) => {
+          console.error('Erro ao ouvir dados do usuário:', error);
+          setIsAuthReady(true);
+        });
       } else {
         setUserData(null);
+        setIsAuthReady(true);
       }
-      setIsAuthReady(true);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUserData) unsubscribeUserData();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -3937,13 +6052,13 @@ export default function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
+      case 'dashboard': return isAdmin ? <AdminView user={user} /> : <PatientDashboardView user={user} userData={userData} />;
       case 'professionals': return <ProfessionalsView user={user} />;
       case 'appointments': return <AppointmentsView user={user} />;
       case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} user={user} />;
       case 'wallets': return <PlaceholderView title="Carteiras" />;
       case 'voucher': return <PlaceholderView title="Compra Voucher" />;
-      case 'pharmacies': return <PlaceholderView title="Farmácias de Plantão" />;
+      case 'pharmacies': return <PharmaciesView isAdmin={isAdmin} />;
       case 'radio': return (
         <RadioView 
           isPlaying={isRadioPlaying} 
@@ -3955,9 +6070,9 @@ export default function App() {
         />
       );
       case 'chat': return <PlaceholderView title="Chat Suporte" />;
-      case 'profile': return <SettingsView isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />;
+      case 'profile': return <SettingsView isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} user={user} userData={userData} />;
       case 'support': return <SupportView />;
-      case 'exams': return <ExamsView />;
+      case 'exams': return <ExamsView user={user} />;
       case 'offers': return <OffersView user={user} />;
       default: return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
     }
@@ -4110,10 +6225,126 @@ export default function App() {
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl relative">
-              <Bell size={20} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`p-2.5 rounded-xl transition-all relative ${
+                  showNotifications 
+                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-500' 
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 animate-bounce">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowNotifications(false)} 
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between">
+                        <h3 className="font-bold dark:text-white">Notificações</h3>
+                        {unreadCount > 0 && (
+                          <span className="text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full font-bold">
+                            {unreadCount} novas
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-h-[400px] overflow-y-auto no-scrollbar">
+                        {notifications.length > 0 ? (
+                          notifications.map((notification) => (
+                            <div 
+                              key={notification.id}
+                              className={`p-4 border-b border-slate-50 dark:border-slate-800 last:border-0 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 relative group ${!notification.read ? 'bg-blue-50/30 dark:bg-blue-500/5' : ''}`}
+                            >
+                              <div className="flex gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                  notification.type === 'exam' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500' :
+                                  notification.type === 'appointment' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-500' :
+                                  'bg-slate-50 dark:bg-slate-800 text-slate-500'
+                                }`}>
+                                  {notification.type === 'exam' ? <Stethoscope size={18} /> :
+                                   notification.type === 'appointment' ? <Calendar size={18} /> :
+                                   <Bell size={18} />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className={`text-sm font-bold dark:text-white truncate ${!notification.read ? 'pr-4' : ''}`}>
+                                      {notification.title}
+                                    </p>
+                                    {!notification.read && (
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 shrink-0" />
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                                    {notification.message}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-2">
+                                    {notification.createdAt?.toDate ? 
+                                      notification.createdAt.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 
+                                      'Agora'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                {!notification.read && (
+                                  <button 
+                                    onClick={() => markNotificationAsRead(notification.id)}
+                                    className="p-1.5 bg-white dark:bg-slate-900 shadow-sm rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
+                                    title="Marcar como lida"
+                                  >
+                                    <Check size={14} />
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => deleteNotification(notification.id)}
+                                  className="p-1.5 bg-white dark:bg-slate-900 shadow-sm rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-10 text-center space-y-3">
+                            <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto">
+                              <Bell size={24} />
+                            </div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma notificação por aqui.</p>
+                          </div>
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-center">
+                          <button 
+                            onClick={() => {
+                              notifications.forEach(n => !n.read && markNotificationAsRead(n.id));
+                            }}
+                            className="text-[10px] font-bold text-blue-500 uppercase tracking-widest hover:underline"
+                          >
+                            Marcar todas como lidas
+                          </button>
+                        </div>
+                      )}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
             <div className="flex items-center gap-3 pl-4 border-l border-slate-100 dark:border-slate-800">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold dark:text-white">{user.displayName || 'Usuário'}</p>
@@ -4149,8 +6380,7 @@ export default function App() {
       {/* Global Audio Element */}
       <audio 
         ref={audioRef} 
-        src={radioConfig.url.includes(':') && !radioConfig.url.includes(';') ? (radioConfig.url.endsWith('/') ? `${radioConfig.url};` : `${radioConfig.url}/;`) : radioConfig.url} 
-        crossOrigin="anonymous"
+        src={radioConfig.url ? (radioConfig.url.includes(':') && !radioConfig.url.includes(';') ? (radioConfig.url.endsWith('/') ? `${radioConfig.url};` : `${radioConfig.url}/;`) : radioConfig.url) : undefined} 
         onError={(e) => {
           const target = e.target as HTMLAudioElement;
           if (target.error) {
