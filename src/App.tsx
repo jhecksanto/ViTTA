@@ -1,3 +1,4 @@
+// Force refresh - 2026-04-07 23:32
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
@@ -130,7 +131,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import AuditLogsList from './components/Admin/AuditLogsList';
 
 const Skeleton = ({ className, ...props }: { className?: string, [key: string]: any }) => (
-  <div className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl ${className}`} {...props} />
+  <div className={`animate-pulse bg-vitta-surface-2 rounded-xl ${className}`} {...props} />
 );
 
 enum OperationType {
@@ -234,15 +235,15 @@ const ConfirmModal = ({
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+        className="bg-vitta-surface w-full max-w-sm rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
       >
         <div className="p-6 text-center space-y-4">
-          <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center ${variant === 'danger' ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-500' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-500'}`}>
+          <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center ${variant === 'danger' ? 'bg-vitta-danger/10 text-vitta-danger' : 'bg-vitta-accent/10 text-vitta-accent'}`}>
             {variant === 'danger' ? <Trash2 size={32} /> : <Info size={32} />}
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold dark:text-white">{title}</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{message}</p>
+            <h3 className="text-xl font-bold text-vitta-text-primary">{title}</h3>
+            <p className="text-sm text-vitta-text-secondary">{message}</p>
           </div>
           <div className="flex gap-3 pt-2">
             <button 
@@ -306,18 +307,18 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+        className="bg-vitta-surface w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border"
       >
         <div className="p-8 space-y-6">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold dark:text-white">Alterar Senha</h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+            <h2 className="text-2xl font-bold text-vitta-text-primary">Alterar Senha</h2>
+            <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
               <X size={20} className="text-slate-400" />
             </button>
           </div>
 
           {error && (
-            <div className="p-4 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-800 rounded-2xl flex items-center gap-3 text-rose-600 dark:text-rose-400 text-sm">
+            <div className="p-4 bg-vitta-danger/10 border border-vitta-danger/20 rounded-2xl flex items-center gap-3 text-vitta-danger text-sm">
               <XCircle size={18} />
               <p>{error}</p>
             </div>
@@ -373,7 +374,8 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
     bloodPressure: '',
     glucose: '',
     sleepHours: '',
-    steps: ''
+    steps: '',
+    waterIntake: ''
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -393,6 +395,7 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
       if (metrics.glucose) data.glucose = Number(metrics.glucose);
       if (metrics.sleepHours) data.sleepHours = Number(metrics.sleepHours);
       if (metrics.steps) data.steps = Number(metrics.steps);
+      if (metrics.waterIntake) data.waterIntake = Number(metrics.waterIntake);
 
       await addDoc(collection(db, 'health_metrics'), data);
       onClose();
@@ -408,12 +411,12 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+        className="bg-vitta-surface w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border"
       >
         <div className="p-8 space-y-6">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold dark:text-white">Registrar Saúde</h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+            <h2 className="text-2xl font-bold text-vitta-text-primary">Registrar Saúde</h2>
+            <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
               <X size={20} className="text-slate-400" />
             </button>
           </div>
@@ -475,6 +478,16 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
                 type="number" 
                 value={metrics.steps}
                 onChange={(e) => setMetrics({ ...metrics, steps: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Água (ml)</label>
+              <input 
+                type="number" 
+                value={metrics.waterIntake}
+                onChange={(e) => setMetrics({ ...metrics, waterIntake: e.target.value })}
                 placeholder="0"
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
               />
@@ -574,9 +587,9 @@ const BookingModal = ({
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
       >
-        <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-          <h3 className="text-xl font-bold dark:text-white">Confirmar Atendimento</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+          <h3 className="text-xl font-bold text-vitta-text-primary">Confirmar Atendimento</h3>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
             <X size={20} className="text-slate-400" />
           </button>
         </div>
@@ -587,30 +600,30 @@ const BookingModal = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Data</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data</label>
               <input 
                 type="date" 
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Hora</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Hora</label>
               <input 
                 type="time" 
                 value={selectedTime}
                 onChange={(e) => setSelectedTime(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+          <div className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
             <img src={professional.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={professional.name} className="w-12 h-12 rounded-xl object-cover" />
             <div>
-              <h4 className="font-bold dark:text-white">{professional.name}</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{professional.specialty}</p>
+              <h4 className="font-bold text-vitta-text-primary">{professional.name}</h4>
+              <p className="text-xs text-vitta-text-secondary">{professional.specialty}</p>
             </div>
           </div>
 
@@ -619,14 +632,14 @@ const BookingModal = ({
               type="button"
               onClick={onClose}
               disabled={isBooking}
-              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all disabled:opacity-50"
             >
               Cancelar
             </button>
             <button 
               onClick={handleConfirm}
               disabled={isBooking}
-              className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="flex-1 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isBooking ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -654,17 +667,20 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
   useEffect(() => {
     if (!user) return;
 
-    // 1. Fetch Health Metrics History (for the chart)
+    // 1. Fetch Health Metrics History (for the chart and calculations)
+    // We fetch 14 to compare the current week with the previous one
     const metricsQuery = query(
       collection(db, 'health_metrics'),
       where('userId', '==', user.uid),
-      orderBy('date', 'asc'),
-      limit(7)
+      orderBy('date', 'desc'),
+      limit(14)
     );
 
     const unsubscribeMetrics = onSnapshot(metricsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMetricsHistory(data);
+      // For the chart, we want chronological order (asc)
+      setMetricsHistory([...data].reverse());
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'health_metrics');
     });
@@ -711,6 +727,19 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
 
   const latestMetric = metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1] : null;
 
+  // Calculate dynamic changes
+  const calculateChange = (current: any[], previous: any[], key: string) => {
+    if (previous.length === 0) return 0;
+    const currentAvg = current.reduce((acc, curr) => acc + (Number(curr[key]) || 0), 0) / (current.length || 1);
+    const previousAvg = previous.reduce((acc, curr) => acc + (Number(curr[key]) || 0), 0) / (previous.length || 1);
+    if (previousAvg === 0) return currentAvg > 0 ? 100 : 0;
+    return Math.round(((currentAvg - previousAvg) / previousAvg) * 100);
+  };
+
+  // metricsHistory is reversed (asc), so the last 7 are the current week
+  const currentWeek = metricsHistory.slice(-7);
+  const previousWeek = metricsHistory.slice(0, Math.max(0, metricsHistory.length - 7));
+
   const metrics = {
     steps: latestMetric?.steps || userData?.healthMetrics?.steps || 0,
     heartRate: latestMetric?.heartRate || userData?.healthMetrics?.heartRate || 0,
@@ -722,36 +751,36 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
   };
 
   const stats = [
-    { label: 'Passos', value: metrics.steps.toLocaleString(), icon: Footprints, color: 'emerald', change: 12 },
-    { label: 'Sono', value: `${metrics.sleepHours}h`, icon: Moon, color: 'indigo', change: -5 },
-    { label: 'Peso', value: `${metrics.weight}kg`, icon: Scale, color: 'amber' },
+    { label: 'Passos', value: metrics.steps.toLocaleString(), icon: Footprints, color: 'emerald', change: calculateChange(currentWeek, previousWeek, 'steps') },
+    { label: 'Sono', value: `${metrics.sleepHours}h`, icon: Moon, color: 'indigo', change: calculateChange(currentWeek, previousWeek, 'sleepHours') },
+    { label: 'Peso', value: `${metrics.weight}kg`, icon: Scale, color: 'amber', change: calculateChange(currentWeek, previousWeek, 'weight') },
     { label: 'Pressão', value: metrics.bloodPressure, icon: Activity, color: 'rose' },
-    { label: 'Glicose', value: `${metrics.glucose}mg/dL`, icon: Thermometer, color: 'blue' },
-    { label: 'Hidratação', value: `${metrics.waterIntake}ml`, icon: Droplets, color: 'blue', change: 8 },
+    { label: 'Glicose', value: `${metrics.glucose}mg/dL`, icon: Thermometer, color: 'blue', change: calculateChange(currentWeek, previousWeek, 'glucose') },
+    { label: 'Hidratação', value: `${metrics.waterIntake}ml`, icon: Droplets, color: 'blue', change: calculateChange(currentWeek, previousWeek, 'waterIntake') },
   ];
 
   return (
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight dark:text-white">Olá, {userData?.name?.split(' ')[0] || 'Usuário'}!</h1>
-          <p className="text-slate-500 dark:text-slate-400">Como está o seu bem-estar hoje?</p>
+          <h1 className="text-3xl font-bold tracking-tight text-vitta-text-primary">Olá, {userData?.name?.split(' ')[0] || 'Usuário'}!</h1>
+          <p className="text-vitta-text-secondary">Como está o seu bem-estar hoje?</p>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsMetricsModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
           >
             <Plus size={20} />
             Registrar Saúde
           </button>
-          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600">
+          <div className="flex items-center gap-3 bg-vitta-surface p-2 rounded-xl border border-vitta-border shadow-sm">
+            <div className="w-10 h-10 bg-vitta-green-bg rounded-xl flex items-center justify-center text-vitta-green">
               <Activity size={20} />
             </div>
             <div className="pr-4">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status Geral</p>
-              <p className="text-sm font-bold dark:text-white">Excelente</p>
+              <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status Geral</p>
+              <p className="text-sm font-bold text-vitta-text-primary">Excelente</p>
             </div>
           </div>
         </div>
@@ -765,15 +794,15 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          <section className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+          <section className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
             <div className="flex items-center justify-between mb-8">
               <div>
-                <h3 className="text-xl font-bold dark:text-white">Evolução de Passos</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Seu desempenho nos últimos 7 dias</p>
+                <h3 className="text-xl font-bold text-vitta-text-primary">Evolução de Passos</h3>
+                <p className="text-sm text-vitta-text-secondary">Seu desempenho nos últimos 7 dias</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Passos</span>
+                <span className="w-3 h-3 bg-vitta-accent rounded-full"></span>
+                <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Passos</span>
               </div>
             </div>
             
@@ -829,51 +858,51 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
           </section>
 
           <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold dark:text-white">Próximas Consultas</h3>
-                <Calendar size={20} className="text-blue-500" />
+                <h3 className="text-lg font-bold text-vitta-text-primary">Próximas Consultas</h3>
+                <Calendar size={20} className="text-vitta-accent" />
               </div>
               <div className="space-y-4">
                 {upcomingAppointments.length > 0 ? upcomingAppointments.map((apt) => (
-                  <div key={apt.id} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                  <div key={apt.id} className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
                     <img src={apt.imageUrl || 'https://picsum.photos/seed/prof/100/100'} alt={apt.professionalName} className="w-10 h-10 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold dark:text-white truncate">{apt.professionalName}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{apt.specialty}</p>
+                      <p className="text-sm font-bold text-vitta-text-primary truncate">{apt.professionalName}</p>
+                      <p className="text-xs text-vitta-text-secondary truncate">{apt.specialty}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs font-bold text-blue-500">{new Date(apt.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</p>
-                      <p className="text-[10px] text-slate-400">{apt.time}</p>
+                      <p className="text-xs font-bold text-vitta-accent">{new Date(apt.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</p>
+                      <p className="text-[10px] text-vitta-text-muted">{apt.time}</p>
                     </div>
                   </div>
                 )) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">Nenhuma consulta agendada.</p>
+                  <p className="text-sm text-vitta-text-secondary text-center py-4">Nenhuma consulta agendada.</p>
                 )}
               </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold dark:text-white">Exames Recentes</h3>
-                <FileText size={20} className="text-emerald-500" />
+                <h3 className="text-lg font-bold text-vitta-text-primary">Exames Recentes</h3>
+                <FileText size={20} className="text-vitta-green" />
               </div>
               <div className="space-y-4">
                 {recentExams.length > 0 ? recentExams.map((exam) => (
-                  <div key={exam.id} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600">
+                  <div key={exam.id} className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
+                    <div className="w-10 h-10 bg-vitta-green-bg rounded-xl flex items-center justify-center text-vitta-green">
                       <FileText size={20} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold dark:text-white truncate">{exam.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{exam.lab || 'Laboratório ViTTA'}</p>
+                      <p className="text-sm font-bold text-vitta-text-primary truncate">{exam.name}</p>
+                      <p className="text-xs text-vitta-text-secondary truncate">{exam.lab || 'Laboratório ViTTA'}</p>
                     </div>
-                    <button className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
+                    <button className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all">
                       <Download size={18} />
                     </button>
                   </div>
                 )) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">Nenhum exame pronto.</p>
+                  <p className="text-sm text-vitta-text-secondary text-center py-4">Nenhum exame pronto.</p>
                 )}
               </div>
             </div>
@@ -905,45 +934,45 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
-            <h3 className="text-lg font-bold dark:text-white mb-6">Metas Diárias</h3>
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
+            <h3 className="text-lg font-bold text-vitta-text-primary mb-6">Metas Diárias</h3>
             <div className="space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium dark:text-slate-300">Passos</span>
-                  <span className="font-bold dark:text-white">{Math.round((metrics.steps / 8000) * 100)}%</span>
+                  <span className="font-medium text-vitta-text-secondary">Passos</span>
+                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.steps / 8000) * 100)}%</span>
                 </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min((metrics.steps / 8000) * 100, 100)}%` }}
-                    className="h-full bg-emerald-500"
+                    className="h-full bg-vitta-green"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium dark:text-slate-300">Água</span>
-                  <span className="font-bold dark:text-white">{Math.round((metrics.waterIntake / 2000) * 100)}%</span>
+                  <span className="font-medium text-vitta-text-secondary">Água</span>
+                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.waterIntake / 2000) * 100)}%</span>
                 </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min((metrics.waterIntake / 2000) * 100, 100)}%` }}
-                    className="h-full bg-blue-500"
+                    className="h-full bg-vitta-accent"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="font-medium dark:text-slate-300">Sono</span>
-                  <span className="font-bold dark:text-white">{Math.round((metrics.sleepHours / 8) * 100)}%</span>
+                  <span className="font-medium text-vitta-text-secondary">Sono</span>
+                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.sleepHours / 8) * 100)}%</span>
                 </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min((metrics.sleepHours / 8) * 100, 100)}%` }}
-                    className="h-full bg-indigo-500"
+                    className="h-full bg-vitta-purple"
                   />
                 </div>
               </div>
@@ -958,10 +987,10 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active?: boolean, onClick: () => void }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
+    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 mx-2 my-0.5 ${
       active 
-        ? 'bg-blue-500 text-white font-medium shadow-md shadow-blue-500/20' 
-        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+        ? 'bg-vitta-nav-active-bg text-vitta-nav-active font-medium' 
+        : 'text-vitta-text-secondary hover:text-vitta-text-primary'
     }`}
   >
     <Icon size={18} />
@@ -978,12 +1007,12 @@ const StatCard = ({ stat }: any) => {
   }[stat.icon] as any : stat.icon;
 
   const colors: Record<string, string> = {
-    emerald: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-    indigo: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
-    rose: 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400',
-    blue: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
-    purple: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
-    amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    emerald: 'bg-vitta-green-bg text-vitta-green',
+    indigo: 'bg-vitta-purple-bg text-vitta-purple',
+    rose: 'bg-vitta-accent-bg text-vitta-accent',
+    blue: 'bg-vitta-accent-bg text-vitta-accent',
+    purple: 'bg-vitta-purple-bg text-vitta-purple',
+    amber: 'bg-vitta-amber-bg text-vitta-amber',
   };
 
   const colorClass = colors[stat.color] || colors.emerald;
@@ -991,7 +1020,7 @@ const StatCard = ({ stat }: any) => {
   return (
     <motion.div 
       whileHover={{ y: -4 }}
-      className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm"
+      className="bg-vitta-surface p-5 rounded-xl border border-vitta-border shadow-sm"
     >
       <div className="flex justify-between items-start mb-4">
         <div className={`p-2.5 rounded-xl ${colorClass}`}>
@@ -999,17 +1028,17 @@ const StatCard = ({ stat }: any) => {
         </div>
         {stat.change !== undefined && (
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            stat.change > 0 ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
+            stat.change > 0 ? 'bg-vitta-green-bg text-vitta-green' : 'bg-rose-50 text-vitta-danger'
           }`}>
             {stat.change > 0 ? '+' : ''}{stat.change}%
           </span>
         )}
       </div>
       <div>
-        <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{stat.label}</p>
+        <p className="text-vitta-text-muted text-[10px] font-bold uppercase tracking-widest mb-1">{stat.label}</p>
         <div className="flex items-baseline gap-1">
-          <span className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</span>
-          <span className="text-slate-400 dark:text-slate-500 text-xs">{stat.unit}</span>
+          <span className="text-2xl font-bold text-vitta-text-primary">{stat.value}</span>
+          <span className="text-vitta-text-secondary text-xs">{stat.unit}</span>
         </div>
       </div>
     </motion.div>
@@ -1087,42 +1116,42 @@ const AdminView = ({ user }: { user: any }) => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">Remarcar Consulta</h3>
-                <button onClick={() => setEditingApt(null)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">Remarcar Consulta</h3>
+                <button onClick={() => setEditingApt(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
                   <X size={20} className="text-slate-400" />
                 </button>
               </div>
               <form onSubmit={handleSaveApt} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Data</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data</label>
                   <input 
                     type="date" 
                     value={editingApt.date}
                     onChange={(e) => setEditingApt({ ...editingApt, date: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Horário</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Horário</label>
                   <input 
                     type="time" 
                     value={editingApt.time}
                     onChange={(e) => setEditingApt({ ...editingApt, time: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                   />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
                     onClick={() => setEditingApt(null)}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all"
                   >
                     Salvar
                   </button>
@@ -1141,18 +1170,18 @@ const AdminView = ({ user }: { user: any }) => {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-1 dark:text-white">Painel Administrativo</h1>
-          <p className="text-slate-500 dark:text-slate-400">Gestão centralizada do ecossistema ViTTA</p>
+          <h1 className="text-3xl font-bold mb-1 text-vitta-text-primary">Painel Administrativo</h1>
+          <p className="text-vitta-text-secondary">Gestão centralizada do ecossistema ViTTA</p>
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
+      <div className="flex gap-4 border-b border-vitta-border overflow-x-auto no-scrollbar">
         <button 
           onClick={() => setSubTab('overview')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'overview' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <LayoutGrid size={18} />
@@ -1162,8 +1191,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('users')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'users' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <Users size={18} />
@@ -1173,8 +1202,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('partnerships')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'partnerships' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <Store size={18} />
@@ -1184,8 +1213,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('professionals')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'professionals' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <Stethoscope size={18} />
@@ -1195,8 +1224,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('exams')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'exams' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <FileText size={18} />
@@ -1206,8 +1235,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('user-exams')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'user-exams' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <ClipboardList size={18} />
@@ -1217,8 +1246,8 @@ const AdminView = ({ user }: { user: any }) => {
           onClick={() => setSubTab('config')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'config' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <Settings size={18} />
@@ -1238,8 +1267,8 @@ const AdminView = ({ user }: { user: any }) => {
             <div className="space-y-10">
               {/* Welcome Section */}
               <section>
-                <h2 className="text-2xl font-bold mb-2 dark:text-white">Olá, Administrador! 👋</h2>
-                <p className="text-slate-500 dark:text-slate-400">Aqui está o resumo do sistema hoje.</p>
+                <h2 className="text-2xl font-bold mb-2 text-vitta-text-primary">Olá, Administrador! 👋</h2>
+                <p className="text-vitta-text-secondary">Aqui está o resumo do sistema hoje.</p>
               </section>
 
               {/* Stats Grid */}
@@ -1258,24 +1287,24 @@ const AdminView = ({ user }: { user: any }) => {
                 {/* Appointments Section */}
                 <section className="lg:col-span-2 space-y-6">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold dark:text-white">Próximas Consultas</h2>
-                    <button className="text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline">Ver todas</button>
+                    <h2 className="text-xl font-bold text-vitta-text-primary">Próximas Consultas</h2>
+                    <button className="text-vitta-accent text-sm font-bold hover:underline">Ver todas</button>
                   </div>
                   <div className="space-y-4">
                     {appointments.map((apt) => (
                       <motion.div 
                         key={apt.id}
                         whileHover={{ x: 4 }}
-                        className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group"
+                        className="bg-vitta-surface p-4 rounded-xl border border-vitta-border shadow-sm flex items-center gap-4 group"
                       >
                         <img src={apt.imageUrl} alt={apt.professionalName} className="w-14 h-14 rounded-xl object-cover" />
                         <div className="flex-1">
-                          <h3 className="font-bold text-slate-900 dark:text-white">{apt.professionalName}</h3>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">{apt.specialty}</p>
+                          <h3 className="font-bold text-vitta-text-primary">{apt.professionalName}</h3>
+                          <p className="text-sm text-vitta-text-secondary">{apt.specialty}</p>
                         </div>
                         <div className="text-right">
-                          <div className="flex items-center gap-1.5 text-slate-900 dark:text-white font-medium text-sm mb-1">
-                            <Calendar size={14} className="text-emerald-600 dark:text-emerald-400" />
+                          <div className="flex items-center gap-1.5 text-vitta-text-primary font-medium text-sm mb-1">
+                            <Calendar size={14} className="text-vitta-green" />
                             {new Date(apt.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                           </div>
                           <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs justify-end">
@@ -1312,27 +1341,27 @@ const AdminView = ({ user }: { user: any }) => {
                 {/* Quick Professionals Section */}
                 <section className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold dark:text-white">Profissionais</h2>
-                    <button onClick={() => setSubTab('professionals')} className="text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline">Explorar</button>
+                    <h2 className="text-xl font-bold text-vitta-text-primary">Profissionais</h2>
+                    <button onClick={() => setSubTab('professionals')} className="text-vitta-green text-sm font-bold hover:underline">Explorar</button>
                   </div>
-                  <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
                     {professionals.length > 0 ? professionals.map((prof, idx) => (
-                      <div key={prof.id} className={`p-4 flex items-center gap-3 ${idx !== professionals.length - 1 ? 'border-b border-slate-50 dark:border-slate-800' : ''}`}>
+                      <div key={prof.id} className={`p-4 flex items-center gap-3 ${idx !== professionals.length - 1 ? 'border-b border-vitta-border' : ''}`}>
                         <img src={prof.imageUrl} alt={prof.name} className="w-12 h-12 rounded-full object-cover" />
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-sm truncate dark:text-white">{prof.name}</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                          <h4 className="font-bold text-sm truncate text-vitta-text-primary">{prof.name}</h4>
+                          <p className="text-xs text-vitta-text-secondary">{prof.specialty}</p>
                         </div>
-                        <div className="flex items-center gap-1 text-amber-500">
+                        <div className="flex items-center gap-1 text-vitta-amber">
                           <Star size={14} fill="currentColor" />
                           <span className="text-xs font-bold">{prof.rating}</span>
                         </div>
                       </div>
                     )) : (
-                      <div className="p-8 text-center text-slate-400 text-sm">Nenhum profissional cadastrado</div>
+                      <div className="p-8 text-center text-vitta-text-muted text-sm">Nenhum profissional cadastrado</div>
                     )}
-                    <div className="p-4 bg-slate-50/50 dark:bg-slate-800/50">
-                      <button onClick={() => setSubTab('professionals')} className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20">
+                    <div className="p-4 bg-vitta-surface-2">
+                      <button onClick={() => setSubTab('professionals')} className="w-full py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg shadow-vitta-green/20">
                         Ver todos profissionais
                       </button>
                     </div>
@@ -1344,33 +1373,33 @@ const AdminView = ({ user }: { user: any }) => {
               <section className="space-y-6 pb-10">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold dark:text-white">Benefícios Exclusivos</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Ofertas de parceiros selecionados para você.</p>
+                    <h2 className="text-xl font-bold text-vitta-text-primary">Benefícios Exclusivos</h2>
+                    <p className="text-sm text-vitta-text-secondary">Ofertas de parceiros selecionados para você.</p>
                   </div>
-                  <button onClick={() => setSubTab('partnerships')} className="text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:underline">Ver todos</button>
+                  <button onClick={() => setSubTab('partnerships')} className="text-vitta-accent text-sm font-bold hover:underline">Ver todos</button>
                 </div>
                 <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar -mx-6 px-6 lg:-mx-10 lg:px-10">
                   {partners.length > 0 ? partners.map((offer) => (
                     <motion.div 
                       key={offer.id}
                       whileHover={{ scale: 1.02 }}
-                      className="flex-shrink-0 w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"
+                      className="flex-shrink-0 w-80 bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden"
                     >
                       <div className="relative h-40">
                         <img src={offer.imageUrl} alt={offer.name} className="w-full h-full object-cover" />
-                        <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                        <div className="absolute top-3 left-3 bg-vitta-surface/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-vitta-text-secondary">
                           {offer.category}
                         </div>
-                        <div className="absolute bottom-3 right-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+                        <div className="absolute bottom-3 right-3 bg-vitta-green text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">
                           {offer.discount}
                         </div>
                       </div>
                       <div className="p-5">
-                        <h3 className="font-bold text-lg mb-1 dark:text-white">{offer.name}</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">{offer.description || 'Aproveite esta oferta exclusiva.'}</p>
+                        <h3 className="font-bold text-lg mb-1 text-vitta-text-primary">{offer.name}</h3>
+                        <p className="text-sm text-vitta-text-secondary line-clamp-2 mb-4">{offer.description || 'Aproveite esta oferta exclusiva.'}</p>
                         <button 
                           onClick={() => alert('Benefício resgatado com sucesso! Apresente este código no estabelecimento: VITTA-' + Math.random().toString(36).substring(7).toUpperCase())}
-                          className="w-full py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors dark:text-white"
+                          className="w-full py-2 bg-vitta-surface-2 text-vitta-text-primary rounded-xl text-sm font-bold hover:bg-vitta-border transition-colors"
                         >
                           Resgatar Benefício
                         </button>
@@ -1439,57 +1468,57 @@ const ExamsView = ({ user }: { user: any }) => {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-bold mb-2 dark:text-white">Meus Exames</h1>
-        <p className="text-slate-500 dark:text-slate-400">Acompanhe seus resultados e histórico de exames.</p>
+        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meus Exames</h1>
+        <p className="text-vitta-text-secondary">Acompanhe seus resultados e histórico de exames.</p>
       </section>
 
       <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
         <div className="flex flex-wrap gap-2">
           <button 
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'all' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'all' ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'}`}
           >
             Todos
           </button>
           <button 
             onClick={() => setFilter('ready')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'ready' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'ready' ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'}`}
           >
             Prontos
           </button>
           <button 
             onClick={() => setFilter('pending')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'pending' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === 'pending' ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'}`}
           >
             Pendentes
           </button>
         </div>
         
         <div className="relative w-full lg:w-80 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={18} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted group-focus-within:text-vitta-accent transition-colors" size={18} />
           <input 
             type="text" 
             placeholder="Buscar exames ou laboratórios..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white shadow-sm"
+            className="w-full pl-11 pr-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary shadow-sm"
           />
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Exame</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Local</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Ação</th>
+              <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Exame</th>
+                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Data</th>
+                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Local</th>
+                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider text-right">Ação</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+            <tbody className="divide-y divide-vitta-border">
               {loading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={index}>
@@ -1501,26 +1530,26 @@ const ExamsView = ({ user }: { user: any }) => {
                   </tr>
                 ))
               ) : filteredExams.length > 0 ? filteredExams.map((exam) => (
-                <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={exam.id} className="hover:bg-vitta-surface-2 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                      <div className="p-2 bg-vitta-green-bg text-vitta-green rounded-lg">
                         <FileText size={18} />
                       </div>
-                      <span className="font-bold text-sm dark:text-white">{exam.name}</span>
+                      <span className="font-bold text-sm text-vitta-text-primary">{exam.name}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  <td className="px-6 py-4 text-sm text-vitta-text-secondary">
                     {exam.scheduledAt ? new Date(exam.scheduledAt.seconds * 1000).toLocaleDateString('pt-BR') : 'N/A'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                  <td className="px-6 py-4 text-sm text-vitta-text-secondary">
                     {exam.lab || 'Laboratório ViTTA'}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      exam.status === 'ready' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                      exam.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                      'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                      exam.status === 'ready' ? 'bg-vitta-green-bg text-vitta-green' :
+                      exam.status === 'pending' ? 'bg-vitta-amber-bg text-vitta-amber' :
+                      'bg-vitta-surface-2 text-vitta-text-muted'
                     }`}>
                       {exam.status === 'ready' ? 'Pronto' :
                        exam.status === 'pending' ? 'Pendente' : 'Agendado'}
@@ -1530,7 +1559,7 @@ const ExamsView = ({ user }: { user: any }) => {
                     {exam.status === 'ready' && (
                       <button 
                         onClick={() => handleDownload(exam.resultUrl)}
-                        className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold text-sm flex items-center gap-1 ml-auto transition-colors"
+                        className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1 ml-auto transition-colors"
                       >
                         <Download size={16} />
                         Baixar
@@ -1540,7 +1569,7 @@ const ExamsView = ({ user }: { user: any }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-vitta-text-muted">
                     Nenhum exame encontrado.
                   </td>
                 </tr>
@@ -1668,19 +1697,19 @@ const ProfessionalsManagementView = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingItem ? `Editar ${editingItem.type === 'professional' ? 'Profissional' : 'Categoria'}` : `Novo ${isCreating === 'professional' ? 'Profissional' : 'Categoria'}`}
                 </h3>
-                <button onClick={() => { setEditingItem(null); setIsCreating(null); }} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+                <button onClick={() => { setEditingItem(null); setIsCreating(null); }} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
                     type="text" 
                     required
@@ -1689,14 +1718,14 @@ const ProfessionalsManagementView = () => {
                       ? setEditingItem({ ...editingItem, name: e.target.value })
                       : setNewItem({ ...newItem, name: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                     autoFocus
                   />
                 </div>
                 {(isCreating === 'professional' || (editingItem && editingItem.type === 'professional')) && (
                   <>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Especialidade</label>
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Especialidade</label>
                       <input 
                         type="text" 
                         required
@@ -1705,11 +1734,11 @@ const ProfessionalsManagementView = () => {
                           ? setEditingItem({ ...editingItem, specialty: e.target.value })
                           : setNewItem({ ...newItem, specialty: e.target.value })
                         }
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Desconto ViTTA Health</label>
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Desconto ViTTA Health</label>
                       <input 
                         type="text" 
                         placeholder="Ex: 20% OFF"
@@ -1718,11 +1747,11 @@ const ProfessionalsManagementView = () => {
                           ? setEditingItem({ ...editingItem, vittaHealthDiscount: e.target.value })
                           : setNewItem({ ...newItem, vittaHealthDiscount: e.target.value })
                         }
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Número do Registro</label>
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Número do Registro</label>
                       <input 
                         type="text" 
                         placeholder="Ex: CRM 12345"
@@ -1731,11 +1760,11 @@ const ProfessionalsManagementView = () => {
                           ? setEditingItem({ ...editingItem, registrationNumber: e.target.value })
                           : setNewItem({ ...newItem, registrationNumber: e.target.value })
                         }
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Dias de Atendimento</label>
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Dias de Atendimento</label>
                       <input 
                         type="text" 
                         placeholder="Ex: Seg, Qua, Sex"
@@ -1744,7 +1773,7 @@ const ProfessionalsManagementView = () => {
                           ? setEditingItem({ ...editingItem, availableDays: e.target.value })
                           : setNewItem({ ...newItem, availableDays: e.target.value })
                         }
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1781,13 +1810,13 @@ const ProfessionalsManagementView = () => {
                   <button 
                     type="button"
                     onClick={() => { setEditingItem(null); setIsCreating(null); }}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 transition-all"
+                    className="flex-1 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all"
                   >
                     Salvar
                   </button>
@@ -1800,25 +1829,25 @@ const ProfessionalsManagementView = () => {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Gerenciar Profissionais</h1>
-          <p className="text-slate-500 dark:text-slate-400">Cadastre especialistas e gerencie categorias</p>
+          <h1 className="text-3xl font-bold text-vitta-text-primary">Gerenciar Profissionais</h1>
+          <p className="text-vitta-text-secondary">Cadastre especialistas e gerencie categorias</p>
         </div>
         <button 
           onClick={() => setIsCreating(activeSubTab === 'list' ? 'professional' : 'category')}
-          className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-600/20"
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-green text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20"
         >
           <Plus size={20} />
           {activeSubTab === 'list' ? 'Novo Profissional' : 'Nova Categoria'}
         </button>
       </div>
 
-      <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex gap-4 border-b border-vitta-border">
         <button 
           onClick={() => setActiveSubTab('list')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'list' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <Users size={18} />
@@ -1828,8 +1857,8 @@ const ProfessionalsManagementView = () => {
           onClick={() => setActiveSubTab('categories')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'categories' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
           }`}
         >
           <LayoutGrid size={18} />
@@ -1975,19 +2004,19 @@ const ProfessionalsView = ({ user }: { user: any }) => {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-bold mb-2 dark:text-white">Nossos Profissionais</h1>
-        <p className="text-slate-500 dark:text-slate-400">Encontre os melhores especialistas para cuidar de você.</p>
+        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Nossos Profissionais</h1>
+        <p className="text-vitta-text-secondary">Encontre os melhores especialistas para cuidar de você.</p>
       </section>
 
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
         <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
           <input 
             type="text" 
             placeholder="Buscar por nome ou especialidade..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+            className="w-full pl-10 pr-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
           />
         </div>
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
@@ -1997,8 +2026,8 @@ const ProfessionalsView = ({ user }: { user: any }) => {
               onClick={() => setSelectedSpecialty(spec)}
               className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
                 selectedSpecialty === spec 
-                  ? 'bg-emerald-600 text-white' 
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  ? 'bg-vitta-green text-white' 
+                  : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'
               }`}
             >
               {spec}
@@ -2019,45 +2048,45 @@ const ProfessionalsView = ({ user }: { user: any }) => {
             <motion.div 
               key={prof.id}
               whileHover={{ y: -4 }}
-              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+              className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm space-y-4"
             >
                 <div className="flex items-center gap-4">
-                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
+                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-xl object-cover" />
                   <div>
-                    <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    <h3 className="font-bold text-lg text-vitta-text-primary">{prof.name}</h3>
+                    <p className="text-sm text-vitta-text-secondary">{prof.specialty}</p>
                     {prof.registrationNumber && (
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mt-1">
                         {prof.registrationNumber}
                       </p>
                     )}
                     {prof.city && (
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                      <div className="flex items-center gap-1 text-[10px] text-vitta-text-muted mt-1">
                         <MapPin size={10} />
                         <span>{prof.city}</span>
                       </div>
                     )}
                     {prof.vittaHealthDiscount && (
-                      <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
+                      <div className="mt-1 px-2 py-0.5 bg-vitta-green-bg text-vitta-green rounded-lg text-[10px] font-bold inline-block">
                         ViTTA Health: {prof.vittaHealthDiscount}
                       </div>
                     )}
-                    <div className="flex items-center gap-1 text-amber-500 mt-1">
+                    <div className="flex items-center gap-1 text-vitta-amber mt-1">
                       <Star size={14} fill="currentColor" />
                       <span className="text-xs font-bold">{prof.rating} ({prof.reviews} avaliações)</span>
                     </div>
                     {prof.price && (
-                      <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                      <p className="text-sm font-bold text-vitta-green mt-1">
                         {prof.price}
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
-                  <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Disponibilidade</p>
+                <div className="pt-4 border-t border-vitta-border">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-2">Disponibilidade</p>
                   <div className="flex flex-wrap gap-2">
                     {(prof.availableDays ? (typeof prof.availableDays === 'string' ? prof.availableDays.split(',').map((s: string) => s.trim()) : prof.availableDays) : ['Seg', 'Qua', 'Sex']).map((day: string) => (
-                      <span key={day} className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-[10px] font-bold">
+                      <span key={day} className="px-2 py-1 bg-vitta-surface-2 text-vitta-text-secondary rounded-lg text-[10px] font-bold">
                         {day}
                       </span>
                     ))}
@@ -2065,7 +2094,7 @@ const ProfessionalsView = ({ user }: { user: any }) => {
                 </div>
               <button 
                 onClick={() => setBookingProfessional(prof)}
-                className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+                className="w-full py-3 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg shadow-vitta-green/20"
               >
                 Agendar Consulta
               </button>
@@ -2319,15 +2348,15 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
                 onClick={() => setSelectedCategory(cat)}
                 className="group cursor-pointer bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-full"
               >
-                <div className={`h-32 ${cat.color || 'bg-slate-500'} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500`}>
+                <div className={`h-32 ${cat.color || 'bg-vitta-text-muted'} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500`}>
                   {getIcon(cat.icon)}
                   <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
                     {getPartnersCount(cat.name)} parceiros
                   </div>
                 </div>
                 <div className="p-6 flex-1 flex flex-col">
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{cat.name}</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{cat.description || 'Descontos exclusivos para afiliados'}</p>
+                  <h3 className="font-bold text-lg text-vitta-text-primary mb-1">{cat.name}</h3>
+                  <p className="text-xs text-vitta-text-secondary line-clamp-2">{cat.description || 'Descontos exclusivos para afiliados'}</p>
                 </div>
               </motion.div>
             ))}
@@ -2384,17 +2413,17 @@ const OffersView = ({ user }: { user?: any }) => {
     <div className="space-y-8">
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2 dark:text-white">Benefícios e Ofertas</h1>
-          <p className="text-slate-500 dark:text-slate-400">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
+          <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Benefícios e Ofertas</h1>
+          <p className="text-vitta-text-secondary">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
         </div>
         <div className="relative w-full md:w-80 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted group-focus-within:text-vitta-green transition-colors" size={20} />
           <input 
             type="text" 
             placeholder="Buscar ofertas ou parceiros..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white shadow-sm"
+            className="w-full pl-12 pr-4 py-3.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none transition-all text-vitta-text-primary shadow-sm"
           />
         </div>
       </section>
@@ -2409,14 +2438,14 @@ const OffersView = ({ user }: { user?: any }) => {
             <motion.div 
               key={offer.id}
               whileHover={{ scale: 1.02 }}
-              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col"
+              className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col"
             >
               <div className="relative h-48">
                 <img src={offer.imageUrl || 'https://picsum.photos/seed/offer/400/300'} alt={offer.title} className="w-full h-full object-cover" />
-                <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 shadow-sm">
+                <div className="absolute top-4 left-4 bg-vitta-surface/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-vitta-text-secondary shadow-sm">
                   {offer.partner}
                 </div>
-                <div className="absolute bottom-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
+                <div className="absolute bottom-4 right-4 bg-vitta-green text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
                   {offer.discount}
                 </div>
               </div>
@@ -2575,19 +2604,19 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
   };
 
   return (
-    <div className="max-w-4xl space-y-8">
+      <div className="max-w-4xl space-y-8">
       <section>
-        <h1 className="text-3xl font-bold mb-2 dark:text-white">Meu Perfil</h1>
-        <p className="text-slate-500 dark:text-slate-400">Gerencie suas informações pessoais, endereço e documentos.</p>
+        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meu Perfil</h1>
+        <p className="text-vitta-text-secondary">Gerencie suas informações pessoais, endereço e documentos.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Personal Info */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
-              <h2 className="text-lg font-bold dark:text-white">Informações Pessoais</h2>
-              <User className="text-emerald-600" size={20} />
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary">Informações Pessoais</h2>
+              <User className="text-vitta-green" size={20} />
             </div>
             
             <div className="flex flex-col sm:flex-row items-center gap-8">
@@ -2595,10 +2624,10 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                 <img 
                   src={profileData.photoURL} 
                   alt="Profile" 
-                  className="w-32 h-32 rounded-[2rem] object-cover border-4 border-slate-50 dark:border-slate-800 shadow-lg" 
+                  className="w-32 h-32 rounded-xl object-cover border-4 border-vitta-surface-2 shadow-lg" 
                   referrerPolicy="no-referrer"
                 />
-                <label className="absolute -bottom-2 -right-2 p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg border-4 border-white dark:border-slate-900 hover:scale-110 transition-transform cursor-pointer">
+                <label className="absolute -bottom-2 -right-2 p-2.5 bg-vitta-green text-white rounded-xl shadow-lg border-4 border-vitta-surface hover:scale-110 transition-transform cursor-pointer">
                   <Camera size={16} />
                   <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
                 </label>
@@ -2606,31 +2635,31 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
               
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome Completo</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome Completo</label>
                   <input 
                     type="text" 
                     value={profileData.name} 
                     onChange={(e) => setProfileData(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" 
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">E-mail</label>
                   <input 
                     type="email" 
                     value={profileData.email} 
                     disabled
-                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800/50 border-none rounded-2xl text-sm text-slate-500 cursor-not-allowed" 
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-muted cursor-not-allowed" 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Telefone</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Telefone</label>
                   <input 
                     type="tel" 
                     value={profileData.phone} 
                     onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
                     placeholder="(00) 00000-0000"
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-emerald-500/20 transition-all" 
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all" 
                   />
                 </div>
               </div>
@@ -2638,107 +2667,107 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
           </div>
 
           {/* Address */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
-              <h2 className="text-lg font-bold dark:text-white">Endereço</h2>
-              <MapPin className="text-blue-500" size={20} />
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary">Endereço</h2>
+              <MapPin className="text-vitta-accent" size={20} />
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">CEP</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CEP</label>
                 <input 
                   type="text" 
                   value={profileData.zip} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, zip: e.target.value }))}
                   placeholder="00000-000"
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Logradouro</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Logradouro</label>
                 <input 
                   type="text" 
                   value={profileData.street} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, street: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Número</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Número</label>
                 <input 
                   type="text" 
                   value={profileData.number} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, number: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Complemento</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Complemento</label>
                 <input 
                   type="text" 
                   value={profileData.complement} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, complement: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Bairro</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Bairro</label>
                 <input 
                   type="text" 
                   value={profileData.neighborhood} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, neighborhood: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Cidade</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cidade</label>
                 <input 
                   type="text" 
                   value={profileData.city} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, city: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Estado</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Estado</label>
                 <input 
                   type="text" 
                   value={profileData.state} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, state: e.target.value }))}
                   placeholder="UF"
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
                 />
               </div>
             </div>
           </div>
 
           {/* Documents */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
-              <h2 className="text-lg font-bold dark:text-white">Documentos</h2>
-              <CreditCard className="text-violet-500" size={20} />
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary">Documentos</h2>
+              <CreditCard className="text-vitta-purple" size={20} />
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">CPF</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CPF</label>
                 <input 
                   type="text" 
                   value={profileData.cpf} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, cpf: e.target.value }))}
                   placeholder="000.000.000-00"
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-violet-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all" 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">RG</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">RG</label>
                 <input 
                   type="text" 
                   value={profileData.rg} 
                   onChange={(e) => setProfileData(prev => ({ ...prev, rg: e.target.value }))}
                   placeholder="00.000.000-0"
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm dark:text-white focus:ring-2 focus:ring-violet-500/20 transition-all" 
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all" 
                 />
               </div>
             </div>
@@ -2761,49 +2790,48 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         </div>
 
         <div className="space-y-6">
-          {/* Security */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-4">
-              <h2 className="text-lg font-bold dark:text-white">Segurança</h2>
-              <Lock className="text-blue-500" size={20} />
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary">Segurança</h2>
+              <Lock className="text-vitta-accent" size={20} />
             </div>
             
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+              <div className="flex items-center justify-between p-4 bg-vitta-surface-2 rounded-xl">
                 <div className="flex items-center gap-4">
-                  <div className="p-2 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl">
+                  <div className="p-2 bg-vitta-accent-bg text-vitta-accent rounded-xl">
                     <ShieldCheck size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm dark:text-white">2FA</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Camada extra</p>
+                    <p className="font-bold text-sm text-vitta-text-primary">2FA</p>
+                    <p className="text-[10px] text-vitta-text-secondary">Camada extra</p>
                   </div>
                 </div>
                 <button 
                   onClick={handleToggle2FA}
                   className={`px-3 py-1.5 border rounded-lg text-[10px] font-bold transition-colors ${
                     profileData.twoFactorEnabled 
-                      ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600' 
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-white hover:bg-slate-50'
+                      ? 'bg-vitta-green text-white border-vitta-green hover:bg-vitta-green/90' 
+                      : 'bg-vitta-surface border-vitta-border text-vitta-text-primary hover:bg-vitta-surface-2'
                   }`}
                 >
                   {profileData.twoFactorEnabled ? 'Ativo' : 'Ativar'}
                 </button>
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+              <div className="flex items-center justify-between p-4 bg-vitta-surface-2 rounded-xl">
                 <div className="flex items-center gap-4">
-                  <div className="p-2 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <div className="p-2 bg-vitta-amber-bg text-vitta-amber rounded-xl">
                     <Key size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm dark:text-white">Senha</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Alterar senha</p>
+                    <p className="font-bold text-sm text-vitta-text-primary">Senha</p>
+                    <p className="text-[10px] text-vitta-text-secondary">Alterar senha</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsPasswordModalOpen(true)}
-                  className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-bold dark:text-white hover:bg-slate-50 transition-colors"
+                  className="px-3 py-1.5 bg-vitta-surface border border-vitta-border rounded-lg text-[10px] font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors"
                 >
                   Alterar
                 </button>
@@ -2812,13 +2840,13 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
           </div>
 
           {/* Preferences */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
-            <h2 className="text-lg font-bold border-b border-slate-50 dark:border-slate-800 pb-4 dark:text-white">Preferências</h2>
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <h2 className="text-lg font-bold border-b border-vitta-border pb-4 text-vitta-text-primary">Preferências</h2>
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-sm dark:text-white">Notificações</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Alertas de consultas</p>
+                  <p className="font-bold text-sm text-vitta-text-primary">Notificações</p>
+                  <p className="text-[10px] text-vitta-text-secondary">Alertas de consultas</p>
                 </div>
                 <div className="w-10 h-5 bg-emerald-600 rounded-full relative cursor-pointer">
                   <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
@@ -2975,7 +3003,7 @@ const UserExamsManagementView = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold dark:text-white">Exames de Usuários</h2>
+        <h2 className="text-2xl font-bold text-vitta-text-primary">Exames de Usuários</h2>
         <button 
           onClick={() => setIsCreating(!isCreating)}
           className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
@@ -3050,10 +3078,10 @@ const UserExamsManagementView = () => {
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Usuário / Exame</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Status</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
+            <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário / Exame</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -3069,7 +3097,7 @@ const UserExamsManagementView = () => {
               <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                 <td className="px-8 py-4">
                   <div className="flex flex-col">
-                    <span className="font-bold text-sm dark:text-white">{users.find(u => u.id === exam.userId)?.name || 'Usuário Desconhecido'}</span>
+                    <span className="font-bold text-sm text-vitta-text-primary">{users.find(u => u.id === exam.userId)?.name || 'Usuário Desconhecido'}</span>
                     <span className="text-xs text-slate-400">{exam.name} - {exam.lab}</span>
                   </div>
                 </td>
@@ -3146,7 +3174,7 @@ const ExamsManagementView = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold dark:text-white">Gestão de Exames</h2>
+        <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Exames</h2>
         <button 
           onClick={() => setIsCreating(!isCreating)}
           className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
@@ -3198,10 +3226,10 @@ const ExamsManagementView = () => {
       <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
-            <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Exame</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Preço</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
+            <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Exame</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Preço</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -3209,7 +3237,7 @@ const ExamsManagementView = () => {
               <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                 <td className="px-8 py-4">
                   <div className="flex flex-col">
-                    <span className="font-bold text-sm dark:text-white">{exam.name}</span>
+                    <span className="font-bold text-sm text-vitta-text-primary">{exam.name}</span>
                     <span className="text-xs text-slate-400 line-clamp-1">{exam.description}</span>
                   </div>
                 </td>
@@ -3322,7 +3350,7 @@ const OffersManagementView = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold dark:text-white">Gestão de Ofertas</h2>
+        <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Ofertas</h2>
         <button 
           onClick={() => {
             setIsCreating(!isCreating);
@@ -3342,7 +3370,7 @@ const OffersManagementView = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
         >
-          <h3 className="text-lg font-bold dark:text-white">{editingItem ? 'Editar Oferta' : 'Nova Oferta'}</h3>
+          <h3 className="text-lg font-bold text-vitta-text-primary">{editingItem ? 'Editar Oferta' : 'Nova Oferta'}</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -3763,7 +3791,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex gap-4 border-b border-vitta-border">
         <button 
           onClick={() => setActiveSubTab('establishments')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
@@ -4667,7 +4695,7 @@ const UsersView = () => {
       </AnimatePresence>
 
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold dark:text-white">Gestão de Usuários</h2>
+        <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Usuários</h2>
         <button 
           onClick={() => setIsCreatingUser(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors"
@@ -4680,7 +4708,7 @@ const UsersView = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+            <tr className="bg-vitta-surface-2 border-b border-vitta-border">
               <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Usuário</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Plano</th>
@@ -4694,8 +4722,8 @@ const UsersView = () => {
                   <div className="flex items-center gap-3">
                     <img src={user.img} className="w-10 h-10 rounded-full object-cover" alt="" />
                     <div>
-                      <p className="font-bold text-slate-900 dark:text-white text-sm">{user.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                      <p className="font-bold text-vitta-text-primary text-sm">{user.name}</p>
+                      <p className="text-xs text-vitta-text-secondary">{user.email}</p>
                     </div>
                   </div>
                 </td>
@@ -4706,7 +4734,7 @@ const UsersView = () => {
                     {user.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 font-medium">{user.plan}</td>
+                <td className="px-6 py-4 text-sm text-vitta-text-secondary font-medium">{user.plan}</td>
                 <td className="px-6 py-4">
                   <div className="flex gap-2">
                     <button 
@@ -5658,13 +5686,13 @@ const LoginView = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950 p-6">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 rounded-2xl shadow-xl shadow-blue-500/20 mb-4">
             <Heart className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
             {view === 'login' ? 'Bem-vindo ao ViTTA' : 'Crie sua conta'}
           </h1>
           <p className="text-slate-500 dark:text-slate-400">
@@ -6013,7 +6041,7 @@ export default function App() {
           }
           setIsAuthReady(true);
         }, (error) => {
-          console.error('Erro ao ouvir dados do usuário:', error);
+          handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
           setIsAuthReady(true);
         });
       } else {
@@ -6038,7 +6066,7 @@ export default function App() {
 
   if (!isAuthReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
@@ -6079,28 +6107,28 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen flex font-sans transition-colors duration-300 ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`min-h-screen flex font-sans transition-colors duration-300 ${isDarkMode ? 'dark bg-vitta-bg text-vitta-text-primary' : 'bg-vitta-bg text-vitta-text-primary'}`}>
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0
+        fixed inset-y-0 left-0 z-50 w-72 bg-vitta-sidebar border-r border-vitta-border transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col">
-          <div className="p-6 border-b border-slate-50 dark:border-slate-800">
+          <div className="p-6 border-b border-vitta-border">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-cyan-500 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/30">
+              <div className="w-12 h-12 bg-vitta-accent rounded-2xl flex items-center justify-center shadow-lg shadow-vitta-accent/30">
                 <Heart className="text-white" size={24} />
               </div>
               <div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">ViTTA</h2>
-                <p className="text-xs font-medium text-slate-400">{isAdmin ? 'Admin' : 'Paciente'}</p>
+                <h2 className="text-xl font-bold tracking-tight text-vitta-text-primary">ViTTA</h2>
+                <p className="text-xs font-medium text-vitta-text-muted">{isAdmin ? 'Admin' : 'Paciente'}</p>
               </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar">
             <div>
-              <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Navegação</p>
+              <p className="px-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-4">Navegação</p>
               <nav className="space-y-1">
                 <SidebarItem 
                   icon={LayoutGrid} 
@@ -6170,7 +6198,7 @@ export default function App() {
                 />
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-vitta-danger hover:bg-rose-50 dark:hover:bg-vitta-danger/10 mx-2"
                 >
                   <LogOut size={18} />
                   <span className="text-sm">Sair</span>
@@ -6179,9 +6207,9 @@ export default function App() {
             </div>
           </div>
 
-          <div className="p-4 border-t border-slate-50 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/30">
+          <div className="p-4 border-t border-vitta-border bg-vitta-surface-2">
             <div className="flex items-center gap-3 p-2">
-              <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-500/20 overflow-hidden">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-vitta-accent to-vitta-purple flex items-center justify-center text-white font-bold shadow-md shadow-vitta-accent/20 overflow-hidden">
                 {user.photoURL ? (
                   <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -6189,8 +6217,8 @@ export default function App() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user.displayName || 'Usuário'}</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+                <p className="text-sm font-bold text-vitta-text-primary truncate">{user.displayName || 'Usuário'}</p>
+                <p className="text-[10px] text-vitta-text-secondary truncate">{user.email}</p>
               </div>
             </div>
           </div>
@@ -6200,20 +6228,20 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="h-20 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-6 lg:px-10 flex items-center justify-between sticky top-0 z-40">
+        <header className="h-20 bg-vitta-topbar border-b border-vitta-border px-6 lg:px-10 flex items-center justify-between sticky top-0 z-40">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="lg:hidden p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg dark:text-white"
+              className="lg:hidden p-2 hover:bg-vitta-surface-2 rounded-lg text-vitta-text-primary"
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
               <input 
                 type="text" 
                 placeholder="Buscar exames, médicos..." 
-                className="pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm w-64 focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="pl-10 pr-4 py-2 bg-vitta-surface-2 border border-vitta-border rounded-lg text-sm w-64 focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
               />
             </div>
           </div>
@@ -6221,22 +6249,22 @@ export default function App() {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+              className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border rounded-lg hover:bg-vitta-border transition-all"
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}
-                className={`p-2.5 rounded-xl transition-all relative ${
+                className={`p-2.5 rounded-lg transition-all border border-vitta-border relative ${
                   showNotifications 
-                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-500' 
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'bg-vitta-accent-bg text-vitta-accent' 
+                    : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-border'
                 }`}
               >
                 <Bell size={20} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-2 right-2 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 animate-bounce">
+                  <span className="absolute top-2 right-2 w-4 h-4 bg-vitta-danger text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-vitta-surface animate-bounce">
                     {unreadCount}
                   </span>
                 )}

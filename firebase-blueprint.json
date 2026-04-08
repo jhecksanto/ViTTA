@@ -133,6 +133,7 @@
         "bloodPressure": { "type": "string" },
         "glucose": { "type": "number" },
         "sleepHours": { "type": "number" },
+        "waterIntake": { "type": "number", "description": "Water intake in ml" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "date"]

@@ -2,6 +2,62 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-vitta-bg: var(--vitta-bg);
+  --color-vitta-sidebar: var(--vitta-sidebar);
+  --color-vitta-surface: var(--vitta-surface);
+  --color-vitta-surface-2: var(--vitta-surface-2);
+  --color-vitta-border: var(--vitta-border);
+  --color-vitta-text-primary: var(--vitta-text-primary);
+  --color-vitta-text-secondary: var(--vitta-text-secondary);
+  --color-vitta-text-muted: var(--vitta-text-muted);
+  --color-vitta-accent: var(--vitta-accent);
+  --color-vitta-accent-bg: var(--vitta-accent-bg);
+  --color-vitta-green: var(--vitta-green);
+  --color-vitta-green-bg: var(--vitta-green-bg);
+  --color-vitta-purple: var(--vitta-purple);
+  --color-vitta-purple-bg: var(--vitta-purple-bg);
+  --color-vitta-amber: var(--vitta-amber);
+  --color-vitta-amber-bg: var(--vitta-amber-bg);
+  --color-vitta-danger: var(--vitta-danger);
+  --color-vitta-nav-active: var(--vitta-nav-active);
+  --color-vitta-nav-active-bg: var(--vitta-nav-active-bg);
+  --color-vitta-topbar: var(--vitta-topbar);
+}
+
+:root {
+  --vitta-bg: #F4F6FA;
+  --vitta-sidebar: #FFFFFF;
+  --vitta-surface: #FFFFFF;
+  --vitta-surface-2: #F0F3F8;
+  --vitta-border: #E2E8F0;
+  --vitta-text-primary: #1A202C;
+  --vitta-text-secondary: #64748B;
+  --vitta-text-muted: #94A3B8;
+  --vitta-accent: #3B6EF8;
+  --vitta-accent-bg: #EEF2FF;
+  --vitta-green: #059669;
+  --vitta-green-bg: #ECFDF5;
+  --vitta-purple: #7C3AED;
+  --vitta-purple-bg: #F5F3FF;
+  --vitta-amber: #D97706;
+  --vitta-amber-bg: #FFFBEB;
+  --vitta-danger: #EF4444;
+  --vitta-nav-active: #3B6EF8;
+  --vitta-nav-active-bg: #EEF2FF;
+  --vitta-topbar: #FFFFFF;
+}
+
+.dark {
+  --vitta-bg: #0F172A;
+  --vitta-sidebar: #1E293B;
+  --vitta-surface: #1E293B;
+  --vitta-surface-2: #334155;
+  --vitta-border: #334155;
+  --vitta-text-primary: #F8FAFC;
+  --vitta-text-secondary: #94A3B8;
+  --vitta-text-muted: #64748B;
+  --vitta-topbar: #1E293B;
 }
 
 @layer utilities {
@@ -15,5 +71,5 @@
 }
 
 body {
-  @apply antialiased text-slate-900 bg-slate-50;
+  @apply antialiased text-vitta-text-primary bg-vitta-bg transition-colors duration-200;
 }

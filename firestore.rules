@@ -147,6 +147,7 @@ service cloud.firestore {
                data.role in ['admin', 'user'] &&
                data.status in ['Ativo', 'Pendente', 'Inativo'] &&
                data.plan in ['Premium', 'Básico', 'Free'] &&
+               (!('createdAt' in data) || data.createdAt is timestamp) &&
                (!('phone' in data) || data.phone is string) &&
                (!('city' in data) || data.city is string) &&
                (!('state' in data) || data.state is string) &&
@@ -164,11 +165,11 @@ service cloud.firestore {
                (!('deletionRequestedAt' in data) || data.deletionRequestedAt is string);
       }
 
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    ((isOwner(userId) && request.resource.data.role == 'user') || isAdmin());
+                    ((request.auth.uid == userId && request.resource.data.role == 'user') || isAdmin());
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    ((isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin());
+                    ((request.auth.uid == userId && request.resource.data.role == resource.data.role) || isAdmin());
       allow delete: if isAdmin();
     }
 
