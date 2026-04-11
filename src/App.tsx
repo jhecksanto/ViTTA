@@ -231,7 +231,7 @@ const ConfirmModal = ({
 }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -248,13 +248,13 @@ const ConfirmModal = ({
           <div className="flex gap-3 pt-2">
             <button 
               onClick={onClose}
-              className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="flex-1 py-3 border border-vitta-border rounded-2xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
             >
               {cancelText}
             </button>
             <button 
               onClick={() => { onConfirm(); onClose(); }}
-              className={`flex-1 py-3 text-white rounded-2xl font-bold shadow-lg transition-all ${variant === 'danger' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-500/20'}`}
+              className={`flex-1 py-3 text-white rounded-2xl font-bold shadow-lg transition-all ${variant === 'danger' ? 'bg-vitta-danger hover:bg-vitta-danger/90 shadow-vitta-danger/20' : 'bg-vitta-accent hover:bg-vitta-accent/90 shadow-vitta-accent/20'}`}
             >
               {confirmText}
             </button>
@@ -303,7 +303,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-vitta-text-primary/20 backdrop-blur-md">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -326,7 +326,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nova Senha</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nova Senha</label>
               <input 
                 type="password" 
                 value={passwords.new}
@@ -336,7 +336,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Confirmar Nova Senha</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Confirmar Nova Senha</label>
               <input 
                 type="password" 
                 value={passwords.confirm}
@@ -407,7 +407,7 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-vitta-text-primary/20 backdrop-blur-sm">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -423,73 +423,73 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Peso (kg)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Peso (kg)</label>
               <input 
                 type="number" 
                 value={metrics.weight}
                 onChange={(e) => setMetrics({ ...metrics, weight: e.target.value })}
                 placeholder="0.0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Altura (cm)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Altura (cm)</label>
               <input 
                 type="number" 
                 value={metrics.height}
                 onChange={(e) => setMetrics({ ...metrics, height: e.target.value })}
                 placeholder="0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Pressão (mmHg)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Pressão (mmHg)</label>
               <input 
                 type="text" 
                 value={metrics.bloodPressure}
                 onChange={(e) => setMetrics({ ...metrics, bloodPressure: e.target.value })}
                 placeholder="120/80"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Glicose (mg/dL)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Glicose (mg/dL)</label>
               <input 
                 type="number" 
                 value={metrics.glucose}
                 onChange={(e) => setMetrics({ ...metrics, glucose: e.target.value })}
                 placeholder="0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Sono (horas)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Sono (horas)</label>
               <input 
                 type="number" 
                 value={metrics.sleepHours}
                 onChange={(e) => setMetrics({ ...metrics, sleepHours: e.target.value })}
                 placeholder="0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Passos</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Passos</label>
               <input 
                 type="number" 
                 value={metrics.steps}
                 onChange={(e) => setMetrics({ ...metrics, steps: e.target.value })}
                 placeholder="0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Água (ml)</label>
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest px-1">Água (ml)</label>
               <input 
                 type="number" 
                 value={metrics.waterIntake}
                 onChange={(e) => setMetrics({ ...metrics, waterIntake: e.target.value })}
                 placeholder="0"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-2xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
           </div>
@@ -497,7 +497,7 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
           <button 
             onClick={handleSave}
             disabled={isSaving}
-            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-4 bg-vitta-accent text-white rounded-2xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSaving ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -581,20 +581,20 @@ const BookingModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+        className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
       >
         <div className="p-6 border-b border-vitta-border flex justify-between items-center">
           <h3 className="text-xl font-bold text-vitta-text-primary">Confirmar Atendimento</h3>
           <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
-            <X size={20} className="text-slate-400" />
+            <X size={20} className="text-vitta-text-muted" />
           </button>
         </div>
         <div className="p-6 space-y-6">
-          <p className="text-slate-600 dark:text-slate-400 text-sm">
+          <p className="text-vitta-text-secondary text-sm">
             Selecione a data e hora desejada. Você será redirecionado para o nosso WhatsApp para finalizar o agendamento.
           </p>
 
@@ -916,7 +916,7 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
               onClose={() => setIsMetricsModalOpen(false)} 
             />
           )}
-          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-[2.5rem] text-white relative overflow-hidden group">
+          <div className="bg-gradient-to-br from-vitta-accent to-vitta-purple p-8 rounded-[2.5rem] text-white relative overflow-hidden group">
             <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-500">
               <Zap size={180} />
             </div>
@@ -925,10 +925,10 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
                 <Zap size={24} />
               </div>
               <h3 className="text-2xl font-bold">Dica do Dia</h3>
-              <p className="text-blue-100 text-sm leading-relaxed">
+              <p className="text-vitta-surface text-sm leading-relaxed">
                 Beber água regularmente ajuda a manter sua energia e foco durante o dia. Tente beber pelo menos 2 litros hoje!
               </p>
-              <button className="px-6 py-2 bg-white text-blue-600 rounded-xl text-sm font-bold hover:bg-blue-50 transition-colors">
+              <button className="px-6 py-2 bg-white text-vitta-accent rounded-xl text-sm font-bold hover:bg-vitta-surface transition-colors">
                 Saber Mais
               </button>
             </div>
@@ -1109,17 +1109,17 @@ const AdminView = ({ user }: { user: any }) => {
     <div className="space-y-8">
       <AnimatePresence>
         {editingApt && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
             >
               <div className="p-6 border-b border-vitta-border flex justify-between items-center">
                 <h3 className="text-xl font-bold text-vitta-text-primary">Remarcar Consulta</h3>
                 <button onClick={() => setEditingApt(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={handleSaveApt} className="p-6 space-y-4">
@@ -1307,7 +1307,7 @@ const AdminView = ({ user }: { user: any }) => {
                             <Calendar size={14} className="text-vitta-green" />
                             {new Date(apt.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                           </div>
-                          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs justify-end">
+                          <div className="flex items-center gap-1.5 text-vitta-text-secondary text-xs justify-end">
                             <Clock size={14} />
                             {apt.time}
                           </div>
@@ -1315,13 +1315,13 @@ const AdminView = ({ user }: { user: any }) => {
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={() => setEditingApt(apt)}
-                            className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors"
+                            className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-lg transition-colors"
                           >
                             <Edit size={18} />
                           </button>
                           <button 
                             onClick={() => handleDeleteApt(apt.id)}
-                            className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
+                            className="p-2 text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors"
                           >
                             <Trash2 size={18} />
                           </button>
@@ -1330,7 +1330,7 @@ const AdminView = ({ user }: { user: any }) => {
                     ))}
                     <button 
                       onClick={() => setBookingProfessional(professionals[0])}
-                      className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 dark:text-slate-500 font-medium hover:border-emerald-200 dark:hover:border-emerald-500/50 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/5 transition-all flex items-center justify-center gap-2"
+                      className="w-full py-4 border-2 border-dashed border-vitta-border rounded-2xl text-vitta-text-muted font-medium hover:border-vitta-green/50 hover:text-vitta-green hover:bg-vitta-green-bg transition-all flex items-center justify-center gap-2"
                     >
                       <Calendar size={18} />
                       Agendar nova consulta
@@ -1406,7 +1406,7 @@ const AdminView = ({ user }: { user: any }) => {
                       </div>
                     </motion.div>
                   )) : (
-                    <div className="w-full p-8 text-center text-slate-400 text-sm">Nenhum parceiro cadastrado</div>
+                    <div className="w-full p-8 text-center text-vitta-text-muted text-sm">Nenhum parceiro cadastrado</div>
                   )}
                 </div>
               </section>
@@ -1692,7 +1692,7 @@ const ProfessionalsManagementView = () => {
       {/* Edit/Create Modal */}
       <AnimatePresence>
         {(editingItem || isCreating) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1778,7 +1778,7 @@ const ProfessionalsManagementView = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Valor (Opcional)</label>
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Valor (Opcional)</label>
                         <input 
                           type="text" 
                           placeholder="Ex: R$ 150,00"
@@ -1787,11 +1787,11 @@ const ProfessionalsManagementView = () => {
                             ? setEditingItem({ ...editingItem, price: e.target.value })
                             : setNewItem({ ...newItem, price: e.target.value })
                           }
-                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Cidade</label>
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cidade</label>
                         <input 
                           type="text" 
                           placeholder="Ex: São Paulo"
@@ -1800,7 +1800,7 @@ const ProfessionalsManagementView = () => {
                             ? setEditingItem({ ...editingItem, city: e.target.value })
                             : setNewItem({ ...newItem, city: e.target.value })
                           }
-                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all dark:text-white"
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
                       </div>
                     </div>
@@ -1872,31 +1872,31 @@ const ProfessionalsManagementView = () => {
             <motion.div 
               key={prof.id}
               whileHover={{ y: -4 }}
-              className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+              className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-4"
             >
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-4">
                   <img src={prof.imageUrl} alt={prof.name} className="w-14 h-14 rounded-xl object-cover" />
                   <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white">{prof.name}</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{prof.specialty}</p>
+                    <h3 className="font-bold text-vitta-text-primary">{prof.name}</h3>
+                    <p className="text-xs text-vitta-text-secondary">{prof.specialty}</p>
                     {prof.registrationNumber && (
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mt-1">
                         {prof.registrationNumber}
                       </p>
                     )}
                     {prof.city && (
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      <p className="text-[10px] text-vitta-text-secondary mt-0.5">
                         {prof.city}
                       </p>
                     )}
                     {prof.price && (
-                      <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                      <p className="text-xs font-bold text-vitta-green mt-1">
                         {prof.price}
                       </p>
                     )}
                     {prof.vittaHealthDiscount && (
-                      <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                      <p className="text-[10px] font-bold text-vitta-green mt-1">
                         Desconto: {prof.vittaHealthDiscount}
                       </p>
                     )}
@@ -1911,24 +1911,24 @@ const ProfessionalsManagementView = () => {
                       specialty: prof.specialty,
                       vittaHealthDiscount: prof.vittaHealthDiscount || ''
                     })}
-                    className="p-2 text-slate-400 hover:text-blue-500 transition-colors"
+                    className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                   >
                     <Edit size={16} />
                   </button>
                   <button 
                     onClick={() => handleDeleteProfessional(prof.id)}
-                    className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                    className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
-              <div className="pt-4 border-t border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <div className="flex items-center gap-1 text-amber-500">
+              <div className="pt-4 border-t border-vitta-border flex justify-between items-center">
+                <div className="flex items-center gap-1 text-vitta-amber">
                   <Star size={14} fill="currentColor" />
                   <span className="text-xs font-bold">{prof.rating}</span>
                 </div>
-                <span className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase rounded-lg">
+                <span className="px-2 py-1 bg-vitta-green-bg text-vitta-green text-[10px] font-bold uppercase rounded-lg">
                   Ativo
                 </span>
               </div>
@@ -1941,22 +1941,22 @@ const ProfessionalsManagementView = () => {
             <motion.div
               key={category.id}
               whileHover={{ y: -2 }}
-              className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center group"
+              className="bg-vitta-surface p-5 rounded-2xl border border-vitta-border shadow-sm flex justify-between items-center group"
             >
               <div>
-                <h3 className="font-bold text-slate-900 dark:text-white">{category.name}</h3>
-                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">{category.slug}</p>
+                <h3 className="font-bold text-vitta-text-primary">{category.name}</h3>
+                <p className="text-[10px] text-vitta-text-muted uppercase font-bold tracking-widest">{category.slug}</p>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button 
                   onClick={() => setEditingItem({ type: 'category', id: category.id, name: category.name })}
-                  className="p-1.5 text-slate-400 hover:text-blue-500 transition-colors"
+                  className="p-1.5 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                 >
                   <Edit size={14} />
                 </button>
                 <button 
                   onClick={() => handleDeleteCategory(category.id)}
-                  className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors"
+                  className="p-1.5 text-vitta-text-muted hover:text-vitta-danger transition-colors"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -2102,12 +2102,12 @@ const ProfessionalsView = ({ user }: { user: any }) => {
           ))}
         </div>
       ) : (
-        <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-          <Search size={48} className="mx-auto text-slate-300 mb-4" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhum profissional encontrado para sua busca.</p>
+        <div className="p-12 text-center bg-vitta-surface rounded-3xl border border-dashed border-vitta-border">
+          <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+          <p className="text-vitta-text-secondary font-medium">Nenhum profissional encontrado para sua busca.</p>
           <button 
             onClick={() => { setSearchQuery(''); setSelectedSpecialty('Todos'); }}
-            className="mt-4 text-emerald-600 font-bold hover:underline"
+            className="mt-4 text-vitta-green font-bold hover:underline"
           >
             Limpar filtros
           </button>
@@ -2192,13 +2192,13 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setSelectedCategory(null)}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors dark:text-white"
+            className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors text-vitta-text-primary"
           >
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{selectedCategory.name}</h1>
-            <p className="text-slate-500 dark:text-slate-400">Veja todos os parceiros nesta categoria</p>
+            <h1 className="text-3xl font-bold text-vitta-text-primary">{selectedCategory.name}</h1>
+            <p className="text-vitta-text-secondary">Veja todos os parceiros nesta categoria</p>
           </div>
         </div>
 
@@ -2208,27 +2208,27 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
               <motion.div 
                 key={partner.id}
                 whileHover={{ y: -4 }}
-                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+                className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-4"
               >
                 <div className="flex items-center gap-4">
-                  <img src={partner.imageUrl || "https://picsum.photos/seed/partner/100/100"} alt={partner.name} className="w-16 h-16 rounded-2xl object-cover border border-slate-100 dark:border-slate-800" />
+                  <img src={partner.imageUrl || "https://picsum.photos/seed/partner/100/100"} alt={partner.name} className="w-16 h-16 rounded-2xl object-cover border border-vitta-border" />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-lg dark:text-white truncate">{partner.name}</h3>
-                    <p className="text-sm text-emerald-600 font-bold">{partner.discount}</p>
-                    <div className="flex items-center gap-1 text-amber-500 mt-1">
+                    <h3 className="font-bold text-lg text-vitta-text-primary truncate">{partner.name}</h3>
+                    <p className="text-sm text-vitta-green font-bold">{partner.discount}</p>
+                    <div className="flex items-center gap-1 text-vitta-amber mt-1">
                       <Star size={14} fill="currentColor" />
                       <span className="text-xs font-bold">{partner.rating || '5.0'}</span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="pt-4 border-t border-slate-50 dark:border-slate-800 space-y-2">
-                  <div className="flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <div className="pt-4 border-t border-vitta-border space-y-2">
+                  <div className="flex items-start gap-2 text-xs text-vitta-text-secondary">
                     <MapPin size={14} className="mt-0.5 flex-shrink-0" />
                     <span>{partner.address || 'Endereço não informado'}</span>
                   </div>
                   {partner.phone && (
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
                       <Phone size={14} className="flex-shrink-0" />
                       <span>{partner.phone}</span>
                     </div>
@@ -2238,11 +2238,11 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
                 <div className="flex gap-2 pt-2">
                   <button 
                     onClick={() => handleGetDiscount(partner)}
-                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+                    className="flex-1 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg shadow-vitta-green/20"
                   >
                     Obter Desconto
                   </button>
-                  <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                  <button className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors">
                     <Info size={20} />
                   </button>
                 </div>
@@ -2250,9 +2250,9 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
             ))}
           </div>
         ) : (
-          <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-            <Search size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhum parceiro encontrado nesta categoria.</p>
+          <div className="p-12 text-center bg-vitta-surface rounded-3xl border border-dashed border-vitta-border">
+            <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+            <p className="text-vitta-text-secondary font-medium">Nenhum parceiro encontrado nesta categoria.</p>
           </div>
         )}
       </div>
@@ -2262,36 +2262,36 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
   return (
     <div className="space-y-10">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-cyan-500 to-blue-600 rounded-[2.5rem] p-10 lg:p-16 text-white shadow-xl shadow-blue-500/20">
+      <section className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-purple rounded-[2.5rem] p-10 lg:p-16 text-white shadow-xl shadow-vitta-accent/20">
         <div className="relative z-10 max-w-2xl">
           <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-8">
             <Store size={32} />
           </div>
           <h1 className="text-4xl lg:text-5xl font-bold mb-4 tracking-tight">Convênios ViTTA</h1>
-          <p className="text-lg text-cyan-50 opacity-90 leading-relaxed">
+          <p className="text-lg text-vitta-surface opacity-90 leading-relaxed">
             Descontos exclusivos em centenas de estabelecimentos parceiros em diversas categorias.
           </p>
         </div>
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-cyan-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
       </section>
 
       {/* ViTTA Health Section */}
-      <section className="bg-emerald-50 dark:bg-emerald-900/10 rounded-[2.5rem] p-8 border border-emerald-100 dark:border-emerald-800/30">
+      <section className="bg-vitta-green-bg rounded-[2.5rem] p-8 border border-vitta-green/30">
         <div className="flex flex-col md:flex-row items-center gap-8">
-          <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center shadow-lg shadow-emerald-500/20 flex-shrink-0">
+          <div className="w-24 h-24 bg-vitta-green rounded-3xl flex items-center justify-center shadow-lg shadow-vitta-green/20 flex-shrink-0">
             <Stethoscope size={48} className="text-white" />
           </div>
           <div className="flex-1 text-center md:text-left space-y-2">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">ViTTA Health</h2>
-            <p className="text-slate-600 dark:text-slate-400">
+            <h2 className="text-2xl font-bold text-vitta-text-primary">ViTTA Health</h2>
+            <p className="text-vitta-text-secondary">
               Acesse nossa rede exclusiva de profissionais de saúde com descontos especiais para afiliados ViTTA.
             </p>
           </div>
           <button 
             onClick={() => setActiveTab?.('professionals')}
-            className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 whitespace-nowrap"
+            className="px-8 py-4 bg-vitta-green text-white rounded-2xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 whitespace-nowrap"
           >
             Ver Profissionais
           </button>
@@ -2305,22 +2305,22 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
           { label: 'Estabelecimentos Parceiros', value: partners.length + '+', color: 'text-blue-500' },
           { label: 'De Desconto para Afiliados', value: 'Até 50%', color: 'text-rose-500' },
         ].map((stat, i) => (
-          <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm text-center space-y-1">
+          <div key={i} className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm text-center space-y-1">
             <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
+            <p className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest">{stat.label}</p>
           </div>
         ))}
       </div>
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={20} />
         <input 
           type="text" 
           placeholder="Buscar categoria de convênio..." 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-14 pr-6 py-5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] text-lg shadow-sm focus:ring-4 focus:ring-blue-500/10 transition-all dark:text-white"
+          className="w-full pl-14 pr-6 py-5 bg-vitta-surface border border-vitta-border rounded-xl text-lg shadow-sm focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
         />
       </div>
 
@@ -2328,8 +2328,8 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
       <section className="space-y-6">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{filteredCategories.length} Categorias</h2>
-            <p className="text-slate-500 dark:text-slate-400">Explore todos os convênios disponíveis para afiliados ViTTA</p>
+            <h2 className="text-2xl font-bold text-vitta-text-primary">{filteredCategories.length} Categorias</h2>
+            <p className="text-vitta-text-secondary">Explore todos os convênios disponíveis para afiliados ViTTA</p>
           </div>
         </div>
 
@@ -2346,7 +2346,7 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
                 key={cat.id}
                 whileHover={{ y: -8 }}
                 onClick={() => setSelectedCategory(cat)}
-                className="group cursor-pointer bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-full"
+                className="group cursor-pointer bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col h-full"
               >
                 <div className={`h-32 ${cat.color || 'bg-vitta-text-muted'} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500`}>
                   {getIcon(cat.icon)}
@@ -2362,9 +2362,9 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
             ))}
           </div>
         ) : (
-          <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-            <Search size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhuma categoria encontrada para sua busca.</p>
+          <div className="p-12 text-center bg-vitta-surface rounded-xl border border-dashed border-vitta-border">
+            <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+            <p className="text-vitta-text-secondary font-medium">Nenhuma categoria encontrada para sua busca.</p>
             <button 
               onClick={() => setSearchQuery('')}
               className="mt-4 text-blue-500 font-bold hover:underline"
@@ -2451,10 +2451,10 @@ const OffersView = ({ user }: { user?: any }) => {
               </div>
               <div className="p-6 flex-1 flex flex-col">
                 <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.title}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
+                <p className="text-sm text-vitta-text-secondary mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
                 <button 
                   onClick={() => handleRedeem(offer)}
-                  className="w-full py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-slate-800 dark:hover:bg-emerald-700 transition-colors"
+                  className="w-full py-3 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-all"
                 >
                   Resgatar Cupom
                 </button>
@@ -2462,9 +2462,9 @@ const OffersView = ({ user }: { user?: any }) => {
             </motion.div>
           ))
         ) : (
-          <div className="col-span-full p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-            <Store size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhuma oferta disponível no momento.</p>
+          <div className="col-span-full p-12 text-center bg-vitta-surface rounded-3xl border border-dashed border-vitta-border">
+            <Store size={48} className="mx-auto text-vitta-text-muted mb-4" />
+            <p className="text-vitta-text-secondary font-medium">Nenhuma oferta disponível no momento.</p>
           </div>
         )}
       </div>
@@ -2777,7 +2777,7 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-70"
+              className="px-10 py-4 bg-vitta-green text-white rounded-xl font-bold shadow-xl shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center gap-2 disabled:opacity-70"
             >
               {isSaving ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2848,19 +2848,19 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                   <p className="font-bold text-sm text-vitta-text-primary">Notificações</p>
                   <p className="text-[10px] text-vitta-text-secondary">Alertas de consultas</p>
                 </div>
-                <div className="w-10 h-5 bg-emerald-600 rounded-full relative cursor-pointer">
+                <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
                   <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
                 </div>
               </div>
               
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-sm dark:text-white">Modo Escuro</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Interface noturna</p>
+                  <p className="font-bold text-sm text-vitta-text-primary">Modo Escuro</p>
+                  <p className="text-[10px] text-vitta-text-muted">Interface noturna</p>
                 </div>
                 <div 
                   onClick={() => setIsDarkMode(!isDarkMode)}
-                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isDarkMode ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${isDarkMode ? 'bg-vitta-green' : 'bg-vitta-border'}`}
                 >
                   <motion.div 
                     animate={{ x: isDarkMode ? 20 : 4 }}
@@ -2872,19 +2872,19 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-rose-50/50 dark:bg-rose-500/5 p-8 rounded-3xl border border-rose-100 dark:border-rose-500/20 space-y-4">
-            <h2 className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest">Zona de Perigo</h2>
+          <div className="bg-vitta-danger/5 p-8 rounded-xl border border-vitta-danger/20 space-y-4">
+            <h2 className="text-[10px] font-bold text-vitta-danger uppercase tracking-widest">Zona de Perigo</h2>
             {profileData.deletionRequested ? (
-              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-500/30">
-                <p className="text-xs font-bold text-rose-600 dark:text-rose-400">Solicitação de exclusão em processamento.</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Nossa equipe entrará em contato em breve.</p>
+              <div className="p-4 bg-vitta-surface rounded-xl border border-vitta-danger/30">
+                <p className="text-xs font-bold text-vitta-danger">Solicitação de exclusão em processamento.</p>
+                <p className="text-[10px] text-vitta-text-muted mt-1">Nossa equipe entrará em contato em breve.</p>
               </div>
             ) : (
               <>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Uma vez solicitada, nossa equipe processará a exclusão dos seus dados.</p>
+                <p className="text-xs text-vitta-text-muted">Uma vez solicitada, nossa equipe processará a exclusão dos seus dados.</p>
                 <button 
                   onClick={handleRequestDeletion}
-                  className="w-full py-3 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                  className="w-full py-3 bg-vitta-surface border border-vitta-danger/30 text-vitta-danger rounded-xl text-xs font-bold hover:bg-vitta-danger/5 transition-colors"
                 >
                   Solicitar Exclusão
                 </button>
@@ -3006,7 +3006,7 @@ const UserExamsManagementView = () => {
         <h2 className="text-2xl font-bold text-vitta-text-primary">Exames de Usuários</h2>
         <button 
           onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
         >
           {isCreating ? <X size={20} /> : <Plus size={20} />}
           {isCreating ? 'Fechar' : 'Registrar Exame'}
@@ -3017,29 +3017,29 @@ const UserExamsManagementView = () => {
         <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+          className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
         >
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Usuário</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Usuário</label>
                 <select 
                   required
                   value={newItem.userId}
                   onChange={(e) => setNewItem({ ...newItem, userId: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 >
                   <option value="" disabled>Selecione um Usuário</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Tipo de Exame</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Tipo de Exame</label>
                 <select 
                   required
                   value={newItem.name}
                   onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 >
                   <option value="" disabled>Selecione o Exame</option>
                   {examTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
@@ -3048,34 +3048,34 @@ const UserExamsManagementView = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Laboratório</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Laboratório</label>
                 <input 
                   type="text" 
                   value={newItem.lab}
                   onChange={(e) => setNewItem({ ...newItem, lab: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Status Inicial</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Status Inicial</label>
                 <select 
                   value={newItem.status}
                   onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 >
                   <option value="pending">Pendente</option>
                   <option value="ready">Pronto</option>
                 </select>
               </div>
             </div>
-            <button type="submit" className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20">
+            <button type="submit" className="w-full py-4 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20">
               Registrar Exame para Usuário
             </button>
           </form>
         </motion.div>
       )}
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
@@ -3084,7 +3084,7 @@ const UserExamsManagementView = () => {
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+          <tbody className="divide-y divide-vitta-border">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
@@ -3094,19 +3094,19 @@ const UserExamsManagementView = () => {
                 </tr>
               ))
             ) : userExams.length > 0 ? userExams.map((exam) => (
-              <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+              <tr key={exam.id} className="hover:bg-vitta-surface-2 transition-colors">
                 <td className="px-8 py-4">
                   <div className="flex flex-col">
                     <span className="font-bold text-sm text-vitta-text-primary">{users.find(u => u.id === exam.userId)?.name || 'Usuário Desconhecido'}</span>
-                    <span className="text-xs text-slate-400">{exam.name} - {exam.lab}</span>
+                    <span className="text-xs text-vitta-text-muted">{exam.name} - {exam.lab}</span>
                   </div>
                 </td>
                 <td className="px-8 py-4">
                   <select 
                     value={exam.status}
                     onChange={(e) => handleUpdateStatus(exam.id, exam.userId, exam.name, e.target.value)}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-blue-500/20 outline-none ${
-                      exam.status === 'ready' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-vitta-accent/20 outline-none ${
+                      exam.status === 'ready' ? 'bg-vitta-green-bg text-vitta-green' : 'bg-vitta-amber-bg text-vitta-amber'
                     }`}
                   >
                     <option value="pending">Pendente</option>
@@ -3115,7 +3115,7 @@ const UserExamsManagementView = () => {
                 </td>
                 <td className="px-8 py-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors">
                       <Trash2 size={18} />
                     </button>
                   </div>
@@ -3123,7 +3123,7 @@ const UserExamsManagementView = () => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={3} className="px-8 py-12 text-center text-slate-400 text-sm">Nenhum exame de usuário registrado.</td>
+                <td colSpan={3} className="px-8 py-12 text-center text-vitta-text-muted text-sm">Nenhum exame de usuário registrado.</td>
               </tr>
             )}
           </tbody>
@@ -3177,7 +3177,7 @@ const ExamsManagementView = () => {
         <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Exames</h2>
         <button 
           onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
         >
           <Plus size={20} />
           Novo Exame
@@ -3188,7 +3188,7 @@ const ExamsManagementView = () => {
         <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+          className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
         >
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3198,7 +3198,7 @@ const ExamsManagementView = () => {
                 required
                 value={newItem.name}
                 onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
               <input 
                 type="text" 
@@ -3206,24 +3206,24 @@ const ExamsManagementView = () => {
                 required
                 value={newItem.price}
                 onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <textarea 
               placeholder="Descrição"
               value={newItem.description}
               onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white min-h-[100px]"
+              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary min-h-[100px]"
             />
             <div className="flex gap-3">
-              <button type="submit" className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all">Salvar</button>
-              <button type="button" onClick={() => setIsCreating(false)} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all">Cancelar</button>
+              <button type="submit" className="px-8 py-3 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20">Salvar</button>
+              <button type="button" onClick={() => setIsCreating(false)} className="px-8 py-3 bg-vitta-surface-2 border border-vitta-border text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all">Cancelar</button>
             </div>
           </form>
         </motion.div>
       )}
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
@@ -3232,20 +3232,20 @@ const ExamsManagementView = () => {
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+          <tbody className="divide-y divide-vitta-border">
             {exams.map((exam) => (
-              <tr key={exam.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+              <tr key={exam.id} className="hover:bg-vitta-surface-2 transition-colors">
                 <td className="px-8 py-4">
                   <div className="flex flex-col">
                     <span className="font-bold text-sm text-vitta-text-primary">{exam.name}</span>
-                    <span className="text-xs text-slate-400 line-clamp-1">{exam.description}</span>
+                    <span className="text-xs text-vitta-text-muted line-clamp-1">{exam.description}</span>
                   </div>
                 </td>
                 <td className="px-8 py-4">
-                  <span className="text-sm font-bold text-emerald-600">{exam.price}</span>
+                  <span className="text-sm font-bold text-vitta-green">{exam.price}</span>
                 </td>
                 <td className="px-8 py-4 text-right">
-                  <button onClick={() => handleDelete(exam.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                  <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors">
                     <Trash2 size={18} />
                   </button>
                 </td>
@@ -3357,7 +3357,7 @@ const OffersManagementView = () => {
             setEditingItem(null);
             setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
           }}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
         >
           {isCreating ? <X size={20} /> : <Plus size={20} />}
           {isCreating ? 'Fechar' : 'Nova Oferta'}
@@ -3368,40 +3368,40 @@ const OffersManagementView = () => {
         <motion.div 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+          className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
         >
           <h3 className="text-lg font-bold text-vitta-text-primary">{editingItem ? 'Editar Oferta' : 'Nova Oferta'}</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Título</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Título</label>
                 <input 
                   type="text" 
                   placeholder="Título da Oferta"
                   required
                   value={newItem.title}
                   onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Desconto</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Desconto</label>
                 <input 
                   type="text" 
                   placeholder="Ex: 20% OFF"
                   required
                   value={newItem.discount}
                   onChange={(e) => setNewItem({ ...newItem, discount: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Parceiro</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Parceiro</label>
                 <select 
                   required
                   value={newItem.partner}
                   onChange={(e) => setNewItem({ ...newItem, partner: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 >
                   <option value="" disabled>Selecione um Parceiro</option>
                   <optgroup label="Profissionais">
@@ -3419,23 +3419,23 @@ const OffersManagementView = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">URL da Imagem</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">URL da Imagem</label>
                 <input 
                   type="text" 
                   placeholder="https://..."
                   value={newItem.imageUrl}
                   onChange={(e) => setNewItem({ ...newItem, imageUrl: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Descrição</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Descrição</label>
                 <input 
                   type="text" 
                   placeholder="Breve descrição da oferta"
                   value={newItem.description}
                   onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
             </div>
@@ -3443,7 +3443,7 @@ const OffersManagementView = () => {
               <button 
                 type="submit" 
                 disabled={isSaving}
-                className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-3 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all disabled:opacity-50 flex items-center gap-2"
               >
                 {isSaving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 {editingItem ? 'Salvar Alterações' : 'Criar Oferta'}
@@ -3454,7 +3454,7 @@ const OffersManagementView = () => {
                   setIsCreating(false);
                   setEditingItem(null);
                 }} 
-                className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all"
+                className="px-8 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
               >
                 Cancelar
               </button>
@@ -3463,45 +3463,45 @@ const OffersManagementView = () => {
         </motion.div>
       )}
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Oferta</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Parceiro</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Desconto</th>
-                <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
+              <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Oferta</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Parceiro</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Desconto</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+            <tbody className="divide-y divide-vitta-border">
               {offers.length > 0 ? offers.map((offer) => (
-                <tr key={offer.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={offer.id} className="hover:bg-vitta-surface-2 transition-colors">
                   <td className="px-8 py-4">
                     <div className="flex items-center gap-3">
                       {offer.imageUrl && (
                         <img src={offer.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
                       )}
-                      <span className="font-bold text-sm dark:text-white">{offer.title}</span>
+                      <span className="font-bold text-sm text-vitta-text-primary">{offer.title}</span>
                     </div>
                   </td>
                   <td className="px-8 py-4">
-                    <span className="text-sm text-slate-500 dark:text-slate-400">{offer.partner}</span>
+                    <span className="text-sm text-vitta-text-secondary">{offer.partner}</span>
                   </td>
                   <td className="px-8 py-4">
-                    <span className="px-2 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-lg">{offer.discount}</span>
+                    <span className="px-2 py-1 bg-vitta-danger/10 text-vitta-danger text-xs font-bold rounded-lg">{offer.discount}</span>
                   </td>
                   <td className="px-8 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button 
                         onClick={() => handleEdit(offer)} 
-                        className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
                       >
                         <Edit size={18} />
                       </button>
                       <button 
                         onClick={() => handleDelete(offer.id)} 
-                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -3510,7 +3510,7 @@ const OffersManagementView = () => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={4} className="px-8 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={4} className="px-8 py-12 text-center text-vitta-text-muted text-sm">
                     Nenhuma oferta cadastrada.
                   </td>
                 </tr>
@@ -3540,7 +3540,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
     phone: '', 
     imageUrl: '',
     icon: 'Heart',
-    color: 'bg-emerald-500',
+    color: 'bg-vitta-green',
     description: ''
   });
 
@@ -3653,7 +3653,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
         phone: '', 
         imageUrl: '',
         icon: 'Heart',
-        color: 'bg-emerald-500',
+        color: 'bg-vitta-green',
         description: ''
       });
     } catch (err) {
@@ -3670,24 +3670,24 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
       {/* Partner Create/Edit Modal */}
       <AnimatePresence>
         {(isCreating === 'partner' || (editingItem && editingItem.type === 'partner')) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingItem ? 'Editar Estabelecimento' : 'Novo Estabelecimento'}
                 </h3>
-                <button onClick={() => { setEditingItem(null); setIsCreating(null); }} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+                <button onClick={() => { setEditingItem(null); setIsCreating(null); }} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
                     type="text" 
                     required
@@ -3696,26 +3696,26 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       ? setEditingItem({ ...editingItem, name: e.target.value })
                       : setNewItem({ ...newItem, name: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     autoFocus
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Categoria</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Categoria</label>
                   <select 
                     value={editingItem ? editingItem.category : newItem.category}
                     onChange={(e) => editingItem
                       ? setEditingItem({ ...editingItem, category: e.target.value })
                       : setNewItem({ ...newItem, category: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   >
                     <option value="">Selecione uma categoria</option>
                     {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Desconto</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Desconto</label>
                   <input 
                     type="text" 
                     value={editingItem ? editingItem.discount : newItem.discount}
@@ -3723,11 +3723,11 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       ? setEditingItem({ ...editingItem, discount: e.target.value })
                       : setNewItem({ ...newItem, discount: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Telefone</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Telefone</label>
                   <input 
                     type="text" 
                     value={editingItem ? (editingItem.phone || '') : newItem.phone}
@@ -3735,11 +3735,11 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       ? setEditingItem({ ...editingItem, phone: e.target.value })
                       : setNewItem({ ...newItem, phone: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Endereço</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Endereço</label>
                   <input 
                     type="text" 
                     value={editingItem ? (editingItem.address || '') : newItem.address}
@@ -3747,11 +3747,11 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       ? setEditingItem({ ...editingItem, address: e.target.value })
                       : setNewItem({ ...newItem, address: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">URL da Logomarca (Opcional)</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">URL da Logomarca (Opcional)</label>
                   <input 
                     type="text" 
                     placeholder="https://exemplo.com/logo.png"
@@ -3760,20 +3760,20 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       ? setEditingItem({ ...editingItem, imageUrl: e.target.value })
                       : setNewItem({ ...newItem, imageUrl: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
                     onClick={() => { setEditingItem(null); setIsCreating(null); }}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all"
                   >
                     Salvar
                   </button>
@@ -3786,8 +3786,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Gestão de Convênios</h1>
-          <p className="text-slate-500 dark:text-slate-400">Cadastre e gerencie estabelecimentos conveniados</p>
+          <h1 className="text-3xl font-bold text-vitta-text-primary">Gestão de Convênios</h1>
+          <p className="text-vitta-text-secondary">Cadastre e gerencie estabelecimentos conveniados</p>
         </div>
       </div>
 
@@ -3796,8 +3796,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           onClick={() => setActiveSubTab('establishments')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'establishments' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-muted hover:text-vitta-text-secondary'
           }`}
         >
           <Store size={18} />
@@ -3807,8 +3807,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           onClick={() => setActiveSubTab('categories')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'categories' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-muted hover:text-vitta-text-secondary'
           }`}
         >
           <Tag size={18} />
@@ -3818,8 +3818,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           onClick={() => setActiveSubTab('offers')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'offers' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-muted hover:text-vitta-text-secondary'
           }`}
         >
           <Tag size={18} />
@@ -3829,8 +3829,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           onClick={() => setActiveSubTab('vitta-health')}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === 'vitta-health' 
-              ? 'border-emerald-500 text-emerald-500' 
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              ? 'border-vitta-green text-vitta-green' 
+              : 'border-transparent text-vitta-text-muted hover:text-vitta-text-secondary'
           }`}
         >
           <Activity size={18} />
@@ -3843,36 +3843,36 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           <div className="flex justify-between items-center">
             <button 
               onClick={() => setIsCreating('partner')}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+              className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
             >
               <Plus size={20} />
               Novo Estabelecimento
             </button>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4">
+          <div className="bg-vitta-surface p-4 rounded-xl border border-vitta-border shadow-sm flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
               <input 
                 type="text" 
                 placeholder="Buscar estabelecimento..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="w-full pl-10 pr-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
             <div className="relative w-full md:w-64">
               <select 
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full pl-4 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm appearance-none focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="w-full pl-4 pr-10 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm appearance-none focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               >
                 <option>Todas as Categorias</option>
                 {categories.map(cat => (
                   <option key={cat.id} value={cat.name}>{cat.name}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-vitta-text-muted pointer-events-none" size={18} />
             </div>
           </div>
 
@@ -3881,29 +3881,29 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
               <motion.div 
                 key={partner.id}
                 whileHover={{ y: -4 }}
-                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm relative"
+                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm relative"
               >
                 <div className="flex justify-between items-start mb-6">
                   <img src={partner.imageUrl || 'https://picsum.photos/seed/partner/400/300'} alt={partner.name} className="w-12 h-12 rounded-xl object-cover" />
-                  <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">
+                  <span className="px-2.5 py-1 bg-vitta-green-bg text-vitta-green text-[10px] font-bold uppercase tracking-wider rounded-lg">
                     Ativo
                   </span>
                 </div>
                 
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">{partner.name}</h3>
-                    <span className="inline-block px-3 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg mt-1">
+                    <h3 className="text-xl font-bold text-vitta-text-primary">{partner.name}</h3>
+                    <span className="inline-block px-3 py-1 bg-vitta-accent-bg text-vitta-accent text-xs font-bold rounded-lg mt-1">
                       {partner.category}
                     </span>
                   </div>
 
                   <div className="space-y-2 text-sm">
-                    <p className="text-slate-600 dark:text-slate-400">
+                    <p className="text-vitta-text-secondary">
                       <span className="font-bold">Desconto:</span> {partner.discount}
                     </p>
                     {partner.address && (
-                      <p className="text-slate-600 dark:text-slate-400">
+                      <p className="text-vitta-text-secondary">
                         <span className="font-bold">Endereço:</span> {partner.address}
                       </p>
                     )}
@@ -3912,14 +3912,14 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                   <div className="flex gap-2 pt-4">
                     <button 
                       onClick={() => setEditingItem({ type: 'partner', ...partner })}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors"
                     >
                       <Edit size={16} />
                       Editar
                     </button>
                     <button 
                       onClick={() => handleDeletePartner(partner.id)}
-                      className="p-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors"
+                      className="p-2.5 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-colors"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -3936,7 +3936,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           <div className="flex justify-between items-center">
             <button 
               onClick={() => setIsCreating(isCreating === 'category' ? null : 'category')}
-              className={`flex items-center gap-2 px-6 py-3 ${isCreating === 'category' ? 'bg-blue-500' : 'bg-blue-500'} hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20`}
+              className={`flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20`}
             >
               {isCreating === 'category' ? <Plus size={20} className="rotate-45" /> : <Plus size={20} />}
               {isCreating === 'category' ? 'Cancelar' : 'Nova Categoria'}
@@ -3947,40 +3947,40 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+              className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
             >
-              <h3 className="text-xl font-bold dark:text-white">Nova Categoria</h3>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Nova Categoria</h3>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                     <input 
                       type="text" 
                       placeholder="Nome da Categoria"
                       required
                       value={newItem.name}
                       onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Slug</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Slug</label>
                     <input 
                       type="text" 
                       placeholder="slug"
                       value={newItem.slug}
                       onChange={(e) => setNewItem({ ...newItem, slug: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white text-slate-400"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-muted"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Ícone (Lucide Name)</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Ícone (Lucide Name)</label>
                     <select 
                       value={newItem.icon}
                       onChange={(e) => setNewItem({ ...newItem, icon: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Heart">Coração (Saúde)</option>
                       <option value="Pill">Pílula (Farmácia)</option>
@@ -4005,11 +4005,11 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Cor (Tailwind Class)</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cor (Tailwind Class)</label>
                     <select 
                       value={newItem.color}
                       onChange={(e) => setNewItem({ ...newItem, color: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="bg-emerald-500">Esmeralda</option>
                       <option value="bg-blue-500">Azul</option>
@@ -4024,25 +4024,25 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Descrição</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Descrição</label>
                   <textarea 
                     placeholder="Breve descrição da categoria"
                     value={newItem.description}
                     onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white h-24 resize-none"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary h-24 resize-none"
                   />
                 </div>
                 <div className="flex gap-3">
                   <button 
                     type="submit"
-                    className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all"
+                    className="px-8 py-3 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all"
                   >
                     Salvar
                   </button>
                   <button 
                     type="button"
                     onClick={() => setIsCreating(null)}
-                    className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all"
+                    className="px-8 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
                   >
                     Cancelar
                   </button>
@@ -4055,38 +4055,38 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6"
+              className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
             >
-              <h3 className="text-xl font-bold dark:text-white">Editar Categoria</h3>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Editar Categoria</h3>
               <form onSubmit={handleSaveEdit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Nome</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                     <input 
                       type="text" 
                       required
                       value={editingItem.name}
                       onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Slug</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Slug</label>
                     <input 
                       type="text" 
                       value={editingItem.slug}
                       onChange={(e) => setEditingItem({ ...editingItem, slug: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white text-slate-400"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-muted"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Ícone (Lucide Name)</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Ícone (Lucide Name)</label>
                     <select 
                       value={editingItem.icon || 'Heart'}
                       onChange={(e) => setEditingItem({ ...editingItem, icon: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Heart">Coração (Saúde)</option>
                       <option value="Pill">Pílula (Farmácia)</option>
@@ -4111,16 +4111,16 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Cor (Tailwind Class)</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cor (Tailwind Class)</label>
                     <select 
-                      value={editingItem.color || 'bg-emerald-500'}
+                      value={editingItem.color || 'bg-vitta-green'}
                       onChange={(e) => setEditingItem({ ...editingItem, color: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
-                      <option value="bg-emerald-500">Esmeralda</option>
-                      <option value="bg-blue-500">Azul</option>
-                      <option value="bg-rose-500">Rosa</option>
-                      <option value="bg-amber-500">Âmbar</option>
+                      <option value="bg-vitta-green">Verde ViTTA</option>
+                      <option value="bg-vitta-accent">Azul ViTTA</option>
+                      <option value="bg-vitta-danger">Vermelho</option>
+                      <option value="bg-vitta-amber">Âmbar</option>
                       <option value="bg-indigo-500">Índigo</option>
                       <option value="bg-violet-500">Violeta</option>
                       <option value="bg-orange-500">Laranja</option>
@@ -4130,25 +4130,25 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1">Descrição</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Descrição</label>
                   <textarea 
                     placeholder="Breve descrição da categoria"
                     value={editingItem.description || ''}
                     onChange={(e) => setEditingItem({ ...editingItem, description: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white h-24 resize-none"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary h-24 resize-none"
                   />
                 </div>
                 <div className="flex gap-3">
                   <button 
                     type="submit"
-                    className="px-8 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all"
+                    className="px-8 py-3 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all"
                   >
                     Atualizar
                   </button>
                   <button 
                     type="button"
                     onClick={() => setEditingItem(null)}
-                    className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-all"
+                    className="px-8 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
                   >
                     Cancelar
                   </button>
@@ -4157,44 +4157,44 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             </motion.div>
           )}
 
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                  <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Nome da Categoria</th>
-                  <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Slug</th>
-                  <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-center">Empresas</th>
-                  <th className="px-8 py-4 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Nome da Categoria</th>
+                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Slug</th>
+                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">Empresas</th>
+                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+              <tbody className="divide-y divide-vitta-border">
                 {categories.map((category) => (
-                  <tr key={category.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                  <tr key={category.id} className="hover:bg-vitta-surface-2 transition-colors">
                     <td className="px-8 py-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 ${category.color || 'bg-slate-100'} rounded-lg flex items-center justify-center text-white`}>
+                        <div className={`w-8 h-8 ${category.color || 'bg-vitta-surface-2 text-vitta-text-primary'} rounded-lg flex items-center justify-center text-white`}>
                           {getIcon(category.icon, 16)}
                         </div>
-                        <span className="font-bold text-sm dark:text-white">{category.name}</span>
+                        <span className="font-bold text-sm text-vitta-text-primary">{category.name}</span>
                       </div>
                     </td>
                     <td className="px-8 py-4">
-                      <span className="text-xs text-slate-400 font-mono">{category.slug}</span>
+                      <span className="text-xs text-vitta-text-muted font-mono">{category.slug}</span>
                     </td>
                     <td className="px-8 py-4 text-center">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">{getPartnersCountByCategory(category.name)}</span>
+                      <span className="text-sm text-vitta-text-secondary">{getPartnersCountByCategory(category.name)}</span>
                     </td>
                     <td className="px-8 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button 
                           onClick={() => setEditingItem({ type: 'category', ...category })}
-                          className="p-2 text-slate-400 hover:text-blue-500 transition-colors"
+                          className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                         >
                           <Edit size={18} />
                         </button>
                         <button 
                           onClick={() => handleDeleteCategory(category.id)}
-                          className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                          className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -4220,22 +4220,22 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                 if (setSubTab) setSubTab('professionals');
                 if (setActiveTab) setActiveTab('professionals');
               }}
-              className="flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+              className="flex items-center gap-2 px-6 py-3 bg-vitta-green hover:bg-vitta-green/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20"
             >
               <Stethoscope size={20} />
               Gerenciar Profissionais
             </button>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4">
+          <div className="bg-vitta-surface p-4 rounded-xl border border-vitta-border shadow-sm flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
               <input 
                 type="text" 
                 placeholder="Buscar profissional na rede ViTTA Health..." 
                 value={profSearchQuery}
                 onChange={(e) => setProfSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                className="w-full pl-10 pr-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
           </div>
@@ -4245,36 +4245,36 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
               <motion.div 
                 key={prof.id}
                 whileHover={{ y: -4 }}
-                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-4"
+                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm space-y-4"
               >
                 <div className="flex items-center gap-4">
-                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-2xl object-cover" />
+                  <img src={prof.imageUrl} alt={prof.name} className="w-16 h-16 rounded-xl object-cover" />
                   <div>
-                    <h3 className="font-bold text-lg dark:text-white">{prof.name}</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{prof.specialty}</p>
-                    <div className="mt-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-[10px] font-bold inline-block">
+                    <h3 className="font-bold text-lg text-vitta-text-primary">{prof.name}</h3>
+                    <p className="text-sm text-vitta-text-secondary">{prof.specialty}</p>
+                    <div className="mt-1 px-2 py-0.5 bg-vitta-green-bg text-vitta-green rounded-lg text-[10px] font-bold inline-block">
                       ViTTA Health: {prof.vittaHealthDiscount}
                     </div>
                   </div>
                 </div>
                 
-                <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
+                <div className="pt-4 border-t border-vitta-border">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-amber-500">
+                    <div className="flex items-center gap-1 text-vitta-amber">
                       <Star size={14} fill="currentColor" />
                       <span className="text-xs font-bold">{prof.rating}</span>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
                       {prof.reviews} avaliações
                     </span>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20">
+                  <button className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-colors shadow-lg shadow-vitta-accent/20">
                     Ver Detalhes
                   </button>
-                  <button className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                  <button className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors">
                     <Calendar size={18} />
                   </button>
                 </div>
@@ -4282,12 +4282,12 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
             ))}
             
             {filteredProfessionals.length === 0 && (
-              <div className="col-span-full py-20 text-center bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
-                <div className="w-16 h-16 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                  <Activity className="text-slate-300" size={32} />
+              <div className="col-span-full py-20 text-center bg-vitta-surface-2 rounded-xl border-2 border-dashed border-vitta-border">
+                <div className="w-16 h-16 bg-vitta-surface rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <Activity className="text-vitta-text-muted" size={32} />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Nenhum profissional encontrado</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm">Tente ajustar sua busca ou adicione descontos ViTTA Health aos profissionais.</p>
+                <h3 className="text-lg font-bold text-vitta-text-primary mb-1">Nenhum profissional encontrado</h3>
+                <p className="text-vitta-text-secondary text-sm">Tente ajustar sua busca ou adicione descontos ViTTA Health aos profissionais.</p>
               </div>
             )}
           </div>
@@ -4308,7 +4308,7 @@ const SupportView = () => {
   return (
     <div className="space-y-10 pb-10">
       {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#00b894] via-[#00cec9] to-[#0984e3] rounded-[2.5rem] p-10 md:p-20 text-center text-white shadow-2xl shadow-emerald-500/20">
+      <div className="relative overflow-hidden bg-gradient-to-br from-vitta-green via-vitta-accent to-vitta-accent rounded-xl p-10 md:p-20 text-center text-white shadow-2xl shadow-vitta-green/20">
         <div className="relative z-10 flex flex-col items-center space-y-6">
           <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/30 shadow-inner">
             <HelpCircle size={40} strokeWidth={1.5} />
@@ -4319,7 +4319,7 @@ const SupportView = () => {
               Aproveite ao máximo todas as vantagens de ser um afiliado ViTTA
             </p>
           </div>
-          <button className="flex items-center gap-3 px-10 py-5 bg-white text-[#00b894] rounded-2xl font-bold shadow-xl hover:bg-emerald-50 transition-all transform hover:scale-105 active:scale-95 group">
+          <button className="flex items-center gap-3 px-10 py-5 bg-white text-vitta-green rounded-xl font-bold shadow-xl hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95 group">
             <MessageSquare size={24} className="group-hover:rotate-12 transition-transform" />
             Iniciar Chat de Suporte
           </button>
@@ -4327,8 +4327,8 @@ const SupportView = () => {
         
         {/* Decorative elements to match the "blobs" in the image */}
         <div className="absolute -top-20 -left-20 w-80 h-80 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/4 w-40 h-40 bg-emerald-300/10 rounded-full blur-2xl"></div>
+        <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-vitta-accent/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/4 w-40 h-40 bg-vitta-green/10 rounded-full blur-2xl"></div>
       </div>
 
       {/* Features Grid */}
@@ -4338,35 +4338,35 @@ const SupportView = () => {
             icon: Heart, 
             title: "Saúde Integrada", 
             desc: "Acesso a profissionais qualificados em diversas especialidades", 
-            color: "bg-gradient-to-br from-emerald-400 to-teal-500",
-            shadow: "shadow-emerald-200 dark:shadow-emerald-900/20"
+            color: "bg-vitta-green",
+            shadow: "shadow-vitta-green/20"
           },
           { 
             icon: Tag, 
             title: "Descontos Exclusivos", 
             desc: "Cupons e ofertas especiais dos nossos parceiros", 
-            color: "bg-gradient-to-br from-purple-400 to-indigo-500",
-            shadow: "shadow-purple-200 dark:shadow-purple-900/20"
+            color: "bg-vitta-accent",
+            shadow: "shadow-vitta-accent/20"
           },
           { 
             icon: Wallet, 
             title: "Carteira Digital", 
             desc: "Gerencie seus créditos e pagamentos com facilidade", 
-            color: "bg-gradient-to-br from-orange-400 to-rose-500",
-            shadow: "shadow-orange-200 dark:shadow-orange-900/20"
+            color: "bg-vitta-amber",
+            shadow: "shadow-vitta-amber/20"
           }
         ].map((item, idx) => (
           <motion.div 
             key={idx}
             whileHover={{ y: -8 }}
-            className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none text-center space-y-5"
+            className="bg-vitta-surface p-10 rounded-xl border border-vitta-border shadow-sm text-center space-y-5"
           >
-            <div className={`w-16 h-16 ${item.color} rounded-2xl mx-auto flex items-center justify-center text-white shadow-lg ${item.shadow}`}>
+            <div className={`w-16 h-16 ${item.color} rounded-xl mx-auto flex items-center justify-center text-white shadow-lg ${item.shadow}`}>
               <item.icon size={32} />
             </div>
             <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{item.title}</h3>
-              <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
+              <h3 className="text-2xl font-bold text-vitta-text-primary">{item.title}</h3>
+              <p className="text-vitta-text-secondary text-sm leading-relaxed">
                 {item.desc}
               </p>
             </div>
@@ -4376,17 +4376,17 @@ const SupportView = () => {
 
       {/* FAQ Section */}
       <div className="space-y-8 pt-4">
-        <h2 className="text-3xl font-bold text-slate-900 dark:text-white px-4">Perguntas Frequentes</h2>
+        <h2 className="text-3xl font-bold text-vitta-text-primary px-4">Perguntas Frequentes</h2>
         <div className="space-y-4">
           {faqs.map((faq, idx) => (
-            <details key={idx} className="group bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all overflow-hidden">
+            <details key={idx} className="group bg-vitta-surface rounded-xl border border-vitta-border shadow-sm hover:shadow-md transition-all overflow-hidden">
               <summary className="flex items-center justify-between p-7 cursor-pointer list-none">
-                <span className="font-bold text-lg text-slate-800 dark:text-slate-200">{faq.question}</span>
-                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center group-open:bg-blue-50 dark:group-open:bg-blue-500/10 transition-colors">
-                  <ChevronDown size={20} className="text-slate-400 group-open:text-blue-500 group-open:rotate-180 transition-all" />
+                <span className="font-bold text-lg text-vitta-text-primary">{faq.question}</span>
+                <div className="w-10 h-10 rounded-full bg-vitta-surface-2 flex items-center justify-center group-open:bg-vitta-accent-bg transition-colors">
+                  <ChevronDown size={20} className="text-vitta-text-muted group-open:text-vitta-accent group-open:rotate-180 transition-all" />
                 </div>
               </summary>
-              <div className="px-7 pb-7 text-slate-600 dark:text-slate-400 text-base leading-relaxed border-t border-slate-50 dark:border-slate-800 pt-6">
+              <div className="px-7 pb-7 text-vitta-text-secondary text-base leading-relaxed border-t border-vitta-border pt-6">
                 {faq.answer}
               </div>
             </details>
@@ -4395,12 +4395,12 @@ const SupportView = () => {
       </div>
 
       {/* Developer Footer */}
-      <div className="bg-[#0f172a] dark:bg-slate-900 rounded-2xl p-6 text-center space-y-2 border border-slate-800">
+      <div className="bg-vitta-text-primary rounded-xl p-6 text-center space-y-2 border border-vitta-border">
         <div className="flex items-center justify-center gap-2 text-white font-bold text-sm">
-          <Code size={18} className="text-blue-400" />
+          <Code size={18} className="text-vitta-accent" />
           <span>Sistema PowerControl - Versão 1.0</span>
         </div>
-        <p className="text-slate-500 text-[10px]">
+        <p className="text-vitta-text-muted text-[10px]">
           © 2026 ViTTA. Todos os direitos reservados.
         </p>
       </div>
@@ -4520,76 +4520,76 @@ const UsersView = () => {
     <div className="space-y-6">
       <AnimatePresence>
         {isCreatingUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">Novo Usuário</h3>
-                <button onClick={() => setIsCreatingUser(false)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">Novo Usuário</h3>
+                <button onClick={() => setIsCreatingUser(false)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={handleCreateUser} className="p-6 space-y-4">
                 {error && (
-                  <div className="p-4 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm rounded-2xl border border-rose-100 dark:border-rose-500/20">
+                  <div className="p-4 bg-vitta-danger/10 text-vitta-danger text-sm rounded-xl border border-vitta-danger/20">
                     {error}
                   </div>
                 )}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome Completo</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome Completo</label>
                   <input 
                     type="text" 
                     required
                     value={newUser.name}
                     onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     placeholder="Ex: João Silva"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">E-mail</label>
                   <input 
                     type="email" 
                     required
                     value={newUser.email}
                     onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     placeholder="joao@exemplo.com"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Senha Inicial</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Senha Inicial</label>
                   <input 
                     type="password" 
                     required
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     placeholder="Mínimo 6 caracteres"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Status</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Status</label>
                     <select 
                       value={newUser.status}
                       onChange={(e) => setNewUser({ ...newUser, status: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Ativo">Ativo</option>
                       <option value="Inativo">Inativo</option>
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Plano</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Plano</label>
                     <select 
                       value={newUser.plan}
                       onChange={(e) => setNewUser({ ...newUser, plan: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Básico">Básico</option>
                       <option value="Premium">Premium</option>
@@ -4600,14 +4600,14 @@ const UsersView = () => {
                   <button 
                     type="button"
                     onClick={() => setIsCreatingUser(false)}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? 'Criando...' : 'Criar Usuário'}
                   </button>
@@ -4617,56 +4617,56 @@ const UsersView = () => {
           </div>
         )}
         {editingUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">Editar Usuário</h3>
-                <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">Editar Usuário</h3>
+                <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
                     type="text" 
                     value={editingUser.name}
                     onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">E-mail</label>
                   <input 
                     type="email" 
                     value={editingUser.email}
                     onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Status</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Status</label>
                     <select 
                       value={editingUser.status}
                       onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Ativo">Ativo</option>
                       <option value="Inativo">Inativo</option>
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Plano</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Plano</label>
                     <select 
                       value={editingUser.plan}
                       onChange={(e) => setEditingUser({ ...editingUser, plan: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
                       <option value="Básico">Básico</option>
                       <option value="Premium">Premium</option>
@@ -4677,13 +4677,13 @@ const UsersView = () => {
                   <button 
                     type="button"
                     onClick={() => setEditingUser(null)}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all"
                   >
                     Salvar
                   </button>
@@ -4698,26 +4698,26 @@ const UsersView = () => {
         <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Usuários</h2>
         <button 
           onClick={() => setIsCreatingUser(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold text-sm hover:bg-blue-600 transition-colors"
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
         >
-          <Plus size={18} />
+          <Plus size={20} />
           Novo Usuário
         </button>
       </div>
       
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Usuário</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Plano</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Ações</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Plano</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+          <tbody className="divide-y divide-vitta-border">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+              <tr key={user.id} className="hover:bg-vitta-surface-2 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <img src={user.img} className="w-10 h-10 rounded-full object-cover" alt="" />
@@ -4729,23 +4729,23 @@ const UsersView = () => {
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                    user.status === 'Ativo' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    user.status === 'Ativo' ? 'bg-vitta-green-bg text-vitta-green' : 'bg-vitta-surface-2 text-vitta-text-muted'
                   }`}>
                     {user.status}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-vitta-text-secondary font-medium">{user.plan}</td>
-                <td className="px-6 py-4">
-                  <div className="flex gap-2">
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
                     <button 
                       onClick={() => setEditingUser(user)}
-                      className="p-2 text-slate-400 hover:text-blue-500 transition-colors"
+                      className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                     >
                       <Edit size={16} />
                     </button>
                     <button 
                       onClick={() => handleDelete(user.id)}
-                      className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                      className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -4778,48 +4778,48 @@ const UserConfigView = () => {
     <div className="space-y-10">
       <AnimatePresence>
         {editingLevel && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                <h3 className="text-xl font-bold dark:text-white">Configurar Nível de Acesso</h3>
-                <button onClick={() => setEditingLevel(null)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+                <h3 className="text-xl font-bold text-vitta-text-primary">Configurar Nível de Acesso</h3>
+                <button onClick={() => setEditingLevel(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
               <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome do Nível</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome do Nível</label>
                   <input 
                     type="text" 
                     value={editingLevel.role}
                     onChange={(e) => setEditingLevel({ ...editingLevel, role: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Descrição</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Descrição</label>
                   <textarea 
                     value={editingLevel.desc}
                     onChange={(e) => setEditingLevel({ ...editingLevel, desc: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white min-h-[100px]"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary min-h-[100px]"
                   />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
                     onClick={() => setEditingLevel(null)}
-                    className="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="flex-1 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all"
                   >
                     Salvar
                   </button>
@@ -4831,7 +4831,7 @@ const UserConfigView = () => {
       </AnimatePresence>
 
       {/* Hero Section - Following Support Model */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 rounded-[2.5rem] p-8 md:p-16 text-center text-white shadow-2xl shadow-blue-500/20">
+      <div className="relative overflow-hidden bg-gradient-to-br from-vitta-accent via-vitta-accent to-vitta-accent rounded-xl p-8 md:p-16 text-center text-white shadow-2xl shadow-vitta-accent/20">
         <div className="relative z-10 flex flex-col items-center space-y-6">
           <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border border-white/30">
             <UserCog size={32} />
@@ -4840,76 +4840,76 @@ const UserConfigView = () => {
           <p className="text-lg md:text-xl text-white/80 max-w-2xl">
             Gerencie permissões, acessos e preferências do sistema
           </p>
-          <button className="flex items-center gap-2 px-8 py-4 bg-white text-indigo-600 rounded-2xl font-bold shadow-lg hover:bg-indigo-50 transition-all transform hover:scale-105 active:scale-95">
+          <button className="flex items-center gap-2 px-8 py-4 bg-white text-vitta-accent rounded-xl font-bold shadow-lg hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95">
             <ShieldCheck size={20} />
             Verificar Permissões
           </button>
         </div>
         <div className="absolute top-0 left-0 w-64 h-64 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2 blur-3xl"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-400/20 rounded-full translate-x-1/3 translate-y-1/3 blur-3xl"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/10 rounded-full translate-x-1/3 translate-y-1/3 blur-3xl"></div>
       </div>
 
       {/* Config Sections Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Access Levels */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+        <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
           <div className="flex items-center gap-4 mb-2">
-            <div className="p-3 bg-blue-50 dark:bg-blue-500/10 text-blue-600 rounded-2xl">
+            <div className="p-3 bg-vitta-accent-bg text-vitta-accent rounded-xl">
               <Users size={24} />
             </div>
-            <h3 className="text-xl font-bold dark:text-white">Níveis de Acesso</h3>
+            <h3 className="text-xl font-bold text-vitta-text-primary">Níveis de Acesso</h3>
           </div>
           <div className="space-y-4">
             {accessLevels.map((item) => (
-              <div key={item.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group hover:border-blue-200 dark:hover:border-blue-500/30 transition-all">
+              <div key={item.id} className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border group hover:border-vitta-accent/30 transition-all">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-sm dark:text-white">{item.role}</span>
+                  <span className="font-bold text-sm text-vitta-text-primary">{item.role}</span>
                   <button 
                     onClick={() => setEditingLevel(item)}
-                    className="text-xs font-bold text-blue-500 hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-xs font-bold text-vitta-accent hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     Configurar
                   </button>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</p>
+                <p className="text-xs text-vitta-text-secondary">{item.desc}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Global Preferences */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+        <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
           <div className="flex items-center gap-4 mb-2">
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 rounded-2xl">
+            <div className="p-3 bg-vitta-green-bg text-vitta-green rounded-xl">
               <Settings size={24} />
             </div>
-            <h3 className="text-xl font-bold dark:text-white">Preferências Globais</h3>
+            <h3 className="text-xl font-bold text-vitta-text-primary">Preferências Globais</h3>
           </div>
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold dark:text-white">Auto-aprovação</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Novos usuários são aprovados automaticamente</p>
+                <p className="text-sm font-bold text-vitta-text-primary">Auto-aprovação</p>
+                <p className="text-xs text-vitta-text-secondary">Novos usuários são aprovados automaticamente</p>
               </div>
-              <div className="w-10 h-5 bg-slate-200 dark:bg-slate-700 rounded-full relative cursor-pointer">
+              <div className="w-10 h-5 bg-vitta-border rounded-full relative cursor-pointer">
                 <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold dark:text-white">Logs de Auditoria</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Registrar todas as ações administrativas</p>
+                <p className="text-sm font-bold text-vitta-text-primary">Logs de Auditoria</p>
+                <p className="text-xs text-vitta-text-secondary">Registrar todas as ações administrativas</p>
               </div>
-              <div className="w-10 h-5 bg-emerald-500 rounded-full relative cursor-pointer">
+              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
                 <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold dark:text-white">Manutenção</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Ativar modo de manutenção do sistema</p>
+                <p className="text-sm font-bold text-vitta-text-primary">Manutenção</p>
+                <p className="text-xs text-vitta-text-secondary">Ativar modo de manutenção do sistema</p>
               </div>
-              <div className="w-10 h-5 bg-slate-200 dark:bg-slate-700 rounded-full relative cursor-pointer">
+              <div className="w-10 h-5 bg-vitta-border rounded-full relative cursor-pointer">
                 <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
@@ -4917,50 +4917,50 @@ const UserConfigView = () => {
         </div>
 
         {/* Security */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+        <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
           <div className="flex items-center gap-4 mb-2">
-            <div className="p-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 rounded-2xl">
+            <div className="p-3 bg-vitta-danger/10 text-vitta-danger rounded-xl">
               <Lock size={24} />
             </div>
-            <h3 className="text-xl font-bold dark:text-white">Segurança</h3>
+            <h3 className="text-xl font-bold text-vitta-text-primary">Segurança</h3>
           </div>
           <div className="space-y-4">
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <p className="text-sm font-bold dark:text-white mb-1">Autenticação em Duas Etapas (2FA)</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Obrigatório para administradores</p>
-              <button className="px-4 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold">Gerenciar</button>
+            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
+              <p className="text-sm font-bold text-vitta-text-primary mb-1">Autenticação em Duas Etapas (2FA)</p>
+              <p className="text-xs text-vitta-text-secondary mb-3">Obrigatório para administradores</p>
+              <button className="px-4 py-2 bg-vitta-danger text-white rounded-xl text-xs font-bold">Gerenciar</button>
             </div>
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <p className="text-sm font-bold dark:text-white mb-1">Política de Senhas</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Mínimo 8 caracteres, letras e números</p>
+            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
+              <p className="text-sm font-bold text-vitta-text-primary mb-1">Política de Senhas</p>
+              <p className="text-xs text-vitta-text-secondary">Mínimo 8 caracteres, letras e números</p>
             </div>
           </div>
         </div>
 
         {/* Notifications */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+        <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
           <div className="flex items-center gap-4 mb-2">
-            <div className="p-3 bg-amber-50 dark:bg-amber-500/10 text-amber-600 rounded-2xl">
+            <div className="p-3 bg-vitta-amber-bg text-vitta-amber rounded-xl">
               <Bell size={24} />
             </div>
-            <h3 className="text-xl font-bold dark:text-white">Notificações</h3>
+            <h3 className="text-xl font-bold text-vitta-text-primary">Notificações</h3>
           </div>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold dark:text-white">Alertas de Sistema</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Receber notificações críticas</p>
+                <p className="text-sm font-bold text-vitta-text-primary">Alertas de Sistema</p>
+                <p className="text-xs text-vitta-text-secondary">Receber notificações críticas</p>
               </div>
-              <div className="w-10 h-5 bg-emerald-500 rounded-full relative cursor-pointer">
+              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
                 <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-bold dark:text-white">Relatórios Semanais</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Receber resumo de atividades</p>
+                <p className="text-sm font-bold text-vitta-text-primary">Relatórios Semanais</p>
+                <p className="text-xs text-vitta-text-secondary">Receber resumo de atividades</p>
               </div>
-              <div className="w-10 h-5 bg-emerald-500 rounded-full relative cursor-pointer">
+              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
                 <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
               </div>
             </div>
@@ -4999,8 +4999,8 @@ const AppointmentsView = ({ user }: { user: any }) => {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-bold mb-2 dark:text-white">Meus Agendamentos</h1>
-        <p className="text-slate-500 dark:text-slate-400">Gerencie suas consultas e horários marcados.</p>
+        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meus Agendamentos</h1>
+        <p className="text-vitta-text-secondary">Gerencie suas consultas e horários marcados.</p>
       </section>
 
       <div className="space-y-4">
@@ -5012,47 +5012,47 @@ const AppointmentsView = ({ user }: { user: any }) => {
           <motion.div 
             key={apt.id}
             whileHover={{ x: 4 }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center gap-6"
+            className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm flex flex-col md:flex-row md:items-center gap-6"
           >
             <div className="flex items-center gap-4 flex-1">
-              <img src={apt.imageUrl} alt={apt.professionalName} className="w-16 h-16 rounded-2xl object-cover" />
+              <img src={apt.imageUrl} alt={apt.professionalName} className="w-16 h-16 rounded-xl object-cover" />
               <div>
-                <h3 className="font-bold text-lg dark:text-white">{apt.professionalName}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{apt.specialty}</p>
+                <h3 className="font-bold text-lg text-vitta-text-primary">{apt.professionalName}</h3>
+                <p className="text-sm text-vitta-text-secondary">{apt.specialty}</p>
               </div>
             </div>
             
             <div className="flex flex-wrap gap-6 items-center">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data e Hora</p>
-                <div className="flex items-center gap-2 text-sm font-bold dark:text-white">
-                  <Calendar size={16} className="text-emerald-600" />
+                <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Data e Hora</p>
+                <div className="flex items-center gap-2 text-sm font-bold text-vitta-text-primary">
+                  <Calendar size={16} className="text-vitta-green" />
                   {new Date(apt.date).toLocaleDateString('pt-BR')} às {apt.time}
                 </div>
               </div>
 
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</p>
-                <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</p>
+                <span className="px-3 py-1 bg-vitta-green-bg text-vitta-green rounded-full text-[10px] font-bold uppercase tracking-wider">
                   Confirmado
                 </span>
               </div>
 
               <div className="flex gap-2">
-                <button className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-xl transition-all">
+                <button className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all">
                   <Edit size={20} />
                 </button>
-                <button className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">
+                <button className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all">
                   <Trash2 size={20} />
                 </button>
               </div>
             </div>
           </motion.div>
         )) : (
-          <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-            <Calendar size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 dark:text-slate-400 font-medium">Você ainda não tem agendamentos.</p>
-            <button className="mt-4 px-6 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+          <div className="p-12 text-center bg-vitta-surface rounded-xl border border-dashed border-vitta-border">
+            <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4" />
+            <p className="text-vitta-text-secondary font-medium">Você ainda não tem agendamentos.</p>
+            <button className="mt-4 px-6 py-2 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors">
               Agendar Agora
             </button>
           </div>
@@ -5099,33 +5099,33 @@ const RadioView = ({
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-1 dark:text-white">Rádio ViTTA</h1>
-          <p className="text-slate-500 dark:text-slate-400">Música e entretenimento para o seu bem-estar</p>
+          <h1 className="text-3xl font-bold mb-1 text-vitta-text-primary">Rádio ViTTA</h1>
+          <p className="text-vitta-text-secondary">Música e entretenimento para o seu bem-estar</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-gradient-to-br from-emerald-500 via-blue-600 to-indigo-700 p-1 rounded-[2.5rem] shadow-2xl shadow-blue-500/20">
-            <div className="bg-white dark:bg-slate-900 rounded-[2.3rem] p-8 md:p-12 flex flex-col items-center text-center space-y-8">
+          <div className="bg-gradient-to-br from-vitta-green via-vitta-accent to-vitta-purple p-1 rounded-xl shadow-2xl shadow-vitta-accent/20">
+            <div className="bg-vitta-surface rounded-xl p-8 md:p-12 flex flex-col items-center text-center space-y-8">
               <div className="relative">
-                <div className={`w-32 h-32 md:w-48 md:h-48 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center border-4 border-slate-100 dark:border-slate-800 transition-all duration-500 ${isPlaying ? 'scale-110 shadow-2xl shadow-emerald-500/20' : ''}`}>
-                  <Radio className={`text-blue-500 transition-all duration-500 ${isPlaying ? 'animate-pulse scale-110' : ''}`} size={64} />
+                <div className={`w-32 h-32 md:w-48 md:h-48 rounded-full bg-vitta-surface-2 flex items-center justify-center border-4 border-vitta-border transition-all duration-500 ${isPlaying ? 'scale-110 shadow-2xl shadow-vitta-green/20' : ''}`}>
+                  <Radio className={`text-vitta-accent transition-all duration-500 ${isPlaying ? 'animate-pulse scale-110' : ''}`} size={64} />
                 </div>
                 {isPlaying && (
                   <motion.div 
                     animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="absolute -top-2 -right-2 w-8 h-8 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-900"
+                    className="absolute -top-2 -right-2 w-8 h-8 bg-vitta-green rounded-full border-4 border-vitta-surface"
                   />
                 )}
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-2xl md:text-3xl font-bold dark:text-white">
+                <h2 className="text-2xl md:text-3xl font-bold text-vitta-text-primary">
                   {isPlaying ? 'Transmitindo ao Vivo' : 'Rádio Pausada'}
                 </h2>
-                <p className="text-slate-500 dark:text-slate-400 max-w-md">
+                <p className="text-vitta-text-secondary max-w-md">
                   {isPlaying 
                     ? 'Curta a melhor seleção musical preparada especialmente para você.' 
                     : 'Clique no botão abaixo para iniciar a transmissão da Rádio ViTTA.'}
@@ -5135,10 +5135,10 @@ const RadioView = ({
               <div className="flex flex-col items-center gap-6 w-full max-w-sm">
                 <button
                   onClick={() => setIsPlaying(!isPlaying)}
-                  className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all duration-300 shadow-lg ${
+                  className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-3 transition-all duration-300 shadow-lg ${
                     isPlaying 
-                      ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/20' 
-                      : 'bg-blue-500 text-white hover:bg-blue-600 shadow-blue-500/20'
+                      ? 'bg-vitta-danger text-white hover:bg-vitta-danger/90 shadow-vitta-danger/20' 
+                      : 'bg-vitta-accent text-white hover:bg-vitta-accent/90 shadow-vitta-accent/20'
                   }`}
                 >
                   {isPlaying ? <X size={24} /> : <Radio size={24} />}
@@ -5146,12 +5146,12 @@ const RadioView = ({
                 </button>
 
                 <div className="w-full space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-widest px-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
                     <span>Volume</span>
                     <span>{Math.round(volume * 100)}%</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <button onClick={() => setVolume(volume > 0 ? 0 : 0.5)} className="text-slate-400 hover:text-blue-500 transition-colors">
+                    <button onClick={() => setVolume(volume > 0 ? 0 : 0.5)} className="text-vitta-text-muted hover:text-vitta-accent transition-colors">
                       {volume === 0 ? <X size={20} /> : <Radio size={20} />}
                     </button>
                     <input 
@@ -5161,7 +5161,7 @@ const RadioView = ({
                       step="0.01" 
                       value={volume}
                       onChange={(e) => setVolume(parseFloat(e.target.value))}
-                      className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      className="flex-1 h-2 bg-vitta-border rounded-lg appearance-none cursor-pointer accent-vitta-accent"
                     />
                   </div>
                 </div>
@@ -5170,22 +5170,22 @@ const RadioView = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600">
+            <div className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-vitta-green-bg rounded-xl flex items-center justify-center text-vitta-green">
                 <Clock size={24} />
               </div>
               <div>
-                <h4 className="font-bold dark:text-white">Programação 24h</h4>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Música sem interrupções</p>
+                <h4 className="font-bold text-vitta-text-primary">Programação 24h</h4>
+                <p className="text-sm text-vitta-text-secondary">Música sem interrupções</p>
               </div>
             </div>
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-600">
+            <div className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-vitta-accent-bg rounded-xl flex items-center justify-center text-vitta-accent">
                 <Star size={24} />
               </div>
               <div>
-                <h4 className="font-bold dark:text-white">Alta Qualidade</h4>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Áudio cristalino em HD</p>
+                <h4 className="font-bold text-vitta-text-primary">Alta Qualidade</h4>
+                <p className="text-sm text-vitta-text-secondary">Áudio cristalino em HD</p>
               </div>
             </div>
           </div>
@@ -5193,29 +5193,29 @@ const RadioView = ({
 
         <div className="space-y-6">
           {isAdmin && (
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
               <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600">
+                <div className="p-2 bg-vitta-accent-bg rounded-xl text-vitta-accent">
                   <Settings size={20} />
                 </div>
-                <h3 className="font-bold text-lg dark:text-white">Configuração Admin</h3>
+                <h3 className="font-bold text-lg text-vitta-text-primary">Configuração Admin</h3>
               </div>
               
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">URL da Transmissão</label>
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">URL da Transmissão</label>
                   <input 
                     type="text" 
                     value={newUrl}
                     onChange={(e) => setNewUrl(e.target.value)}
                     placeholder="https://..."
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
                 <button 
                   onClick={handleSaveConfig}
                   disabled={isSaving || newUrl === config.url}
-                  className="w-full py-3 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isSaving ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -5226,12 +5226,12 @@ const RadioView = ({
             </div>
           )}
 
-          <div className="bg-blue-600 p-8 rounded-[2rem] text-white space-y-4 relative overflow-hidden group">
+          <div className="bg-vitta-accent p-8 rounded-xl text-white space-y-4 relative overflow-hidden group">
             <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform duration-500">
               <Radio size={120} />
             </div>
             <h3 className="text-xl font-bold relative z-10">Dica ViTTA</h3>
-            <p className="text-blue-100 text-sm leading-relaxed relative z-10">
+            <p className="text-white/80 text-sm leading-relaxed relative z-10">
               A rádio continuará tocando mesmo que você navegue por outras páginas do aplicativo. Use o mini-player que aparecerá no canto inferior.
             </p>
           </div>
@@ -5248,14 +5248,14 @@ const MiniPlayer = ({ isPlaying, setIsPlaying, volume, setVolume }: any) => {
     <motion.div 
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="fixed bottom-6 right-6 z-[60] bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-4 min-w-[280px]"
+      className="fixed bottom-6 right-6 z-[60] bg-vitta-surface p-4 rounded-xl shadow-2xl border border-vitta-border flex items-center gap-4 min-w-[280px]"
     >
-      <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white animate-pulse shadow-lg shadow-blue-500/20">
+      <div className="w-12 h-12 bg-vitta-accent rounded-xl flex items-center justify-center text-white animate-pulse shadow-lg shadow-vitta-accent/20">
         <Radio size={24} />
       </div>
       <div className="flex-1">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rádio ViTTA</p>
-        <p className="text-sm font-bold dark:text-white truncate">Ao Vivo</p>
+        <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Rádio ViTTA</p>
+        <p className="text-sm font-bold text-vitta-text-primary truncate">Ao Vivo</p>
         <div className="flex items-center gap-2 mt-1">
           <input 
             type="range" 
@@ -5264,14 +5264,14 @@ const MiniPlayer = ({ isPlaying, setIsPlaying, volume, setVolume }: any) => {
             step="0.01" 
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className="w-full h-1 bg-vitta-border rounded-lg appearance-none cursor-pointer accent-vitta-accent"
           />
         </div>
       </div>
       <div className="flex items-center gap-1">
         <button 
           onClick={() => setIsPlaying(false)}
-          className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all"
+          className="p-2 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-all"
         >
           <X size={20} />
         </button>
@@ -5363,8 +5363,8 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Farmácias de Plantão</h1>
-          <p className="text-slate-500 dark:text-slate-400">Confira as farmácias abertas hoje e nos próximos dias.</p>
+          <h1 className="text-3xl font-bold text-vitta-text-primary">Farmácias de Plantão</h1>
+          <p className="text-vitta-text-secondary">Confira as farmácias abertas hoje e nos próximos dias.</p>
         </div>
         {isAdmin && (
           <button 
@@ -5373,7 +5373,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
               setFormData({ name: '', address: '', phone: '', onCallDate: '', isActive: true });
               setShowAddModal(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
           >
             <Plus size={20} />
             Nova Farmácia
@@ -5383,7 +5383,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
 
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
         </div>
       ) : displayPharmacies.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -5395,21 +5395,21 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`relative overflow-hidden bg-white dark:bg-slate-900 rounded-3xl border-2 transition-all ${
+                className={`relative overflow-hidden bg-vitta-surface rounded-xl border-2 transition-all ${
                   isToday 
-                    ? 'border-blue-500 shadow-xl shadow-blue-500/10' 
-                    : 'border-slate-100 dark:border-slate-800'
+                    ? 'border-vitta-accent shadow-xl shadow-vitta-accent/10' 
+                    : 'border-vitta-border'
                 }`}
               >
                 {isToday && (
-                  <div className="absolute top-0 right-0 bg-blue-500 text-white px-4 py-1 rounded-bl-2xl text-xs font-bold uppercase tracking-wider">
+                  <div className="absolute top-0 right-0 bg-vitta-accent text-white px-4 py-1 rounded-bl-xl text-[10px] font-bold uppercase tracking-wider">
                     Plantão de Hoje
                   </div>
                 )}
                 
                 <div className="p-6 space-y-4">
                   <div className="flex items-start justify-between">
-                    <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-2xl text-blue-500">
+                    <div className="p-3 bg-vitta-accent-bg rounded-xl text-vitta-accent">
                       <Store size={24} />
                     </div>
                     {isAdmin && (
@@ -5418,8 +5418,8 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                           onClick={() => toggleActive(pharmacy)}
                           className={`p-2 rounded-xl transition-colors ${
                             pharmacy.isActive 
-                              ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10' 
-                              : 'text-slate-400 bg-slate-50 dark:bg-slate-800'
+                              ? 'text-vitta-green bg-vitta-green-bg' 
+                              : 'text-vitta-text-muted bg-vitta-surface-2'
                           }`}
                           title={pharmacy.isActive ? 'Desativar' : 'Ativar'}
                         >
@@ -5437,13 +5437,13 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                             });
                             setShowAddModal(true);
                           }}
-                          className="p-2 text-blue-500 bg-blue-50 dark:bg-blue-500/10 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
+                          className="p-2 text-vitta-accent bg-vitta-accent-bg rounded-xl hover:bg-vitta-accent/20 transition-colors"
                         >
                           <Edit size={18} />
                         </button>
                         <button 
                           onClick={() => handleDelete(pharmacy.id)}
-                          className="p-2 text-red-500 bg-red-50 dark:bg-red-500/10 rounded-xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors"
+                          className="p-2 text-vitta-danger bg-vitta-danger/10 rounded-xl hover:bg-vitta-danger/20 transition-colors"
                         >
                           <Trash2 size={18} />
                         </button>
@@ -5452,20 +5452,20 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                   </div>
 
                   <div>
-                    <h3 className="text-xl font-bold dark:text-white">{pharmacy.name}</h3>
+                    <h3 className="text-xl font-bold text-vitta-text-primary">{pharmacy.name}</h3>
                     <div className="mt-4 space-y-2">
-                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                        <Calendar size={16} className="text-blue-500" />
+                      <div className="flex items-center gap-3 text-vitta-text-secondary">
+                        <Calendar size={16} className="text-vitta-accent" />
                         <span className="text-sm">
                           {new Date(pharmacy.onCallDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                        <MapPin size={16} className="text-blue-500" />
+                      <div className="flex items-center gap-3 text-vitta-text-secondary">
+                        <MapPin size={16} className="text-vitta-accent" />
                         <span className="text-sm line-clamp-1">{pharmacy.address}</span>
                       </div>
-                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                        <Phone size={16} className="text-blue-500" />
+                      <div className="flex items-center gap-3 text-vitta-text-secondary">
+                        <Phone size={16} className="text-vitta-accent" />
                         <span className="text-sm">{pharmacy.phone}</span>
                       </div>
                     </div>
@@ -5473,7 +5473,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
 
                   <button 
                     onClick={() => window.open(`tel:${pharmacy.phone.replace(/\D/g, '')}`)}
-                    className="w-full py-3 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all flex items-center justify-center gap-2"
                   >
                     <Phone size={18} />
                     Ligar Agora
@@ -5484,13 +5484,13 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
           })}
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
-          <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500">
+        <div className="bg-vitta-surface p-10 rounded-xl border border-vitta-border shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+          <div className="p-4 bg-vitta-surface-2 rounded-full text-vitta-text-muted">
             <Store size={48} />
           </div>
           <div>
-            <h3 className="text-xl font-bold dark:text-white">Nenhuma Farmácia de Plantão</h3>
-            <p className="text-slate-500 dark:text-slate-400">Não há farmácias de plantão cadastradas para hoje ou para os próximos dias.</p>
+            <h3 className="text-xl font-bold text-vitta-text-primary">Nenhuma Farmácia de Plantão</h3>
+            <p className="text-vitta-text-secondary">Não há farmácias de plantão cadastradas para hoje ou para os próximos dias.</p>
           </div>
         </div>
       )}
@@ -5498,63 +5498,63 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
       {/* Modal Add/Edit */}
       <AnimatePresence>
         {showAddModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <h3 className="text-xl font-bold dark:text-white">
+              <div className="p-6 border-b border-vitta-border flex items-center justify-between">
+                <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingPharmacy ? 'Editar Farmácia' : 'Nova Farmácia'}
                 </h3>
-                <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <button onClick={() => setShowAddModal(false)} className="text-vitta-text-muted hover:text-vitta-text-primary">
                   <X size={24} />
                 </button>
               </div>
               <form onSubmit={handleSave} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold dark:text-white">Nome da Farmácia</label>
+                  <label className="text-sm font-bold text-vitta-text-primary">Nome da Farmácia</label>
                   <input 
                     type="text"
                     required
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                     placeholder="Ex: Farmácia São João"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold dark:text-white">Endereço</label>
+                  <label className="text-sm font-bold text-vitta-text-primary">Endereço</label>
                   <input 
                     type="text"
                     required
                     value={formData.address}
                     onChange={e => setFormData({...formData, address: e.target.value})}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                     placeholder="Rua, Número, Bairro"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold dark:text-white">Telefone</label>
+                  <label className="text-sm font-bold text-vitta-text-primary">Telefone</label>
                   <input 
                     type="text"
                     required
                     value={formData.phone}
                     onChange={e => setFormData({...formData, phone: e.target.value})}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                     placeholder="(00) 00000-0000"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold dark:text-white">Data do Plantão</label>
+                  <label className="text-sm font-bold text-vitta-text-primary">Data do Plantão</label>
                   <input 
                     type="date"
                     required
                     value={formData.onCallDate}
                     onChange={e => setFormData({...formData, onCallDate: e.target.value})}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                   />
                 </div>
                 <div className="flex items-center gap-2 pt-2">
@@ -5563,21 +5563,21 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                     id="isActive"
                     checked={formData.isActive}
                     onChange={e => setFormData({...formData, isActive: e.target.checked})}
-                    className="w-5 h-5 rounded border-slate-200 text-blue-500 focus:ring-blue-500/20"
+                    className="w-5 h-5 rounded border-vitta-border text-vitta-accent focus:ring-vitta-accent/20"
                   />
-                  <label htmlFor="isActive" className="text-sm font-bold dark:text-white cursor-pointer">Farmácia Ativa</label>
+                  <label htmlFor="isActive" className="text-sm font-bold text-vitta-text-primary cursor-pointer">Farmácia Ativa</label>
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button 
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                    className="flex-1 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
                   >
                     Salvar
                   </button>
@@ -5593,14 +5593,14 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
 
 const PlaceholderView = ({ title }: { title: string }) => (
   <div className="space-y-6">
-    <h1 className="text-3xl font-bold dark:text-white">{title}</h1>
-    <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
-      <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500">
+    <h1 className="text-3xl font-bold text-vitta-text-primary">{title}</h1>
+    <div className="bg-vitta-surface p-10 rounded-xl border border-vitta-border shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+      <div className="p-4 bg-vitta-surface-2 rounded-full text-vitta-text-muted">
         <LayoutGrid size={48} />
       </div>
       <div>
-        <h3 className="text-xl font-bold dark:text-white">Página em Desenvolvimento</h3>
-        <p className="text-slate-500 dark:text-slate-400">Estamos trabalhando para trazer o melhor conteúdo de {title} para você.</p>
+        <h3 className="text-xl font-bold text-vitta-text-primary">Página em Desenvolvimento</h3>
+        <p className="text-vitta-text-secondary">Estamos trabalhando para trazer o melhor conteúdo de {title} para você.</p>
       </div>
     </div>
   </div>
@@ -5686,23 +5686,23 @@ const LoginView = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950 p-6">
+    <div className="min-h-screen flex items-center justify-center bg-vitta-bg p-6">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 rounded-2xl shadow-xl shadow-blue-500/20 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-vitta-accent rounded-xl shadow-xl shadow-vitta-accent/20 mb-4">
             <Heart className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-slate-950 dark:text-white">
+          <h1 className="text-3xl font-bold text-vitta-text-primary">
             {view === 'login' ? 'Bem-vindo ao ViTTA' : 'Crie sua conta'}
           </h1>
-          <p className="text-slate-500 dark:text-slate-400">
+          <p className="text-vitta-text-secondary">
             {view === 'login' ? 'Entre na sua conta para continuar' : 'Junte-se a nós e cuide da sua saúde'}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none">
+        <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-xl shadow-vitta-accent/5">
           {error && (
-            <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm rounded-2xl border border-rose-100 dark:border-rose-800 font-medium">
+            <div className="mb-6 p-4 bg-vitta-danger/10 text-vitta-danger text-sm rounded-xl border border-vitta-danger/20 font-medium">
               {error}
             </div>
           )}
@@ -5710,47 +5710,47 @@ const LoginView = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             {view === 'signup' && (
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Nome Completo</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome Completo</label>
                 <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
                   <input 
                     type="text" 
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Seu nome"
-                    className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">E-mail</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">E-mail</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
                 <input 
                   type="email" 
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
-                  className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                  className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Senha</label>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Senha</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
                 <input 
                   type="password" 
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                  className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
             </div>
@@ -5758,17 +5758,17 @@ const LoginView = () => {
             {view === 'login' && (
               <div className="flex items-center justify-between px-1">
                 <label className="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" className="w-4 h-4 rounded border-slate-200 text-blue-500 focus:ring-blue-500/20" />
-                  <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors">Lembrar de mim</span>
+                  <input type="checkbox" className="w-4 h-4 rounded border-vitta-border text-vitta-accent focus:ring-vitta-accent/20" />
+                  <span className="text-xs text-vitta-text-secondary group-hover:text-vitta-text-primary transition-colors">Lembrar de mim</span>
                 </label>
-                <button type="button" className="text-xs font-bold text-blue-500 hover:underline">Esqueceu a senha?</button>
+                <button type="button" className="text-xs font-bold text-vitta-accent hover:underline">Esqueceu a senha?</button>
               </div>
             )}
 
             <button 
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 bg-blue-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-600 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -5782,10 +5782,10 @@ const LoginView = () => {
 
             <div className="relative py-2">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-100 dark:border-slate-800"></div>
+                <div className="w-full border-t border-vitta-border"></div>
               </div>
               <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
-                <span className="bg-white dark:bg-slate-900 px-4 text-slate-400 dark:text-slate-500">ou</span>
+                <span className="bg-vitta-surface px-4 text-vitta-text-muted">ou</span>
               </div>
             </div>
 
@@ -5793,7 +5793,7 @@ const LoginView = () => {
               type="button"
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full py-4 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
+              className="w-full py-4 bg-vitta-surface text-vitta-text-secondary border border-vitta-border rounded-xl font-bold hover:bg-vitta-surface-2 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -5817,12 +5817,12 @@ const LoginView = () => {
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-slate-50 dark:border-slate-800 text-center">
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+          <div className="mt-8 pt-8 border-t border-vitta-border text-center">
+            <p className="text-sm text-vitta-text-secondary">
               {view === 'login' ? (
-                <>Não tem uma conta? <button onClick={() => setView('signup')} className="text-blue-500 font-bold hover:underline">Cadastre-se</button></>
+                <>Não tem uma conta? <button onClick={() => setView('signup')} className="text-vitta-accent font-bold hover:underline">Cadastre-se</button></>
               ) : (
-                <>Já tem uma conta? <button onClick={() => setView('login')} className="text-blue-500 font-bold hover:underline">Entre aqui</button></>
+                <>Já tem uma conta? <button onClick={() => setView('login')} className="text-vitta-accent font-bold hover:underline">Entre aqui</button></>
               )}
             </p>
           </div>
@@ -5919,28 +5919,28 @@ export default function App() {
       console.log('DEBUG: Iniciando seedPartners...');
       
       const categoriesData = [
-        { name: 'Saúde', icon: 'Heart', color: 'bg-rose-500', description: 'Encontre profissionais de saúde' },
-        { name: 'Farmácias', icon: 'Store', color: 'bg-emerald-500', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Óticas', icon: 'Glasses', color: 'bg-blue-500', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Saúde', icon: 'Heart', color: 'bg-vitta-danger', description: 'Encontre profissionais de saúde' },
+        { name: 'Farmácias', icon: 'Store', color: 'bg-vitta-green', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Óticas', icon: 'Glasses', color: 'bg-vitta-accent', description: 'Descontos exclusivos para afiliados' },
         { name: 'Supermercados', icon: 'ShoppingCart', color: 'bg-violet-500', description: 'Descontos exclusivos para afiliados' },
         { name: 'Moda Masculina', icon: 'Shirt', color: 'bg-indigo-500', description: 'Descontos exclusivos para afiliados' },
         { name: 'Moda Feminina', icon: 'Shirt', color: 'bg-pink-500', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Moda Infantil', icon: 'Baby', color: 'bg-amber-500', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Moda Infantil', icon: 'Baby', color: 'bg-vitta-amber', description: 'Descontos exclusivos para afiliados' },
         { name: 'Calçados', icon: 'Footprints', color: 'bg-orange-500', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Suplementos', icon: 'Heart', color: 'bg-red-500', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Suplementos', icon: 'Heart', color: 'bg-vitta-danger', description: 'Descontos exclusivos para afiliados' },
         { name: 'Estética', icon: 'Heart', color: 'bg-fuchsia-500', description: 'Descontos exclusivos para afiliados' },
         { name: 'Eletrodomésticos', icon: 'Zap', color: 'bg-cyan-500', description: 'Descontos exclusivos para afiliados' },
         { name: 'Móveis', icon: 'Armchair', color: 'bg-yellow-600', description: 'Descontos exclusivos para afiliados' },
         { name: 'Salão de Beleza', icon: 'Scissors', color: 'bg-purple-500', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Material de Construção', icon: 'Hammer', color: 'bg-slate-500', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Material de Construção', icon: 'Hammer', color: 'bg-vitta-text-muted', description: 'Descontos exclusivos para afiliados' },
         { name: 'Padaria', icon: 'Coffee', color: 'bg-orange-400', description: 'Descontos exclusivos para afiliados' },
         { name: 'Lanchonete', icon: 'Coffee', color: 'bg-orange-500', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Restaurante', icon: 'Coffee', color: 'bg-rose-400', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Restaurante', icon: 'Coffee', color: 'bg-vitta-danger', description: 'Descontos exclusivos para afiliados' },
         { name: 'Pizzaria', icon: 'Pizza', color: 'bg-orange-600', description: 'Descontos exclusivos para afiliados' },
         { name: 'Sorveteria', icon: 'IceCream', color: 'bg-sky-400', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Posto de Combustíveis', icon: 'Fuel', color: 'bg-slate-600', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Pet Shop', icon: 'PawPrint', color: 'bg-emerald-400', description: 'Descontos exclusivos para afiliados' },
-        { name: 'Contador', icon: 'Calculator', color: 'bg-blue-600', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Posto de Combustíveis', icon: 'Fuel', color: 'bg-vitta-text-muted', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Pet Shop', icon: 'PawPrint', color: 'bg-vitta-green', description: 'Descontos exclusivos para afiliados' },
+        { name: 'Contador', icon: 'Calculator', color: 'bg-vitta-accent', description: 'Descontos exclusivos para afiliados' },
         { name: 'Cabeleireiro', icon: 'Scissors', color: 'bg-pink-400', description: 'Descontos exclusivos para afiliados' },
         { name: 'Pintor', icon: 'Wrench', color: 'bg-cyan-400', description: 'Descontos exclusivos para afiliados' },
       ];
@@ -6066,8 +6066,8 @@ export default function App() {
 
   if (!isAuthReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
-        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-vitta-bg">
+        <div className="w-12 h-12 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
       </div>
     );
   }
@@ -6198,7 +6198,7 @@ export default function App() {
                 />
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-vitta-danger hover:bg-rose-50 dark:hover:bg-vitta-danger/10 mx-2"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-vitta-danger hover:bg-vitta-danger/10 mx-2"
                 >
                   <LogOut size={18} />
                   <span className="text-sm">Sair</span>
@@ -6281,12 +6281,12 @@ export default function App() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 overflow-hidden"
+                      className="absolute right-0 mt-2 w-80 bg-vitta-surface rounded-xl shadow-2xl border border-vitta-border z-50 overflow-hidden"
                     >
-                      <div className="p-4 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between">
-                        <h3 className="font-bold dark:text-white">Notificações</h3>
+                      <div className="p-4 border-b border-vitta-border flex items-center justify-between">
+                        <h3 className="font-bold text-vitta-text-primary">Notificações</h3>
                         {unreadCount > 0 && (
-                          <span className="text-[10px] bg-blue-50 dark:bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full font-bold">
+                          <span className="text-[10px] bg-vitta-accent-bg text-vitta-accent px-2 py-1 rounded-full font-bold">
                             {unreadCount} novas
                           </span>
                         )}
@@ -6296,13 +6296,13 @@ export default function App() {
                           notifications.map((notification) => (
                             <div 
                               key={notification.id}
-                              className={`p-4 border-b border-slate-50 dark:border-slate-800 last:border-0 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 relative group ${!notification.read ? 'bg-blue-50/30 dark:bg-blue-500/5' : ''}`}
+                              className={`p-4 border-b border-vitta-border last:border-0 transition-colors hover:bg-vitta-surface-2 relative group ${!notification.read ? 'bg-vitta-accent-bg/30' : ''}`}
                             >
                               <div className="flex gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                                  notification.type === 'exam' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500' :
-                                  notification.type === 'appointment' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-500' :
-                                  'bg-slate-50 dark:bg-slate-800 text-slate-500'
+                                  notification.type === 'exam' ? 'bg-vitta-green-bg text-vitta-green' :
+                                  notification.type === 'appointment' ? 'bg-vitta-accent-bg text-vitta-accent' :
+                                  'bg-vitta-surface-2 text-vitta-text-muted'
                                 }`}>
                                   {notification.type === 'exam' ? <Stethoscope size={18} /> :
                                    notification.type === 'appointment' ? <Calendar size={18} /> :
@@ -6310,17 +6310,17 @@ export default function App() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-start justify-between gap-2">
-                                    <p className={`text-sm font-bold dark:text-white truncate ${!notification.read ? 'pr-4' : ''}`}>
+                                    <p className={`text-sm font-bold text-vitta-text-primary truncate ${!notification.read ? 'pr-4' : ''}`}>
                                       {notification.title}
                                     </p>
                                     {!notification.read && (
-                                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 shrink-0" />
+                                      <div className="w-2 h-2 bg-vitta-accent rounded-full mt-1.5 shrink-0" />
                                     )}
                                   </div>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                                  <p className="text-xs text-vitta-text-secondary line-clamp-2 mt-0.5">
                                     {notification.message}
                                   </p>
-                                  <p className="text-[10px] text-slate-400 mt-2">
+                                  <p className="text-[10px] text-vitta-text-muted mt-2">
                                     {notification.createdAt?.toDate ? 
                                       notification.createdAt.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 
                                       'Agora'}
@@ -6331,7 +6331,7 @@ export default function App() {
                                 {!notification.read && (
                                   <button 
                                     onClick={() => markNotificationAsRead(notification.id)}
-                                    className="p-1.5 bg-white dark:bg-slate-900 shadow-sm rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all"
+                                    className="p-1.5 bg-vitta-surface shadow-sm rounded-lg text-vitta-accent hover:bg-vitta-accent-bg transition-all"
                                     title="Marcar como lida"
                                   >
                                     <Check size={14} />
@@ -6339,7 +6339,7 @@ export default function App() {
                                 )}
                                 <button 
                                   onClick={() => deleteNotification(notification.id)}
-                                  className="p-1.5 bg-white dark:bg-slate-900 shadow-sm rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
+                                  className="p-1.5 bg-vitta-surface shadow-sm rounded-lg text-vitta-danger hover:bg-vitta-danger/10 transition-all"
                                   title="Excluir"
                                 >
                                   <Trash2 size={14} />
@@ -6349,20 +6349,20 @@ export default function App() {
                           ))
                         ) : (
                           <div className="p-10 text-center space-y-3">
-                            <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 mx-auto">
+                            <div className="w-12 h-12 bg-vitta-surface-2 rounded-full flex items-center justify-center text-vitta-text-muted mx-auto">
                               <Bell size={24} />
                             </div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma notificação por aqui.</p>
+                            <p className="text-sm text-vitta-text-secondary">Nenhuma notificação por aqui.</p>
                           </div>
                         )}
                       </div>
                       {notifications.length > 0 && (
-                        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-center">
+                        <div className="p-3 bg-vitta-surface-2 text-center">
                           <button 
                             onClick={() => {
                               notifications.forEach(n => !n.read && markNotificationAsRead(n.id));
                             }}
-                            className="text-[10px] font-bold text-blue-500 uppercase tracking-widest hover:underline"
+                            className="text-[10px] font-bold text-vitta-accent uppercase tracking-widest hover:underline"
                           >
                             Marcar todas como lidas
                           </button>
@@ -6373,15 +6373,15 @@ export default function App() {
                 )}
               </AnimatePresence>
             </div>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3 pl-4 border-l border-vitta-border">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold dark:text-white">{user.displayName || 'Usuário'}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{userData?.plan || 'Membro Free'}</p>
+                <p className="text-sm font-bold text-vitta-text-primary">{user.displayName || 'Usuário'}</p>
+                <p className="text-xs text-vitta-text-secondary">{userData?.plan || 'Membro Free'}</p>
               </div>
               <img 
                 src={user.photoURL || "https://picsum.photos/seed/user/100/100"} 
                 alt="Profile" 
-                className="w-10 h-10 rounded-xl object-cover border-2 border-white dark:border-slate-800 shadow-sm"
+                className="w-10 h-10 rounded-xl object-cover border-2 border-vitta-surface shadow-sm"
               />
             </div>
           </div>
