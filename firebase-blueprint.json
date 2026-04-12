@@ -21,6 +21,8 @@
         "state": { "type": "string" },
         "cpf": { "type": "string" },
         "rg": { "type": "string" },
+        "documentFrontUrl": { "type": "string" },
+        "documentBackUrl": { "type": "string" },
         "photoURL": { "type": "string" },
         "deletionRequested": { "type": "boolean" },
         "deletionRequestedAt": { "type": "string", "format": "date-time" },
@@ -151,9 +153,33 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title", "message", "type", "read"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "System-wide configurations",
+      "type": "object",
+      "properties": {
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "number" },
+              "role": { "type": "string" },
+              "desc": { "type": "string" }
+            },
+            "required": ["id", "role", "desc"]
+          }
+        }
+      },
+      "required": ["levels"]
     }
   },
   "firestore": {
+    "/system_configs/{configId}": {
+      "schema": "SystemConfig",
+      "description": "System configurations like access levels"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "User profiles"

@@ -313,7 +313,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-vitta-text-primary">Alterar Senha</h2>
             <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
-              <X size={20} className="text-slate-400" />
+              <X size={20} className="text-vitta-text-muted" />
             </button>
           </div>
 
@@ -331,7 +331,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
                 type="password" 
                 value={passwords.new}
                 onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 placeholder="••••••••"
               />
             </div>
@@ -341,7 +341,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
                 type="password" 
                 value={passwords.confirm}
                 onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all dark:text-white"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 placeholder="••••••••"
               />
             </div>
@@ -350,7 +350,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
           <button 
             onClick={handleUpdate}
             disabled={isSaving}
-            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-4 bg-vitta-accent text-white rounded-2xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {isSaving ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -417,7 +417,7 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-vitta-text-primary">Registrar Saúde</h2>
             <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
-              <X size={20} className="text-slate-400" />
+              <X size={20} className="text-vitta-text-muted" />
             </button>
           </div>
 
@@ -1028,7 +1028,7 @@ const StatCard = ({ stat }: any) => {
         </div>
         {stat.change !== undefined && (
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            stat.change > 0 ? 'bg-vitta-green-bg text-vitta-green' : 'bg-rose-50 text-vitta-danger'
+            stat.change > 0 ? 'bg-vitta-green-bg text-vitta-green' : 'bg-vitta-danger/10 text-vitta-danger'
           }`}>
             {stat.change > 0 ? '+' : ''}{stat.change}%
           </span>
@@ -2301,9 +2301,9 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
       {/* Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Categorias Disponíveis', value: categories.length, color: 'text-emerald-500' },
-          { label: 'Estabelecimentos Parceiros', value: partners.length + '+', color: 'text-blue-500' },
-          { label: 'De Desconto para Afiliados', value: 'Até 50%', color: 'text-rose-500' },
+          { label: 'Categorias Disponíveis', value: categories.length, color: 'text-vitta-green' },
+          { label: 'Estabelecimentos Parceiros', value: partners.length + '+', color: 'text-vitta-accent' },
+          { label: 'De Desconto para Afiliados', value: 'Até 50%', color: 'text-vitta-danger' },
         ].map((stat, i) => (
           <div key={i} className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm text-center space-y-1">
             <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
@@ -2367,7 +2367,7 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
             <p className="text-vitta-text-secondary font-medium">Nenhuma categoria encontrada para sua busca.</p>
             <button 
               onClick={() => setSearchQuery('')}
-              className="mt-4 text-blue-500 font-bold hover:underline"
+              className="mt-4 text-vitta-accent font-bold hover:underline"
             >
               Limpar busca
             </button>
@@ -2450,7 +2450,7 @@ const OffersView = ({ user }: { user?: any }) => {
                 </div>
               </div>
               <div className="p-6 flex-1 flex flex-col">
-                <h3 className="font-bold text-xl mb-2 dark:text-white">{offer.title}</h3>
+                <h3 className="font-bold text-xl mb-2 text-vitta-text-primary">{offer.title}</h3>
                 <p className="text-sm text-vitta-text-secondary mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
                 <button 
                   onClick={() => handleRedeem(offer)}
@@ -2476,6 +2476,8 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
   const [isSaving, setIsSaving] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFrontFile, setSelectedFrontFile] = useState<File | null>(null);
+  const [selectedBackFile, setSelectedBackFile] = useState<File | null>(null);
   const [profileData, setProfileData] = useState({
     name: userData?.name || user?.displayName || '',
     email: userData?.email || user?.email || '',
@@ -2489,6 +2491,8 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
     state: userData?.state || '',
     cpf: userData?.cpf || '',
     rg: userData?.rg || '',
+    documentFrontUrl: userData?.documentFrontUrl || '',
+    documentBackUrl: userData?.documentBackUrl || '',
     photoURL: userData?.photoURL || user?.photoURL || 'https://picsum.photos/seed/user/200/200',
     deletionRequested: userData?.deletionRequested || false,
     twoFactorEnabled: userData?.twoFactorEnabled || false
@@ -2510,6 +2514,8 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         state: userData.state || prev.state,
         cpf: userData.cpf || prev.cpf,
         rg: userData.rg || prev.rg,
+        documentFrontUrl: userData.documentFrontUrl || prev.documentFrontUrl,
+        documentBackUrl: userData.documentBackUrl || prev.documentBackUrl,
         photoURL: userData.photoURL || prev.photoURL,
         deletionRequested: userData.deletionRequested || false,
         twoFactorEnabled: userData.twoFactorEnabled || false
@@ -2533,11 +2539,45 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
     }
   };
 
+  const handleFrontFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('A imagem deve ter menos de 5MB.');
+        return;
+      }
+      setSelectedFrontFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileData(prev => ({ ...prev, documentFrontUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleBackFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('A imagem deve ter menos de 5MB.');
+        return;
+      }
+      setSelectedBackFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileData(prev => ({ ...prev, documentBackUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = async () => {
     if (!user) return;
     setIsSaving(true);
     try {
       let finalPhotoURL = profileData.photoURL;
+      let finalFrontUrl = profileData.documentFrontUrl;
+      let finalBackUrl = profileData.documentBackUrl;
 
       if (selectedFile) {
         const storageRef = ref(storage, `users/${user.uid}/profile_photo`);
@@ -2545,10 +2585,24 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         finalPhotoURL = await getDownloadURL(storageRef);
       }
 
+      if (selectedFrontFile) {
+        const frontRef = ref(storage, `users/${user.uid}/documents/front_id`);
+        await uploadBytes(frontRef, selectedFrontFile);
+        finalFrontUrl = await getDownloadURL(frontRef);
+      }
+
+      if (selectedBackFile) {
+        const backRef = ref(storage, `users/${user.uid}/documents/back_id`);
+        await uploadBytes(backRef, selectedBackFile);
+        finalBackUrl = await getDownloadURL(backRef);
+      }
+
       const updatedData = {
         ...userData,
         ...profileData,
         photoURL: finalPhotoURL,
+        documentFrontUrl: finalFrontUrl,
+        documentBackUrl: finalBackUrl,
         uid: user.uid,
         updatedAt: new Date().toISOString()
       };
@@ -2769,6 +2823,44 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                   placeholder="00.000.000-0"
                   className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all" 
                 />
+              </div>
+            </div>
+
+            {/* Document Uploads */}
+            <div className="pt-4 border-t border-vitta-border">
+              <h3 className="text-sm font-bold text-vitta-text-primary mb-4">Fotos do Documento (RG ou CNH)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Front */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Frente</label>
+                  <div className="relative group w-full h-40 bg-vitta-surface-2 rounded-xl border-2 border-dashed border-vitta-border hover:border-vitta-purple/50 transition-colors overflow-hidden flex flex-col items-center justify-center cursor-pointer">
+                    {profileData.documentFrontUrl ? (
+                      <img src={profileData.documentFrontUrl} alt="Frente do Documento" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="flex flex-col items-center text-vitta-text-muted group-hover:text-vitta-purple transition-colors">
+                        <Camera size={32} className="mb-2" />
+                        <span className="text-xs font-bold">Adicionar Frente</span>
+                      </div>
+                    )}
+                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFrontFileChange} />
+                  </div>
+                </div>
+
+                {/* Back */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Verso</label>
+                  <div className="relative group w-full h-40 bg-vitta-surface-2 rounded-xl border-2 border-dashed border-vitta-border hover:border-vitta-purple/50 transition-colors overflow-hidden flex flex-col items-center justify-center cursor-pointer">
+                    {profileData.documentBackUrl ? (
+                      <img src={profileData.documentBackUrl} alt="Verso do Documento" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="flex flex-col items-center text-vitta-text-muted group-hover:text-vitta-purple transition-colors">
+                        <Camera size={32} className="mb-2" />
+                        <span className="text-xs font-bold">Adicionar Verso</span>
+                      </div>
+                    )}
+                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleBackFileChange} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4011,15 +4103,12 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       onChange={(e) => setNewItem({ ...newItem, color: e.target.value })}
                       className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
-                      <option value="bg-emerald-500">Esmeralda</option>
-                      <option value="bg-blue-500">Azul</option>
-                      <option value="bg-rose-500">Rosa</option>
-                      <option value="bg-amber-500">Âmbar</option>
-                      <option value="bg-indigo-500">Índigo</option>
-                      <option value="bg-violet-500">Violeta</option>
-                      <option value="bg-orange-500">Laranja</option>
-                      <option value="bg-cyan-500">Ciano</option>
-                      <option value="bg-slate-500">Cinza</option>
+                      <option value="bg-vitta-green">Verde</option>
+                      <option value="bg-vitta-accent">Azul</option>
+                      <option value="bg-vitta-danger">Vermelho</option>
+                      <option value="bg-vitta-amber">Âmbar</option>
+                      <option value="bg-vitta-purple">Roxo</option>
+                      <option value="bg-vitta-text-muted">Cinza</option>
                     </select>
                   </div>
                 </div>
@@ -4121,11 +4210,8 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                       <option value="bg-vitta-accent">Azul ViTTA</option>
                       <option value="bg-vitta-danger">Vermelho</option>
                       <option value="bg-vitta-amber">Âmbar</option>
-                      <option value="bg-indigo-500">Índigo</option>
-                      <option value="bg-violet-500">Violeta</option>
-                      <option value="bg-orange-500">Laranja</option>
-                      <option value="bg-cyan-500">Ciano</option>
-                      <option value="bg-slate-500">Cinza</option>
+                      <option value="bg-vitta-purple">Roxo</option>
+                      <option value="bg-vitta-text-muted">Cinza</option>
                     </select>
                   </div>
                 </div>
@@ -4767,11 +4853,41 @@ const UserConfigView = () => {
     { id: 3, role: 'Usuário Padrão', desc: 'Acesso às funcionalidades básicas' }
   ]);
   const [editingLevel, setEditingLevel] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const docRef = doc(db, 'system_configs', 'access_levels');
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.levels && Array.isArray(data.levels)) {
+          setAccessLevels(data.levels);
+        }
+      } else {
+        // Initialize if it doesn't exist
+        setDoc(docRef, { levels: accessLevels }, { merge: true }).catch(err => {
+          console.error("Failed to initialize access levels", err);
+        });
+      }
+      setIsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_configs/access_levels');
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAccessLevels(accessLevels.map(al => al.id === editingLevel.id ? editingLevel : al));
-    setEditingLevel(null);
+    const newAccessLevels = accessLevels.map(al => al.id === editingLevel.id ? editingLevel : al);
+    
+    try {
+      await setDoc(doc(db, 'system_configs', 'access_levels'), { levels: newAccessLevels }, { merge: true });
+      setEditingLevel(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'system_configs/access_levels');
+    }
   };
 
   return (
