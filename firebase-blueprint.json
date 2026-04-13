@@ -154,6 +154,18 @@
       },
       "required": ["userId", "title", "message", "type", "read"]
     },
+    "VerificationCode": {
+      "title": "VerificationCode",
+      "description": "Temporary 2FA verification code",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "code": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "code", "expiresAt"]
+    },
     "SystemConfig": {
       "title": "SystemConfig",
       "description": "System-wide configurations",
@@ -215,6 +227,10 @@
     "/notifications/{notificationId}": {
       "schema": "Notification",
       "description": "User notifications"
+    },
+    "/verification_codes/{codeId}": {
+      "schema": "VerificationCode",
+      "description": "Temporary 2FA codes"
     },
     "/config/radio": {
       "schema": "RadioConfig",

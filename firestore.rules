@@ -324,5 +324,9 @@ service cloud.firestore {
                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
+
+    match /verification_codes/{codeId} {
+      allow read, write: if false; // Only accessible via Firebase Admin SDK (server)
+    }
   }
 }

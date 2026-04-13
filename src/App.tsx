@@ -18,6 +18,7 @@ import {
   MapPin,
   Menu,
   X,
+  Upload,
   FileText,
   Download,
   ClipboardList,
@@ -95,8 +96,12 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { MOCK_APPOINTMENTS, MOCK_STATS, MOCK_OFFERS, MOCK_PROFESSIONALS, MOCK_EXAMS, MOCK_PARTNERS, MOCK_CATEGORIES } from './constants';
 import { auth, db, storage, googleProvider } from './firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
 import { initializeApp, getApps } from 'firebase/app';
 import firebaseConfig from '../firebase-applet-config.json';
 import { 
@@ -113,7 +118,7 @@ import {
 import { 
   doc, 
   getDoc, 
-  setDoc, 
+  setDoc as firestoreSetDoc, 
   collection, 
   onSnapshot, 
   query, 
@@ -121,13 +126,12 @@ import {
   orderBy,
   limit,
   getDocs,
-  addDoc,
-  updateDoc,
+  addDoc as firestoreAddDoc,
+  updateDoc as firestoreUpdateDoc,
   deleteDoc,
   Timestamp,
   getDocFromServer
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import AuditLogsList from './components/Admin/AuditLogsList';
 
 const Skeleton = ({ className, ...props }: { className?: string, [key: string]: any }) => (
@@ -184,6 +188,41 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+const sanitizeData = (data: any): any => {
+  if (data === undefined) return null;
+  if (data === null) return null;
+  if (data instanceof Date) return data;
+  if (data instanceof Timestamp) return data;
+  if (Array.isArray(data)) {
+    return data.map(sanitizeData).filter(item => item !== undefined);
+  }
+  if (typeof data === 'object') {
+    const sanitized: any = {};
+    for (const key in data) {
+      if (data[key] !== undefined) {
+        sanitized[key] = sanitizeData(data[key]);
+      }
+    }
+    return sanitized;
+  }
+  return data;
+};
+
+const addDoc = (collectionRef: any, data: any) => {
+  return firestoreAddDoc(collectionRef, sanitizeData(data));
+};
+
+const setDoc = (docRef: any, data: any, options?: any) => {
+  if (options && options.merge) {
+    return firestoreSetDoc(docRef, sanitizeData(data), options);
+  }
+  return firestoreSetDoc(docRef, sanitizeData(data));
+};
+
+const updateDoc = (docRef: any, data: any) => {
+  return firestoreUpdateDoc(docRef, sanitizeData(data));
+};
 
 const logAdminAction = async (action: string, description: string) => {
   try {
@@ -288,6 +327,16 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
     setError('');
     try {
       await updatePassword(user, passwords.new);
+      
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Senha Alterada',
+        message: 'Sua senha foi alterada com sucesso.',
+        type: 'system',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
       alert('Senha atualizada com sucesso!');
       onClose();
     } catch (err: any) {
@@ -1084,10 +1133,24 @@ const AdminView = ({ user }: { user: any }) => {
     };
   }, []);
 
-  const handleDeleteApt = async (id: string) => {
+  const handleDeleteApt = async (apt: any) => {
     if (window.confirm('Tem certeza que deseja cancelar esta consulta?')) {
       try {
-        await deleteDoc(doc(db, 'appointments', id));
+        await deleteDoc(doc(db, 'appointments', apt.id));
+        
+        // Notify user about admin cancellation
+        if (apt.userId) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: apt.userId,
+            title: 'Consulta Cancelada',
+            message: `Sua consulta com ${apt.professionalName} foi cancelada pelo administrador.`,
+            type: 'appointment',
+            read: false,
+            createdAt: Timestamp.now()
+          });
+        }
+        
+        await logAdminAction('CANCEL_APPOINTMENT', `Cancelou agendamento ID: ${apt.id} de ${apt.professionalName}`);
       } catch (err) {
         console.error('Erro ao excluir agendamento:', err);
       }
@@ -1099,6 +1162,20 @@ const AdminView = ({ user }: { user: any }) => {
     try {
       const { id, ...data } = editingApt;
       await updateDoc(doc(db, 'appointments', id), data);
+      
+      // Notify user about rescheduling
+      if (data.userId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: data.userId,
+          title: 'Consulta Remarcada',
+          message: `Sua consulta com ${data.professionalName} foi remarcada para ${new Date(data.date).toLocaleDateString('pt-BR')} às ${data.time}.`,
+          type: 'appointment',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      }
+      
+      await logAdminAction('RESCHEDULE_APPOINTMENT', `Remarcou agendamento ID: ${id} para ${data.date} ${data.time}`);
       setEditingApt(null);
     } catch (err) {
       console.error('Erro ao salvar agendamento:', err);
@@ -1320,7 +1397,7 @@ const AdminView = ({ user }: { user: any }) => {
                             <Edit size={18} />
                           </button>
                           <button 
-                            onClick={() => handleDeleteApt(apt.id)}
+                            onClick={() => handleDeleteApt(apt)}
                             className="p-2 text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors"
                           >
                             <Trash2 size={18} />
@@ -1619,6 +1696,7 @@ const ProfessionalsManagementView = () => {
     if (window.confirm('Tem certeza que deseja excluir esta categoria?')) {
       try {
         await deleteDoc(doc(db, 'categories', id));
+        await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de profissional ID: ${id}`);
       } catch (err) {
         console.error('Erro ao excluir categoria:', err);
       }
@@ -1629,6 +1707,7 @@ const ProfessionalsManagementView = () => {
     if (window.confirm('Tem certeza que deseja excluir este profissional?')) {
       try {
         await deleteDoc(doc(db, 'professionals', id));
+        await logAdminAction('DELETE_PROFESSIONAL', `Excluiu o profissional ID: ${id}`);
       } catch (err) {
         console.error('Erro ao excluir profissional:', err);
       }
@@ -1641,6 +1720,7 @@ const ProfessionalsManagementView = () => {
       const { id, type, ...data } = editingItem;
       const collectionName = type === 'professional' ? 'professionals' : 'categories';
       await updateDoc(doc(db, collectionName, id), data);
+      await logAdminAction(`UPDATE_${type.toUpperCase()}`, `Editou o ${type === 'professional' ? 'profissional' : 'categoria'}: ${editingItem.name}`);
       setEditingItem(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `professionals/${editingItem.id}`);
@@ -1664,6 +1744,7 @@ const ProfessionalsManagementView = () => {
           imageUrl: 'https://picsum.photos/seed/prof/400/300',
           createdAt: new Date().toISOString()
         });
+        await logAdminAction('CREATE_PROFESSIONAL', `Criou o profissional: ${newItem.name}`);
       } else if (isCreating === 'category') {
         await addDoc(collection(db, 'categories'), {
           name: newItem.name,
@@ -1671,6 +1752,7 @@ const ProfessionalsManagementView = () => {
           type: 'professional',
           createdAt: new Date().toISOString()
         });
+        await logAdminAction('CREATE_CATEGORY', `Criou a categoria de profissional: ${newItem.name}`);
       }
       setIsCreating(null);
       setNewItem({ 
@@ -2383,8 +2465,22 @@ const OffersView = ({ user }: { user?: any }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleRedeem = (offer: any) => {
+  const handleRedeem = async (offer: any) => {
     if (!user) return;
+    
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Oferta Resgatada',
+        message: `Você resgatou a oferta "${offer.title}" de ${offer.partner}.`,
+        type: 'offer',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error('Erro ao criar notificação de oferta:', err);
+    }
+
     const phoneNumber = '5528999881386';
     const message = `Olá! Sou afiliado ViTTA e gostaria de resgatar uma oferta.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Oferta:*\nTítulo: ${offer.title}\nParceiro: ${offer.partner}\nDesconto: ${offer.discount}`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
@@ -2649,6 +2745,17 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
           deletionRequested: true,
           deletionRequestedAt: new Date().toISOString()
         }, { merge: true });
+        
+        // Confirmation notification
+        await addDoc(collection(db, 'notifications'), {
+          userId: user.uid,
+          title: 'Solicitação de Exclusão',
+          message: 'Recebemos sua solicitação de exclusão de conta. Nossa equipe processará o pedido em breve.',
+          type: 'system',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+        
         setProfileData(prev => ({ ...prev, deletionRequested: true }));
         alert('Solicitação de exclusão enviada com sucesso.');
       } catch (err) {
@@ -2999,6 +3106,8 @@ const UserExamsManagementView = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [newItem, setNewItem] = useState({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
   const [loading, setLoading] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribeExams = onSnapshot(query(collection(db, 'exams'), orderBy('createdAt', 'desc')), (snapshot) => {
@@ -3035,11 +3144,23 @@ const UserExamsManagementView = () => {
     if (!newItem.userId || !newItem.name) return;
 
     try {
+      setUploading('new');
+      let resultUrl = newItem.resultUrl;
+
+      if (selectedFile) {
+        const storageRef = ref(storage, `exam_results/${newItem.userId}/${Date.now()}_${selectedFile.name}`);
+        const uploadResult = await uploadBytes(storageRef, selectedFile);
+        resultUrl = await getDownloadURL(uploadResult.ref);
+      }
+
       await addDoc(collection(db, 'exams'), {
         ...newItem,
+        resultUrl,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
+
+      await logAdminAction('CREATE_USER_EXAM', `Registrou exame ${newItem.name} para o usuário ID: ${newItem.userId}`);
 
       // Create notification for the user
       await addDoc(collection(db, 'notifications'), {
@@ -3053,8 +3174,44 @@ const UserExamsManagementView = () => {
 
       setIsCreating(false);
       setNewItem({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
+      setSelectedFile(null);
+      setUploading(null);
     } catch (err) {
+      setUploading(null);
       handleFirestoreError(err, OperationType.CREATE, 'exams');
+    }
+  };
+
+  const handleFileUpload = async (examId: string, userId: string, file: File) => {
+    try {
+      setUploading(examId);
+      const storageRef = ref(storage, `exam_results/${userId}/${Date.now()}_${file.name}`);
+      const uploadResult = await uploadBytes(storageRef, file);
+      const resultUrl = await getDownloadURL(uploadResult.ref);
+
+      await updateDoc(doc(db, 'exams', examId), {
+        resultUrl,
+        status: 'ready',
+        updatedAt: Timestamp.now()
+      });
+
+      await logAdminAction('UPLOAD_EXAM_RESULT', `Fez upload de resultado para exame ID: ${examId}`);
+
+      const exam = exams.find(e => e.id === examId);
+      await addDoc(collection(db, 'notifications'), {
+        userId,
+        title: 'Resultado de Exame Disponível',
+        message: `O resultado do seu exame de ${exam?.name || 'exame'} já está disponível.`,
+        type: 'exam',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      setUploading(null);
+    } catch (err) {
+      console.error(err);
+      setUploading(null);
+      alert('Erro ao fazer upload do arquivo.');
     }
   };
 
@@ -3064,6 +3221,8 @@ const UserExamsManagementView = () => {
         status: newStatus,
         updatedAt: Timestamp.now()
       });
+
+      await logAdminAction('UPDATE_USER_EXAM_STATUS', `Alterou status do exame ID: ${id} para ${newStatus}`);
 
       if (newStatus === 'ready') {
         await addDoc(collection(db, 'notifications'), {
@@ -3084,6 +3243,7 @@ const UserExamsManagementView = () => {
     if (window.confirm('Excluir este exame?')) {
       try {
         await deleteDoc(doc(db, 'exams', id));
+        await logAdminAction('DELETE_USER_EXAM', `Excluiu exame de usuário ID: ${id}`);
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `exams/${id}`);
       }
@@ -3140,12 +3300,12 @@ const UserExamsManagementView = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Laboratório</label>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Resultado (Opcional)</label>
                 <input 
-                  type="text" 
-                  value={newItem.lab}
-                  onChange={(e) => setNewItem({ ...newItem, lab: e.target.value })}
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  type="file" 
+                  accept=".pdf,image/*"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-vitta-accent file:text-white hover:file:bg-vitta-accent/90 transition-all text-vitta-text-primary"
                 />
               </div>
               <div className="space-y-2">
@@ -3160,8 +3320,17 @@ const UserExamsManagementView = () => {
                 </select>
               </div>
             </div>
-            <button type="submit" className="w-full py-4 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20">
-              Registrar Exame para Usuário
+            <button 
+              type="submit" 
+              disabled={uploading === 'new'}
+              className="w-full py-4 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+            >
+              {uploading === 'new' ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Enviando...
+                </>
+              ) : 'Registrar Exame para Usuário'}
             </button>
           </form>
         </motion.div>
@@ -3207,7 +3376,39 @@ const UserExamsManagementView = () => {
                 </td>
                 <td className="px-8 py-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors">
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        id={`file-${exam.id}`}
+                        className="hidden" 
+                        accept=".pdf,image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileUpload(exam.id, exam.userId, file);
+                        }}
+                      />
+                      <label 
+                        htmlFor={`file-${exam.id}`}
+                        className={`p-2 flex items-center justify-center text-vitta-text-muted hover:text-vitta-accent transition-colors cursor-pointer ${uploading === exam.id ? 'animate-pulse' : ''}`}
+                        title="Upload de Resultado"
+                      >
+                        {uploading === exam.id ? (
+                          <div className="w-4 h-4 border-2 border-vitta-accent/30 border-t-vitta-accent rounded-full animate-spin" />
+                        ) : (
+                          <Upload size={18} />
+                        )}
+                      </label>
+                    </div>
+                    {exam.resultUrl && (
+                      <button 
+                        onClick={() => window.open(exam.resultUrl, '_blank')}
+                        className="p-2 text-vitta-text-muted hover:text-vitta-green transition-colors"
+                        title="Ver Resultado"
+                      >
+                        <FileText size={18} />
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors" title="Excluir">
                       <Trash2 size={18} />
                     </button>
                   </div>
@@ -3246,6 +3447,7 @@ const ExamsManagementView = () => {
         ...newItem,
         createdAt: new Date().toISOString()
       });
+      await logAdminAction('CREATE_EXAM_TYPE', `Criou o tipo de exame: ${newItem.name}`);
       setIsCreating(false);
       setNewItem({ name: '', price: '', description: '' });
     } catch (err) {
@@ -3257,6 +3459,7 @@ const ExamsManagementView = () => {
     if (window.confirm('Excluir este exame?')) {
       try {
         await deleteDoc(doc(db, 'exams', id));
+        await logAdminAction('DELETE_EXAM_TYPE', `Excluiu o tipo de exame ID: ${id}`);
       } catch (err) {
         console.error('Erro ao excluir exame:', err);
       }
@@ -3396,12 +3599,32 @@ const OffersManagementView = () => {
           ...newItem,
           updatedAt: Timestamp.now()
         });
+        await logAdminAction('UPDATE_OFFER', `Editou a oferta: ${newItem.title}`);
       } else {
-        await addDoc(collection(db, 'offers'), {
+        const offerRef = await addDoc(collection(db, 'offers'), {
           ...newItem,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now()
         });
+        await logAdminAction('CREATE_OFFER', `Criou a oferta: ${newItem.title}`);
+        
+        // Broadcast notification to all users for new offer
+        try {
+          const usersSnap = await getDocs(collection(db, 'users'));
+          const notificationPromises = usersSnap.docs.map(userDoc => 
+            addDoc(collection(db, 'notifications'), {
+              userId: userDoc.id,
+              title: 'Nova Oferta Disponível!',
+              message: `${newItem.partner} adicionou uma nova oferta: ${newItem.title}. Aproveite!`,
+              type: 'offer',
+              read: false,
+              createdAt: Timestamp.now()
+            })
+          );
+          await Promise.all(notificationPromises);
+        } catch (notifyErr) {
+          console.error('Erro ao enviar notificações de broadcast:', notifyErr);
+        }
       }
       setIsCreating(false);
       setEditingItem(null);
@@ -3429,6 +3652,7 @@ const OffersManagementView = () => {
     if (window.confirm('Excluir esta oferta permanentemente?')) {
       try {
         await deleteDoc(doc(db, 'offers', id));
+        await logAdminAction('DELETE_OFFER', `Excluiu a oferta ID: ${id}`);
         if (editingItem?.id === id) {
           setIsCreating(false);
           setEditingItem(null);
@@ -3665,6 +3889,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
     if (window.confirm('Tem certeza que deseja excluir este estabelecimento?')) {
       try {
         await deleteDoc(doc(db, 'partners', id));
+        await logAdminAction('DELETE_PARTNER', `Excluiu o parceiro ID: ${id}`);
       } catch (err) {
         console.error('Erro ao excluir parceiro:', err);
       }
@@ -3675,6 +3900,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
     if (window.confirm('Tem certeza que deseja excluir esta categoria?')) {
       try {
         await deleteDoc(doc(db, 'categories', id));
+        await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de parceiro ID: ${id}`);
       } catch (err) {
         console.error('Erro ao excluir categoria:', err);
       }
@@ -3703,6 +3929,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
       const { id, type, ...data } = editingItem;
       const collectionName = type === 'partner' ? 'partners' : 'categories';
       await updateDoc(doc(db, collectionName, id), data);
+      await logAdminAction(`UPDATE_${type.toUpperCase()}`, `Editou o ${type === 'partner' ? 'parceiro' : 'categoria'}: ${editingItem.name}`);
       setEditingItem(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `partners/${editingItem.id}`);
@@ -3724,6 +3951,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           imageUrl: newItem.imageUrl || 'https://picsum.photos/seed/partner/400/300',
           createdAt: new Date().toISOString()
         });
+        await logAdminAction('CREATE_PARTNER', `Criou o parceiro: ${newItem.name}`);
       } else if (isCreating === 'category') {
         await addDoc(collection(db, 'categories'), {
           name: newItem.name,
@@ -3734,6 +3962,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           description: newItem.description,
           createdAt: new Date().toISOString()
         });
+        await logAdminAction('CREATE_CATEGORY', `Criou a categoria de parceiro: ${newItem.name}`);
       }
       setIsCreating(null);
       setNewItem({ 
@@ -4884,6 +5113,7 @@ const UserConfigView = () => {
     
     try {
       await setDoc(doc(db, 'system_configs', 'access_levels'), { levels: newAccessLevels }, { merge: true });
+      await logAdminAction('UPDATE_ACCESS_LEVELS', 'Atualizou as configurações de níveis de acesso');
       setEditingLevel(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'system_configs/access_levels');
@@ -5112,6 +5342,24 @@ const AppointmentsView = ({ user }: { user: any }) => {
     return () => unsubscribe();
   }, [user]);
 
+  const handleCancelApt = async (apt: any) => {
+    if (window.confirm('Tem certeza que deseja cancelar esta consulta?')) {
+      try {
+        await deleteDoc(doc(db, 'appointments', apt.id));
+        await addDoc(collection(db, 'notifications'), {
+          userId: user.uid,
+          title: 'Consulta Cancelada',
+          message: `Sua consulta com ${apt.professionalName} foi cancelada.`,
+          type: 'appointment',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      } catch (err) {
+        console.error('Erro ao cancelar agendamento:', err);
+      }
+    }
+  };
+
   return (
     <div className="space-y-8">
       <section>
@@ -5158,7 +5406,10 @@ const AppointmentsView = ({ user }: { user: any }) => {
                 <button className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all">
                   <Edit size={20} />
                 </button>
-                <button className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all">
+                <button 
+                  onClick={() => handleCancelApt(apt)}
+                  className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all"
+                >
                   <Trash2 size={20} />
                 </button>
               </div>
@@ -5204,6 +5455,7 @@ const RadioView = ({
     setIsSaving(true);
     try {
       await setDoc(doc(db, 'config', 'radio'), { url: newUrl });
+      await logAdminAction('UPDATE_RADIO_CONFIG', `Atualizou a URL da rádio para: ${newUrl}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/radio');
     } finally {
@@ -5427,11 +5679,13 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
     try {
       if (editingPharmacy) {
         await updateDoc(doc(db, 'pharmacies', editingPharmacy.id), formData);
+        await logAdminAction('UPDATE_PHARMACY', `Editou a farmácia: ${formData.name}`);
       } else {
         await addDoc(collection(db, 'pharmacies'), {
           ...formData,
           createdAt: new Date().toISOString()
         });
+        await logAdminAction('CREATE_PHARMACY', `Criou a farmácia: ${formData.name}`);
       }
       setShowAddModal(false);
       setEditingPharmacy(null);
@@ -5445,6 +5699,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
     if (window.confirm('Tem certeza que deseja excluir esta farmácia?')) {
       try {
         await deleteDoc(doc(db, 'pharmacies', id));
+        await logAdminAction('DELETE_PHARMACY', `Excluiu a farmácia ID: ${id}`);
       } catch (error) {
         console.error('Erro ao excluir farmácia:', error);
       }
@@ -5456,6 +5711,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
       await updateDoc(doc(db, 'pharmacies', pharmacy.id), {
         isActive: !pharmacy.isActive
       });
+      await logAdminAction('TOGGLE_PHARMACY_STATUS', `Alterou status da farmácia ${pharmacy.name} para ${!pharmacy.isActive ? 'Ativo' : 'Inativo'}`);
     } catch (error) {
       console.error('Erro ao alterar status da farmácia:', error);
     }
@@ -5722,13 +5978,78 @@ const PlaceholderView = ({ title }: { title: string }) => (
   </div>
 );
 
-const LoginView = () => {
-  const [view, setView] = useState<'login' | 'signup'>('login');
+const LoginView = ({ 
+  pendingUser, 
+  userData, 
+  onVerify2FA, 
+  onCancel2FA 
+}: { 
+  pendingUser?: FirebaseUser | null, 
+  userData?: any, 
+  onVerify2FA?: () => void, 
+  onCancel2FA?: () => void 
+} = {}) => {
+  const [view, setView] = useState<'login' | 'signup' | '2fa'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pendingUser && userData?.twoFactorEnabled) {
+      setView('2fa');
+      sendVerificationCode();
+    }
+  }, [pendingUser, userData]);
+
+  const sendVerificationCode = async () => {
+    if (!pendingUser) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: pendingUser.uid, email: pendingUser.email })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao enviar código');
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Erro ao enviar código de verificação.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingUser) return;
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/auth/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: pendingUser.uid, code: twoFactorCode })
+      });
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        if (onVerify2FA) onVerify2FA();
+      } else {
+        setError(data.error || 'Código inválido ou expirado.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('Erro na verificação. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -5809,10 +6130,10 @@ const LoginView = () => {
             <Heart className="text-white" size={32} />
           </div>
           <h1 className="text-3xl font-bold text-vitta-text-primary">
-            {view === 'login' ? 'Bem-vindo ao ViTTA' : 'Crie sua conta'}
+            {view === 'login' ? 'Bem-vindo ao ViTTA' : view === 'signup' ? 'Crie sua conta' : 'Verificação em Duas Etapas'}
           </h1>
           <p className="text-vitta-text-secondary">
-            {view === 'login' ? 'Entre na sua conta para continuar' : 'Junte-se a nós e cuide da sua saúde'}
+            {view === 'login' ? 'Entre na sua conta para continuar' : view === 'signup' ? 'Junte-se a nós e cuide da sua saúde' : 'Digite o código de 6 dígitos enviado para você'}
           </p>
         </div>
 
@@ -5823,7 +6144,57 @@ const LoginView = () => {
             </div>
           )}
           
-          <form onSubmit={handleSubmit} className="space-y-6">
+          {view === '2fa' ? (
+            <form onSubmit={handleVerify2FA} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Código de Segurança</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
+                  <input 
+                    type="text" 
+                    required
+                    maxLength={6}
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary text-center tracking-[0.5em] font-bold"
+                  />
+                </div>
+                <p className="text-xs text-vitta-text-secondary text-center mt-2">O código foi enviado para seu e-mail (verifique o console do servidor).</p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  type="submit"
+                  disabled={isLoading || twoFactorCode.length !== 6}
+                  className="w-full py-4 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Verificar Código'
+                  )}
+                </button>
+                <button 
+                  type="button"
+                  onClick={sendVerificationCode}
+                  disabled={isLoading}
+                  className="w-full py-2 text-vitta-accent text-xs font-bold hover:underline disabled:opacity-50"
+                >
+                  Reenviar Código
+                </button>
+                <button 
+                  type="button"
+                  onClick={onCancel2FA}
+                  disabled={isLoading}
+                  className="w-full py-4 bg-vitta-surface text-vitta-text-secondary border border-vitta-border rounded-xl font-bold hover:bg-vitta-surface-2 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
             {view === 'signup' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome Completo</label>
@@ -5932,16 +6303,19 @@ const LoginView = () => {
               Continuar com Google
             </button>
           </form>
+          )}
 
-          <div className="mt-8 pt-8 border-t border-vitta-border text-center">
-            <p className="text-sm text-vitta-text-secondary">
-              {view === 'login' ? (
-                <>Não tem uma conta? <button onClick={() => setView('signup')} className="text-vitta-accent font-bold hover:underline">Cadastre-se</button></>
-              ) : (
-                <>Já tem uma conta? <button onClick={() => setView('login')} className="text-vitta-accent font-bold hover:underline">Entre aqui</button></>
-              )}
-            </p>
-          </div>
+          {view !== '2fa' && (
+            <div className="mt-8 pt-8 border-t border-vitta-border text-center">
+              <p className="text-sm text-vitta-text-secondary">
+                {view === 'login' ? (
+                  <>Não tem uma conta? <button onClick={() => setView('signup')} className="text-vitta-accent font-bold hover:underline">Cadastre-se</button></>
+                ) : (
+                  <>Já tem uma conta? <button onClick={() => setView('login')} className="text-vitta-accent font-bold hover:underline">Entre aqui</button></>
+                )}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5955,6 +6329,7 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [is2FAVerified, setIs2FAVerified] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -6175,6 +6550,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setIs2FAVerified(false);
     } catch (err) {
       console.error('Erro ao sair:', err);
     }
@@ -6188,8 +6564,17 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <LoginView />;
+  const needs2FA = user && userData?.twoFactorEnabled && !is2FAVerified;
+
+  if (!user || needs2FA) {
+    return (
+      <LoginView 
+        pendingUser={user} 
+        userData={userData} 
+        onVerify2FA={() => setIs2FAVerified(true)} 
+        onCancel2FA={handleLogout} 
+      />
+    );
   }
 
   const isAdmin = userData?.role === 'admin' || user?.email === 'jhecksanto@gmail.com';
