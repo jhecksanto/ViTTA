@@ -97,11 +97,17 @@ import {
   Area
 } from 'recharts';
 import { auth, db, storage, googleProvider } from './firebase';
+import { useToast } from './contexts/ToastContext.tsx';
+import InputMask from 'react-input-mask';
+import { validateCPF, validateEmail, fetchAddressByCep } from './lib/utils';
+import ConfirmationModal from './components/ConfirmationModal';
 import { 
   ref, 
   uploadBytes, 
-  getDownloadURL 
+  getDownloadURL,
+  uploadBytesResumable 
 } from 'firebase/storage';
+import imageCompression from 'browser-image-compression';
 import { initializeApp, getApps } from 'firebase/app';
 import firebaseConfig from '../firebase-applet-config.json';
 import { 
@@ -305,6 +311,7 @@ const ConfirmModal = ({
 };
 
 const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onClose: () => void }) => {
+  const { addToast } = useToast();
   const [passwords, setPasswords] = useState({
     new: '',
     confirm: ''
@@ -337,7 +344,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
         createdAt: Timestamp.now()
       });
 
-      alert('Senha atualizada com sucesso!');
+      addToast('Senha atualizada com sucesso!', 'success');
       onClose();
     } catch (err: any) {
       console.error('Erro ao atualizar senha:', err);
@@ -1095,6 +1102,7 @@ const StatCard = ({ stat }: any) => {
 };
 
 const AdminView = ({ user }: { user: any }) => {
+  const { addToast } = useToast();
   const [subTab, setSubTab] = useState<'overview' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'user-exams' | 'offers' | 'config'>('overview');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -1102,6 +1110,19 @@ const AdminView = ({ user }: { user: any }) => {
   const [usersCount, setUsersCount] = useState(0);
   const [editingApt, setEditingApt] = useState<any>(null);
   const [bookingProfessional, setBookingProfessional] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     const q = query(collection(db, 'appointments'), orderBy('date', 'desc'));
@@ -1133,28 +1154,37 @@ const AdminView = ({ user }: { user: any }) => {
     };
   }, []);
 
-  const handleDeleteApt = async (apt: any) => {
-    if (window.confirm('Tem certeza que deseja cancelar esta consulta?')) {
-      try {
-        await deleteDoc(doc(db, 'appointments', apt.id));
-        
-        // Notify user about admin cancellation
-        if (apt.userId) {
-          await addDoc(collection(db, 'notifications'), {
-            userId: apt.userId,
-            title: 'Consulta Cancelada',
-            message: `Sua consulta com ${apt.professionalName} foi cancelada pelo administrador.`,
-            type: 'appointment',
-            read: false,
-            createdAt: Timestamp.now()
-          });
+  const handleDeleteApt = (apt: any) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Cancelar Consulta',
+      message: `Tem certeza que deseja cancelar a consulta de ${apt.userName || 'Usuário'} com ${apt.professionalName}? Esta ação notificará o paciente.`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'appointments', apt.id));
+          
+          if (apt.userId) {
+            await addDoc(collection(db, 'notifications'), {
+              userId: apt.userId,
+              title: 'Consulta Cancelada',
+              message: `Sua consulta com ${apt.professionalName} foi cancelada pelo administrador.`,
+              type: 'appointment',
+              read: false,
+              createdAt: Timestamp.now()
+            });
+          }
+          
+          await logAdminAction('CANCEL_APPOINTMENT', `Cancelou agendamento ID: ${apt.id} de ${apt.professionalName}`);
+          addToast('Agendamento cancelado com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir agendamento:', err);
+          addToast('Erro ao cancelar agendamento.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
-        
-        await logAdminAction('CANCEL_APPOINTMENT', `Cancelou agendamento ID: ${apt.id} de ${apt.professionalName}`);
-      } catch (err) {
-        console.error('Erro ao excluir agendamento:', err);
       }
-    }
+    });
   };
 
   const handleSaveApt = async (e: React.FormEvent) => {
@@ -1177,8 +1207,10 @@ const AdminView = ({ user }: { user: any }) => {
       
       await logAdminAction('RESCHEDULE_APPOINTMENT', `Remarcou agendamento ID: ${id} para ${data.date} ${data.time}`);
       setEditingApt(null);
+      addToast('Agendamento remarcado com sucesso.', 'success');
     } catch (err) {
       console.error('Erro ao salvar agendamento:', err);
+      addToast('Erro ao remarcar agendamento.', 'error');
     }
   };
 
@@ -1475,7 +1507,7 @@ const AdminView = ({ user }: { user: any }) => {
                         <h3 className="font-bold text-lg mb-1 text-vitta-text-primary">{offer.name}</h3>
                         <p className="text-sm text-vitta-text-secondary line-clamp-2 mb-4">{offer.description || 'Aproveite esta oferta exclusiva.'}</p>
                         <button 
-                          onClick={() => alert('Benefício resgatado com sucesso! Apresente este código no estabelecimento: VITTA-' + Math.random().toString(36).substring(7).toUpperCase())}
+                          onClick={() => addToast('Benefício resgatado com sucesso! Apresente este código no estabelecimento: VITTA-' + Math.random().toString(36).substring(7).toUpperCase(), 'success')}
                           className="w-full py-2 bg-vitta-surface-2 text-vitta-text-primary rounded-xl text-sm font-bold hover:bg-vitta-border transition-colors"
                         >
                           Resgatar Benefício
@@ -1497,6 +1529,15 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === 'config' && <UserConfigView />}
         </motion.div>
       </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -1660,6 +1701,7 @@ const ExamsView = ({ user }: { user: any }) => {
 };
 
 const ProfessionalsManagementView = () => {
+  const { addToast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'list' | 'categories'>('list');
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -1673,6 +1715,19 @@ const ProfessionalsManagementView = () => {
     availableDays: '',
     price: '',
     city: ''
+  });
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
   });
 
   useEffect(() => {
@@ -1692,26 +1747,46 @@ const ProfessionalsManagementView = () => {
     };
   }, []);
 
-  const handleDeleteCategory = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta categoria?')) {
-      try {
-        await deleteDoc(doc(db, 'categories', id));
-        await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de profissional ID: ${id}`);
-      } catch (err) {
-        console.error('Erro ao excluir categoria:', err);
+  const handleDeleteCategory = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Categoria',
+      message: 'Tem certeza que deseja excluir esta categoria? Esta ação não pode ser desfeita.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'categories', id));
+          await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de profissional ID: ${id}`);
+          addToast('Categoria excluída com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir categoria:', err);
+          addToast('Erro ao excluir categoria.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
-  const handleDeleteProfessional = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este profissional?')) {
-      try {
-        await deleteDoc(doc(db, 'professionals', id));
-        await logAdminAction('DELETE_PROFESSIONAL', `Excluiu o profissional ID: ${id}`);
-      } catch (err) {
-        console.error('Erro ao excluir profissional:', err);
+  const handleDeleteProfessional = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Profissional',
+      message: 'Tem certeza que deseja excluir este profissional? Todos os dados vinculados serão perdidos.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'professionals', id));
+          await logAdminAction('DELETE_PROFESSIONAL', `Excluiu o profissional ID: ${id}`);
+          addToast('Profissional excluído com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir profissional:', err);
+          addToast('Erro ao excluir profissional.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -1722,8 +1797,10 @@ const ProfessionalsManagementView = () => {
       await updateDoc(doc(db, collectionName, id), data);
       await logAdminAction(`UPDATE_${type.toUpperCase()}`, `Editou o ${type === 'professional' ? 'profissional' : 'categoria'}: ${editingItem.name}`);
       setEditingItem(null);
+      addToast(`${type === 'professional' ? 'Profissional' : 'Categoria'} atualizado com sucesso.`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `professionals/${editingItem.id}`);
+      addToast(`Erro ao atualizar ${editingItem.type === 'professional' ? 'profissional' : 'categoria'}.`, 'error');
     }
   };
 
@@ -1764,8 +1841,10 @@ const ProfessionalsManagementView = () => {
         price: '',
         city: ''
       });
+      addToast(`${isCreating === 'professional' ? 'Profissional' : 'Categoria'} criado com sucesso.`, 'success');
     } catch (err) {
       console.error('Erro ao criar item:', err);
+      addToast('Erro ao criar item.', 'error');
     }
   };
 
@@ -2047,6 +2126,15 @@ const ProfessionalsManagementView = () => {
           ))}
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -2569,6 +2657,7 @@ const OffersView = ({ user }: { user?: any }) => {
 };
 
 const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMode: boolean, setIsDarkMode: (v: boolean) => void, user: FirebaseUser | null, userData: any }) => {
+  const { addToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -2593,6 +2682,52 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
     deletionRequested: userData?.deletionRequested || false,
     twoFactorEnabled: userData?.twoFactorEnabled || false
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+
+  const compressImage = async (file: File) => {
+    const options = {
+      maxSizeMB: 0.2,
+      maxWidthOrHeight: 800,
+      useWebWorker: true,
+      fileType: 'image/jpeg'
+    };
+    try {
+      return await imageCompression(file, options);
+    } catch (error) {
+      console.error('Erro ao comprimir imagem:', error);
+      return file;
+    }
+  };
+
+  const handleCepChange = async (cep: string) => {
+    setProfileData(prev => ({ ...prev, zip: cep }));
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setIsSearchingCep(true);
+      const address = await fetchAddressByCep(cleanCep);
+      if (address) {
+        setProfileData(prev => ({
+          ...prev,
+          street: address.street,
+          neighborhood: address.neighborhood,
+          city: address.city,
+          state: address.state
+        }));
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.zip;
+          return newErrors;
+        });
+      } else {
+        setErrors(prev => ({ ...prev, zip: 'CEP não encontrado' }));
+      }
+      setIsSearchingCep(false);
+    }
+  };
 
   useEffect(() => {
     if (userData) {
@@ -2619,78 +2754,99 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
     }
   }, [userData]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) { // 1MB limit
-        alert('A imagem deve ter menos de 1MB.');
-        return;
-      }
-      setSelectedFile(file);
+      setIsSaving(true);
+      const compressedFile = await compressImage(file);
+      setSelectedFile(compressedFile);
       const reader = new FileReader();
       reader.onloadend = () => {
         setProfileData(prev => ({ ...prev, photoURL: reader.result as string }));
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressedFile);
+      setIsSaving(false);
     }
   };
 
-  const handleFrontFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFrontFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        alert('A imagem deve ter menos de 5MB.');
-        return;
-      }
-      setSelectedFrontFile(file);
+      setIsSaving(true);
+      const compressedFile = await compressImage(file);
+      setSelectedFrontFile(compressedFile);
       const reader = new FileReader();
       reader.onloadend = () => {
         setProfileData(prev => ({ ...prev, documentFrontUrl: reader.result as string }));
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressedFile);
+      setIsSaving(false);
     }
   };
 
-  const handleBackFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBackFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        alert('A imagem deve ter menos de 5MB.');
-        return;
-      }
-      setSelectedBackFile(file);
+      setIsSaving(true);
+      const compressedFile = await compressImage(file);
+      setSelectedBackFile(compressedFile);
       const reader = new FileReader();
       reader.onloadend = () => {
         setProfileData(prev => ({ ...prev, documentBackUrl: reader.result as string }));
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressedFile);
+      setIsSaving(false);
     }
   };
 
   const handleSave = async () => {
     if (!user) return;
+    
+    // Validate CPF if present
+    if (profileData.cpf && profileData.cpf.replace(/\D/g, '').length === 11 && !validateCPF(profileData.cpf)) {
+      setErrors(prev => ({ ...prev, cpf: 'CPF Inválido' }));
+      return;
+    }
+
     setIsSaving(true);
+    setSaveMessage(null);
+    setUploadProgress({});
+
     try {
       let finalPhotoURL = profileData.photoURL;
       let finalFrontUrl = profileData.documentFrontUrl;
       let finalBackUrl = profileData.documentBackUrl;
 
+      const uploadWithProgress = (file: File, path: string, key: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const storageRef = ref(storage, path);
+          const uploadTask = uploadBytesResumable(storageRef, file);
+
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(prev => ({ ...prev, [key]: progress }));
+            }, 
+            (error) => reject(error), 
+            () => {
+              getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+                resolve(downloadURL);
+              });
+            }
+          );
+        });
+      };
+
       if (selectedFile) {
-        const storageRef = ref(storage, `users/${user.uid}/profile_photo`);
-        await uploadBytes(storageRef, selectedFile);
-        finalPhotoURL = await getDownloadURL(storageRef);
+        finalPhotoURL = await uploadWithProgress(selectedFile, `users/${user.uid}/profile_photo`, 'photo');
       }
 
       if (selectedFrontFile) {
-        const frontRef = ref(storage, `users/${user.uid}/documents/front_id`);
-        await uploadBytes(frontRef, selectedFrontFile);
-        finalFrontUrl = await getDownloadURL(frontRef);
+        finalFrontUrl = await uploadWithProgress(selectedFrontFile, `users/${user.uid}/documents/front_id`, 'front');
       }
 
       if (selectedBackFile) {
-        const backRef = ref(storage, `users/${user.uid}/documents/back_id`);
-        await uploadBytes(backRef, selectedBackFile);
-        finalBackUrl = await getDownloadURL(backRef);
+        finalBackUrl = await uploadWithProgress(selectedBackFile, `users/${user.uid}/documents/back_id`, 'back');
       }
 
       const updatedData = {
@@ -2705,7 +2861,6 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
 
       await setDoc(doc(db, 'users', user.uid), updatedData, { merge: true });
       
-      // Also update Auth profile if name or photo changed
       if (profileData.name !== user.displayName || finalPhotoURL !== user.photoURL) {
         await updateProfile(user, {
           displayName: profileData.name,
@@ -2714,10 +2869,13 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
       }
       
       setSelectedFile(null);
-      alert('Perfil atualizado com sucesso!');
+      setSelectedFrontFile(null);
+      setSelectedBackFile(null);
+      setSaveMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
+      setTimeout(() => setSaveMessage(null), 5000);
     } catch (err) {
       console.error('Erro ao salvar perfil:', err);
-      alert('Erro ao salvar perfil. Tente novamente.');
+      setSaveMessage({ type: 'error', text: 'Erro ao salvar perfil. Tente novamente.' });
     } finally {
       setIsSaving(false);
     }
@@ -2731,7 +2889,7 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         twoFactorEnabled: newValue
       }, { merge: true });
       setProfileData(prev => ({ ...prev, twoFactorEnabled: newValue }));
-      alert(newValue ? '2FA ativado com sucesso!' : '2FA desativado.');
+      addToast(newValue ? '2FA ativado com sucesso!' : '2FA desativado.', 'success');
     } catch (err) {
       console.error('Erro ao alternar 2FA:', err);
     }
@@ -2739,28 +2897,35 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
 
   const handleRequestDeletion = async () => {
     if (!user) return;
-    if (window.confirm('Tem certeza que deseja solicitar a exclusão da sua conta? Esta ação será processada pela nossa equipe.')) {
-      try {
-        await setDoc(doc(db, 'users', user.uid), {
-          deletionRequested: true,
-          deletionRequestedAt: new Date().toISOString()
-        }, { merge: true });
-        
-        // Confirmation notification
-        await addDoc(collection(db, 'notifications'), {
-          userId: user.uid,
-          title: 'Solicitação de Exclusão',
-          message: 'Recebemos sua solicitação de exclusão de conta. Nossa equipe processará o pedido em breve.',
-          type: 'system',
-          read: false,
-          createdAt: Timestamp.now()
-        });
-        
-        setProfileData(prev => ({ ...prev, deletionRequested: true }));
-        alert('Solicitação de exclusão enviada com sucesso.');
-      } catch (err) {
-        console.error('Erro ao solicitar exclusão:', err);
-      }
+    setIsConfirmModalOpen(true);
+  };
+
+  const confirmDeletion = async () => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        deletionRequested: true,
+        deletionRequestedAt: new Date().toISOString()
+      }, { merge: true });
+      
+      // Confirmation notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Solicitação de Exclusão',
+        message: 'Recebemos sua solicitação de exclusão de conta. Nossa equipe processará o pedido em breve.',
+        type: 'system',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+      
+      setProfileData(prev => ({ ...prev, deletionRequested: true }));
+      setSaveMessage({ type: 'success', text: 'Solicitação de exclusão enviada com sucesso.' });
+      setTimeout(() => setSaveMessage(null), 5000);
+    } catch (err) {
+      console.error('Erro ao solicitar exclusão:', err);
+      setSaveMessage({ type: 'error', text: 'Erro ao solicitar exclusão. Tente novamente.' });
+    } finally {
+      setIsConfirmModalOpen(false);
     }
   };
 
@@ -2788,6 +2953,11 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                   className="w-32 h-32 rounded-xl object-cover border-4 border-vitta-surface-2 shadow-lg" 
                   referrerPolicy="no-referrer"
                 />
+                {uploadProgress.photo > 0 && uploadProgress.photo < 100 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl">
+                    <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                  </div>
+                )}
                 <label className="absolute -bottom-2 -right-2 p-2.5 bg-vitta-green text-white rounded-xl shadow-lg border-4 border-vitta-surface hover:scale-110 transition-transform cursor-pointer">
                   <Camera size={16} />
                   <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
@@ -2815,13 +2985,21 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Telefone</label>
-                  <input 
-                    type="tel" 
+                  <InputMask 
+                    mask="(99) 99999-9999"
                     value={profileData.phone} 
                     onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="(00) 00000-0000"
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all" 
-                  />
+                  >
+                    {(inputProps: any) => (
+                      <input 
+                        {...inputProps}
+                        type="tel" 
+                        placeholder="(00) 00000-0000"
+                        className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all ${errors.phone ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                      />
+                    )}
+                  </InputMask>
+                  {errors.phone && <p className="text-[10px] text-vitta-danger font-bold px-1">{errors.phone}</p>}
                 </div>
               </div>
             </div>
@@ -2837,13 +3015,28 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CEP</label>
-                <input 
-                  type="text" 
-                  value={profileData.zip} 
-                  onChange={(e) => setProfileData(prev => ({ ...prev, zip: e.target.value }))}
-                  placeholder="00000-000"
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all" 
-                />
+                <div className="relative">
+                  <InputMask 
+                    mask="99999-999"
+                    value={profileData.zip} 
+                    onChange={(e) => handleCepChange(e.target.value)}
+                  >
+                    {(inputProps: any) => (
+                      <input 
+                        {...inputProps}
+                        type="text" 
+                        placeholder="00000-000"
+                        className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all ${errors.zip ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                      />
+                    )}
+                  </InputMask>
+                  {isSearchingCep && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 border-2 border-vitta-accent/30 border-t-vitta-accent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+                {errors.zip && <p className="text-[10px] text-vitta-danger font-bold px-1">{errors.zip}</p>}
               </div>
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Logradouro</label>
@@ -2913,13 +3106,35 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CPF</label>
-                <input 
-                  type="text" 
+                <InputMask 
+                  mask="999.999.999-99"
                   value={profileData.cpf} 
-                  onChange={(e) => setProfileData(prev => ({ ...prev, cpf: e.target.value }))}
-                  placeholder="000.000.000-00"
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all" 
-                />
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setProfileData(prev => ({ ...prev, cpf: val }));
+                    if (val.replace(/\D/g, '').length === 11) {
+                      if (!validateCPF(val)) {
+                        setErrors(prev => ({ ...prev, cpf: 'CPF Inválido' }));
+                      } else {
+                        setErrors(prev => {
+                          const newErrors = { ...prev };
+                          delete newErrors.cpf;
+                          return newErrors;
+                        });
+                      }
+                    }
+                  }}
+                >
+                  {(inputProps: any) => (
+                    <input 
+                      {...inputProps}
+                      type="text" 
+                      placeholder="000.000.000-00"
+                      className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all ${errors.cpf ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                    />
+                  )}
+                </InputMask>
+                {errors.cpf && <p className="text-[10px] text-vitta-danger font-bold px-1">{errors.cpf}</p>}
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">RG</label>
@@ -2949,6 +3164,11 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                         <span className="text-xs font-bold">Adicionar Frente</span>
                       </div>
                     )}
+                    {uploadProgress.front > 0 && uploadProgress.front < 100 && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-vitta-border">
+                        <div className="h-full bg-vitta-purple transition-all" style={{ width: `${uploadProgress.front}%` }} />
+                      </div>
+                    )}
                     <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFrontFileChange} />
                   </div>
                 </div>
@@ -2965,6 +3185,11 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                         <span className="text-xs font-bold">Adicionar Verso</span>
                       </div>
                     )}
+                    {uploadProgress.back > 0 && uploadProgress.back < 100 && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-vitta-border">
+                        <div className="h-full bg-vitta-purple transition-all" style={{ width: `${uploadProgress.back}%` }} />
+                      </div>
+                    )}
                     <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleBackFileChange} />
                   </div>
                 </div>
@@ -2972,7 +3197,18 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-col items-end gap-3">
+            {saveMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`px-4 py-2 rounded-lg text-sm font-bold ${
+                  saveMessage.type === 'success' ? 'bg-vitta-green/10 text-vitta-green' : 'bg-vitta-danger/10 text-vitta-danger'
+                }`}
+              >
+                {saveMessage.text}
+              </motion.div>
+            )}
             <button 
               onClick={handleSave}
               disabled={isSaving}
@@ -2981,9 +3217,11 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
               {isSaving ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <Save size={20} />
+                <>
+                  <Save size={20} />
+                  Salvar Todas as Alterações
+                </>
               )}
-              Salvar Todas as Alterações
             </button>
           </div>
         </div>
@@ -3095,11 +3333,23 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
       {isPasswordModalOpen && (
         <ChangePasswordModal user={user} onClose={() => setIsPasswordModalOpen(false)} />
       )}
+
+      <ConfirmationModal
+        isOpen={isConfirmModalOpen}
+        title="Solicitar Exclusão de Conta"
+        message="Tem certeza que deseja solicitar a exclusão da sua conta? Esta ação será processada pela nossa equipe e não pode ser desfeita imediatamente."
+        confirmText="Confirmar Solicitação"
+        cancelText="Voltar"
+        type="danger"
+        onConfirm={confirmDeletion}
+        onCancel={() => setIsConfirmModalOpen(false)}
+      />
     </div>
   );
 };
 
 const UserExamsManagementView = () => {
+  const { addToast } = useToast();
   const [exams, setExams] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [examTypes, setExamTypes] = useState<any[]>([]);
@@ -3108,6 +3358,19 @@ const UserExamsManagementView = () => {
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     const unsubscribeExams = onSnapshot(query(collection(db, 'exams'), orderBy('createdAt', 'desc')), (snapshot) => {
@@ -3211,7 +3474,7 @@ const UserExamsManagementView = () => {
     } catch (err) {
       console.error(err);
       setUploading(null);
-      alert('Erro ao fazer upload do arquivo.');
+      addToast('Erro ao fazer upload do arquivo.', 'error');
     }
   };
 
@@ -3239,15 +3502,23 @@ const UserExamsManagementView = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Excluir este exame?')) {
-      try {
-        await deleteDoc(doc(db, 'exams', id));
-        await logAdminAction('DELETE_USER_EXAM', `Excluiu exame de usuário ID: ${id}`);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `exams/${id}`);
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Exame',
+      message: 'Tem certeza que deseja excluir este registro de exame? Esta ação não pode ser desfeita.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'exams', id));
+          await logAdminAction('DELETE_USER_EXAM', `Excluiu exame de usuário ID: ${id}`);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `exams/${id}`);
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   const userExams = exams.filter(e => e.userId);
@@ -3422,14 +3693,37 @@ const UserExamsManagementView = () => {
           </tbody>
         </table>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
 
 const ExamsManagementView = () => {
+  const { addToast } = useToast();
   const [exams, setExams] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', price: '', description: '' });
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'exams'), (snapshot) => {
@@ -3450,20 +3744,32 @@ const ExamsManagementView = () => {
       await logAdminAction('CREATE_EXAM_TYPE', `Criou o tipo de exame: ${newItem.name}`);
       setIsCreating(false);
       setNewItem({ name: '', price: '', description: '' });
+      addToast('Tipo de exame criado com sucesso.', 'success');
     } catch (err) {
       console.error('Erro ao criar exame:', err);
+      addToast('Erro ao criar tipo de exame.', 'error');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Excluir este exame?')) {
-      try {
-        await deleteDoc(doc(db, 'exams', id));
-        await logAdminAction('DELETE_EXAM_TYPE', `Excluiu o tipo de exame ID: ${id}`);
-      } catch (err) {
-        console.error('Erro ao excluir exame:', err);
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Tipo de Exame',
+      message: 'Tem certeza que deseja excluir este tipo de exame? Isso não afetará os exames já realizados pelos usuários.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'exams', id));
+          await logAdminAction('DELETE_EXAM_TYPE', `Excluiu o tipo de exame ID: ${id}`);
+          addToast('Tipo de exame excluído com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir exame:', err);
+          addToast('Erro ao excluir tipo de exame.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   return (
@@ -3549,11 +3855,21 @@ const ExamsManagementView = () => {
           </tbody>
         </table>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
 
 const OffersManagementView = () => {
+  const { addToast } = useToast();
   const [offers, setOffers] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
@@ -3561,6 +3877,19 @@ const OffersManagementView = () => {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     const unsubscribeOffers = onSnapshot(query(collection(db, 'offers'), orderBy('createdAt', 'desc')), (snapshot) => {
@@ -3629,8 +3958,10 @@ const OffersManagementView = () => {
       setIsCreating(false);
       setEditingItem(null);
       setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+      addToast(`Oferta ${editingItem ? 'atualizada' : 'criada'} com sucesso.`, 'success');
     } catch (error) {
       handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'offers');
+      addToast(`Erro ao ${editingItem ? 'atualizar' : 'criar'} oferta.`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -3648,19 +3979,29 @@ const OffersManagementView = () => {
     setIsCreating(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Excluir esta oferta permanentemente?')) {
-      try {
-        await deleteDoc(doc(db, 'offers', id));
-        await logAdminAction('DELETE_OFFER', `Excluiu a oferta ID: ${id}`);
-        if (editingItem?.id === id) {
-          setIsCreating(false);
-          setEditingItem(null);
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Oferta',
+      message: 'Tem certeza que deseja excluir esta oferta permanentemente? Esta ação não pode ser desfeita.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'offers', id));
+          await logAdminAction('DELETE_OFFER', `Excluiu a oferta ID: ${id}`);
+          if (editingItem?.id === id) {
+            setIsCreating(false);
+            setEditingItem(null);
+          }
+          addToast('Oferta excluída com sucesso.', 'success');
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, 'offers');
+          addToast('Erro ao excluir oferta.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, 'offers');
       }
-    }
+    });
   };
 
   return (
@@ -3835,11 +4176,21 @@ const OffersManagementView = () => {
           </table>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
 
 const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) => void, setActiveTab?: (tab: string) => void }) => {
+  const { addToast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'establishments' | 'categories' | 'offers' | 'vitta-health'>('establishments');
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -3858,6 +4209,19 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
     icon: 'Heart',
     color: 'bg-vitta-green',
     description: ''
+  });
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
   });
 
   useEffect(() => {
@@ -3885,26 +4249,46 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
     };
   }, []);
 
-  const handleDeletePartner = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este estabelecimento?')) {
-      try {
-        await deleteDoc(doc(db, 'partners', id));
-        await logAdminAction('DELETE_PARTNER', `Excluiu o parceiro ID: ${id}`);
-      } catch (err) {
-        console.error('Erro ao excluir parceiro:', err);
+  const handleDeletePartner = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Estabelecimento',
+      message: 'Tem certeza que deseja excluir este estabelecimento parceiro? Esta ação não pode ser desfeita.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'partners', id));
+          await logAdminAction('DELETE_PARTNER', `Excluiu o parceiro ID: ${id}`);
+          addToast('Parceiro excluído com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir parceiro:', err);
+          addToast('Erro ao excluir parceiro.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
-  const handleDeleteCategory = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta categoria?')) {
-      try {
-        await deleteDoc(doc(db, 'categories', id));
-        await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de parceiro ID: ${id}`);
-      } catch (err) {
-        console.error('Erro ao excluir categoria:', err);
+  const handleDeleteCategory = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Categoria',
+      message: 'Tem certeza que deseja excluir esta categoria de parceiro?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'categories', id));
+          await logAdminAction('DELETE_CATEGORY', `Excluiu a categoria de parceiro ID: ${id}`);
+          addToast('Categoria excluída com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao excluir categoria:', err);
+          addToast('Erro ao excluir categoria.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -3931,8 +4315,10 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
       await updateDoc(doc(db, collectionName, id), data);
       await logAdminAction(`UPDATE_${type.toUpperCase()}`, `Editou o ${type === 'partner' ? 'parceiro' : 'categoria'}: ${editingItem.name}`);
       setEditingItem(null);
+      addToast(`${type === 'partner' ? 'Parceiro' : 'Categoria'} atualizado com sucesso.`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `partners/${editingItem.id}`);
+      addToast(`Erro ao atualizar ${editingItem.type === 'partner' ? 'parceiro' : 'categoria'}.`, 'error');
     }
   };
 
@@ -3977,8 +4363,10 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
         color: 'bg-vitta-green',
         description: ''
       });
+      addToast(`${isCreating === 'partner' ? 'Parceiro' : 'Categoria'} criado com sucesso.`, 'success');
     } catch (err) {
       console.error('Erro ao criar item:', err);
+      addToast('Erro ao criar item.', 'error');
     }
   };
 
@@ -4608,6 +4996,15 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -4724,6 +5121,7 @@ const SupportView = () => {
 };
 
 const UsersView = () => {
+  const { addToast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
@@ -4736,6 +5134,19 @@ const UsersView = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('name'));
@@ -4748,15 +5159,25 @@ const UsersView = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
-      try {
-        await deleteDoc(doc(db, 'users', id));
-        await logAdminAction('DELETE_USER', `Excluiu o usuário ID: ${id}`);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Usuário',
+      message: 'Tem certeza que deseja excluir este usuário? Esta ação é irreversível e removerá todos os dados vinculados.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'users', id));
+          await logAdminAction('DELETE_USER', `Excluiu o usuário ID: ${id}`);
+          addToast('Usuário excluído com sucesso.', 'success');
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+          addToast('Erro ao excluir usuário.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -4766,9 +5187,11 @@ const UsersView = () => {
       await updateDoc(doc(db, 'users', id), data);
       await logAdminAction('UPDATE_USER', `Editou o usuário: ${data.email || id}`);
       setEditingUser(null);
+      addToast('Usuário atualizado com sucesso.', 'success');
     } catch (err) {
       console.error('Erro ao salvar usuário:', err);
       handleFirestoreError(err, OperationType.UPDATE, `users/${editingUser.id}`);
+      addToast('Erro ao atualizar usuário.', 'error');
     }
   };
 
@@ -4815,6 +5238,7 @@ const UsersView = () => {
       
       setIsCreatingUser(false);
       setNewUser({ name: '', email: '', password: '', status: 'Ativo', plan: 'Básico' });
+      addToast('Usuário criado com sucesso.', 'success');
     } catch (err: any) {
       console.error('Erro ao criar usuário:', err);
       if (err.code === 'auth/email-already-in-use') {
@@ -4826,6 +5250,7 @@ const UsersView = () => {
       } else {
         setError('Falha ao criar usuário. Tente novamente.');
       }
+      addToast('Erro ao criar usuário.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -5071,6 +5496,15 @@ const UsersView = () => {
           </tbody>
         </table>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -5321,8 +5755,22 @@ const UserConfigView = () => {
 };
 
 const AppointmentsView = ({ user }: { user: any }) => {
+  const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -5342,22 +5790,32 @@ const AppointmentsView = ({ user }: { user: any }) => {
     return () => unsubscribe();
   }, [user]);
 
-  const handleCancelApt = async (apt: any) => {
-    if (window.confirm('Tem certeza que deseja cancelar esta consulta?')) {
-      try {
-        await deleteDoc(doc(db, 'appointments', apt.id));
-        await addDoc(collection(db, 'notifications'), {
-          userId: user.uid,
-          title: 'Consulta Cancelada',
-          message: `Sua consulta com ${apt.professionalName} foi cancelada.`,
-          type: 'appointment',
-          read: false,
-          createdAt: Timestamp.now()
-        });
-      } catch (err) {
-        console.error('Erro ao cancelar agendamento:', err);
+  const handleCancelApt = (apt: any) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Cancelar Consulta',
+      message: `Tem certeza que deseja cancelar sua consulta com ${apt.professionalName}?`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'appointments', apt.id));
+          await addDoc(collection(db, 'notifications'), {
+            userId: user.uid,
+            title: 'Consulta Cancelada',
+            message: `Sua consulta com ${apt.professionalName} foi cancelada.`,
+            type: 'appointment',
+            read: false,
+            createdAt: Timestamp.now()
+          });
+          addToast('Consulta cancelada com sucesso.', 'success');
+        } catch (err) {
+          console.error('Erro ao cancelar agendamento:', err);
+          addToast('Erro ao cancelar consulta.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   return (
@@ -5425,6 +5883,15 @@ const AppointmentsView = ({ user }: { user: any }) => {
           </div>
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -5649,10 +6116,24 @@ const MiniPlayer = ({ isPlaying, setIsPlaying, volume, setVolume }: any) => {
 };
 
 const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
+  const { addToast } = useToast();
   const [pharmacies, setPharmacies] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPharmacy, setEditingPharmacy] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'info'
+  });
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -5690,20 +6171,32 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
       setShowAddModal(false);
       setEditingPharmacy(null);
       setFormData({ name: '', address: '', phone: '', onCallDate: '', isActive: true });
+      addToast(`Farmácia ${editingPharmacy ? 'atualizada' : 'criada'} com sucesso.`, 'success');
     } catch (error) {
       console.error('Erro ao salvar farmácia:', error);
+      addToast('Erro ao salvar farmácia.', 'error');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta farmácia?')) {
-      try {
-        await deleteDoc(doc(db, 'pharmacies', id));
-        await logAdminAction('DELETE_PHARMACY', `Excluiu a farmácia ID: ${id}`);
-      } catch (error) {
-        console.error('Erro ao excluir farmácia:', error);
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Farmácia',
+      message: 'Tem certeza que deseja excluir esta farmácia? Esta ação não pode ser desfeita.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'pharmacies', id));
+          await logAdminAction('DELETE_PHARMACY', `Excluiu a farmácia ID: ${id}`);
+          addToast('Farmácia excluída com sucesso.', 'success');
+        } catch (error) {
+          console.error('Erro ao excluir farmácia:', error);
+          addToast('Erro ao excluir farmácia.', 'error');
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       }
-    }
+    });
   };
 
   const toggleActive = async (pharmacy: any) => {
@@ -5712,8 +6205,10 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
         isActive: !pharmacy.isActive
       });
       await logAdminAction('TOGGLE_PHARMACY_STATUS', `Alterou status da farmácia ${pharmacy.name} para ${!pharmacy.isActive ? 'Ativo' : 'Inativo'}`);
+      addToast(`Farmácia ${!pharmacy.isActive ? 'ativada' : 'desativada'} com sucesso.`, 'success');
     } catch (error) {
       console.error('Erro ao alterar status da farmácia:', error);
+      addToast('Erro ao alterar status da farmácia.', 'error');
     }
   };
 
@@ -5959,6 +6454,15 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
     </div>
   );
 };
@@ -5989,6 +6493,7 @@ const LoginView = ({
   onVerify2FA?: () => void, 
   onCancel2FA?: () => void 
 } = {}) => {
+  const { addToast } = useToast();
   const [view, setView] = useState<'login' | 'signup' | '2fa'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -6039,9 +6544,11 @@ const LoginView = ({
       const data = await response.json();
       
       if (response.ok && data.success) {
+        addToast('Verificação concluída com sucesso.', 'success');
         if (onVerify2FA) onVerify2FA();
       } else {
         setError(data.error || 'Código inválido ou expirado.');
+        addToast('Código inválido ou expirado.', 'error');
       }
     } catch (err: any) {
       console.error(err);
@@ -6071,9 +6578,11 @@ const LoginView = ({
           createdAt: Timestamp.now()
         });
       }
+      addToast('Login realizado com sucesso!', 'success');
     } catch (err: any) {
       console.error(err);
       setError('Falha ao entrar com Google. Tente novamente.');
+      addToast('Falha ao entrar com Google.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -6086,6 +6595,7 @@ const LoginView = ({
     try {
       if (view === 'login') {
         await signInWithEmailAndPassword(auth, email, password);
+        addToast('Bem-vindo de volta!', 'success');
       } else {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         const user = result.user;
@@ -6103,6 +6613,7 @@ const LoginView = ({
           plan: 'Free',
           createdAt: Timestamp.now()
         });
+        addToast('Conta criada com sucesso! Bem-vindo.', 'success');
       }
     } catch (err: any) {
       console.error(err);
@@ -6117,6 +6628,7 @@ const LoginView = ({
       } else {
         setError('Ocorreu um erro. Tente novamente.');
       }
+      addToast('Falha na autenticação.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -6324,7 +6836,7 @@ const LoginView = ({
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<any>(null);
@@ -6609,9 +7121,22 @@ export default function App() {
 
   return (
     <div className={`min-h-screen flex font-sans transition-colors duration-300 ${isDarkMode ? 'dark bg-vitta-bg text-vitta-text-primary' : 'bg-vitta-bg text-vitta-text-primary'}`}>
+      {/* Sidebar Overlay */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-black/50 z-40 lg:z-40"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 bg-vitta-sidebar border-r border-vitta-border transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0
+        fixed inset-y-0 left-0 z-50 w-72 bg-vitta-sidebar border-r border-vitta-border transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col">
@@ -6635,67 +7160,67 @@ export default function App() {
                   icon={LayoutGrid} 
                   label="Painel Admin" 
                   active={activeTab === 'dashboard'} 
-                  onClick={() => setActiveTab('dashboard')} 
+                  onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={Users} 
                   label="Profissionais" 
                   active={activeTab === 'professionals'} 
-                  onClick={() => setActiveTab('professionals')} 
+                  onClick={() => { setActiveTab('professionals'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={Clock} 
                   label="Agendamentos" 
                   active={activeTab === 'appointments'} 
-                  onClick={() => setActiveTab('appointments')} 
+                  onClick={() => { setActiveTab('appointments'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={ShieldCheck} 
                   label="Convênios" 
                   active={activeTab === 'plans'} 
-                  onClick={() => setActiveTab('plans')} 
+                  onClick={() => { setActiveTab('plans'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={Wallet} 
                   label="Carteiras" 
                   active={activeTab === 'wallets'} 
-                  onClick={() => setActiveTab('wallets')} 
+                  onClick={() => { setActiveTab('wallets'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={CreditCard} 
                   label="Compra Voucher" 
                   active={activeTab === 'voucher'} 
-                  onClick={() => setActiveTab('voucher')} 
+                  onClick={() => { setActiveTab('voucher'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={Stethoscope} 
                   label="Farmácias de Plantão" 
                   active={activeTab === 'pharmacies'} 
-                  onClick={() => setActiveTab('pharmacies')} 
+                  onClick={() => { setActiveTab('pharmacies'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={Radio} 
                   label="Rádio ViTTA" 
                   active={activeTab === 'radio'} 
-                  onClick={() => setActiveTab('radio')} 
+                  onClick={() => { setActiveTab('radio'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={MessageSquare} 
                   label="Chat Suporte" 
                   active={activeTab === 'chat'} 
-                  onClick={() => setActiveTab('chat')} 
+                  onClick={() => { setActiveTab('chat'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={User} 
                   label="Perfil" 
                   active={activeTab === 'profile'} 
-                  onClick={() => setActiveTab('profile')} 
+                  onClick={() => { setActiveTab('profile'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={HelpCircle} 
                   label="Suporte" 
                   active={activeTab === 'support'} 
-                  onClick={() => setActiveTab('support')} 
+                  onClick={() => { setActiveTab('support'); setIsSidebarOpen(false); }} 
                 />
                 <button
                   onClick={handleLogout}
@@ -6733,7 +7258,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="lg:hidden p-2 hover:bg-vitta-surface-2 rounded-lg text-vitta-text-primary"
+              className="p-2 hover:bg-vitta-surface-2 rounded-lg text-vitta-text-primary transition-colors"
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
