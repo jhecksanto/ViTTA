@@ -37,6 +37,8 @@ import {
   MessageSquare,
   User,
   UserX,
+  UserCheck,
+  UserMinus,
   HelpCircle,
   QrCode,
   Copy,
@@ -5238,6 +5240,7 @@ const ProfessionalsManagementView = () => {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [agendaProfessional, setAgendaProfessional] = useState<any>(null);
   const [isCreating, setIsCreating] = useState<'professional' | 'category' | null>(null);
+  const [loadingCep, setLoadingCep] = useState(false);
   const [newItem, setNewItem] = useState({ 
     name: '', 
     specialty: 'Médico', 
@@ -5247,7 +5250,15 @@ const ProfessionalsManagementView = () => {
     price: '',
     city: '',
     imageUrl: '',
-    whatsapp: ''
+    whatsapp: '',
+    email: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    localidade: '',
+    uf: ''
   });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -5335,6 +5346,53 @@ const ProfessionalsManagementView = () => {
       addToast('Erro ao ler o arquivo de imagem.', 'error');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCepChange = async (cepValue: string) => {
+    const cleaned = cepValue.replace(/\D/g, '');
+    
+    if (editingItem) {
+      setEditingItem((prev: any) => ({ ...prev, cep: cepValue }));
+    } else {
+      setNewItem((prev: any) => ({ ...prev, cep: cepValue }));
+    }
+
+    if (cleaned.length === 8) {
+      setLoadingCep(true);
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          if (editingItem) {
+            setEditingItem((prev: any) => ({
+              ...prev,
+              logradouro: data.logradouro || '',
+              bairro: data.bairro || '',
+              localidade: data.localidade || '',
+              uf: data.uf || '',
+              city: data.localidade || prev.city || ''
+            }));
+          } else {
+            setNewItem((prev: any) => ({
+              ...prev,
+              logradouro: data.logradouro || '',
+              bairro: data.bairro || '',
+              localidade: data.localidade || '',
+              uf: data.uf || '',
+              city: data.localidade || prev.city || ''
+            }));
+          }
+          addToast('CEP localizado com sucesso!', 'success');
+        } else {
+          addToast('CEP não encontrado.', 'error');
+        }
+      } catch (err) {
+        console.error("Erro ao buscar CEP", err);
+        addToast('Erro ao buscar CEP.', 'error');
+      } finally {
+        setLoadingCep(false);
+      }
+    }
   };
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -5440,6 +5498,14 @@ const ProfessionalsManagementView = () => {
           reviews: 0,
           imageUrl: newItem.imageUrl || 'https://picsum.photos/seed/prof/400/300',
           whatsapp: newItem.whatsapp || '',
+          email: newItem.email || '',
+          cep: newItem.cep || '',
+          logradouro: newItem.logradouro || '',
+          numero: newItem.numero || '',
+          complemento: newItem.complemento || '',
+          bairro: newItem.bairro || '',
+          localidade: newItem.localidade || '',
+          uf: newItem.uf || '',
           createdAt: new Date().toISOString()
         });
         await logAdminAction('CREATE_PROFESSIONAL', `Criou o profissional: ${newItem.name}`);
@@ -5462,7 +5528,15 @@ const ProfessionalsManagementView = () => {
         price: '',
         city: '',
         imageUrl: '',
-        whatsapp: ''
+        whatsapp: '',
+        email: '',
+        cep: '',
+        logradouro: '',
+        numero: '',
+        complemento: '',
+        bairro: '',
+        localidade: '',
+        uf: ''
       });
       addToast(`${isCreating === 'professional' ? 'Profissional' : 'Categoria'} criado com sucesso.`, 'success');
     } catch (err) {
@@ -5605,6 +5679,21 @@ const ProfessionalsManagementView = () => {
                       />
                     </div>
                     <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">E-mail do Profissional (para Vínculo de Conta)</label>
+                      <input 
+                        type="email" 
+                        placeholder="Ex: profissional@email.com"
+                        value={editingItem ? (editingItem.email || '') : (newItem.email || '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem 
+                            ? setEditingItem({ ...editingItem, email: val })
+                            : setNewItem({ ...newItem, email: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">WhatsApp de Direcionamento (com DDD)</label>
                       <input 
                         id="professional-whatsapp-input"
@@ -5648,7 +5737,7 @@ const ProfessionalsManagementView = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cidade</label>
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cidade Principal</label>
                         <input 
                           type="text" 
                           placeholder="Ex: São Paulo"
@@ -5657,8 +5746,134 @@ const ProfessionalsManagementView = () => {
                             ? setEditingItem({ ...editingItem, city: e.target.value })
                             : setNewItem({ ...newItem, city: e.target.value })
                           }
-                          className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
+                      </div>
+                    </div>
+
+                    {/* Complete Address Fields - Prefilled through CEP */}
+                    <div className="space-y-4 pt-4 border-t border-vitta-border mt-3">
+                      <p className="text-xs font-bold text-vitta-text-primary px-1">Endereço de Atendimento</p>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-1 space-y-2">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CEP</label>
+                          <div className="relative">
+                            <input 
+                              type="text" 
+                              placeholder="00000-000"
+                              value={editingItem ? (editingItem.cep || '') : (newItem.cep || '')}
+                              onChange={(e) => handleCepChange(e.target.value)}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                            {loadingCep && (
+                              <div className="absolute right-2.5 top-3.5">
+                                <div className="w-4 h-4 border-2 border-vitta-green border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="col-span-2 space-y-2">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Rua / Logradouro</label>
+                          <input 
+                            type="text" 
+                            placeholder="Rua, Avenida..."
+                            value={editingItem ? (editingItem.logradouro || '') : (newItem.logradouro || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, logradouro: val })
+                                : setNewItem({ ...newItem, logradouro: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Número</label>
+                          <input 
+                            type="text" 
+                            placeholder="Nº"
+                            value={editingItem ? (editingItem.numero || '') : (newItem.numero || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, numero: val })
+                                : setNewItem({ ...newItem, numero: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Complemento</label>
+                          <input 
+                            type="text" 
+                            placeholder="Apt, Bloco..."
+                            value={editingItem ? (editingItem.complemento || '') : (newItem.complemento || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, complemento: val })
+                                : setNewItem({ ...newItem, complemento: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-2 col-span-1">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Bairro</label>
+                          <input 
+                            type="text" 
+                            placeholder="Bairro"
+                            value={editingItem ? (editingItem.bairro || '') : (newItem.bairro || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, bairro: val })
+                                : setNewItem({ ...newItem, bairro: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
+
+                        <div className="space-y-2 col-span-1">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cidade</label>
+                          <input 
+                            type="text" 
+                            placeholder="Cidade"
+                            value={editingItem ? (editingItem.city || '') : (newItem.city || '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, city: val, localidade: val })
+                                : setNewItem({ ...newItem, city: val, localidade: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
+
+                        <div className="space-y-2 col-span-1">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Estado (UF)</label>
+                          <input 
+                            type="text" 
+                            placeholder="UF"
+                            maxLength={2}
+                            value={editingItem ? (editingItem.uf || '') : (newItem.uf || '')}
+                            onChange={(e) => {
+                              const val = e.target.value.toUpperCase();
+                              editingItem 
+                                ? setEditingItem({ ...editingItem, uf: val })
+                                : setNewItem({ ...newItem, uf: val });
+                            }}
+                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          />
+                        </div>
                       </div>
                     </div>
                   </>
@@ -5769,7 +5984,15 @@ const ProfessionalsManagementView = () => {
                       city: prof.city || '',
                       availableDays: prof.availableDays || '',
                       imageUrl: prof.imageUrl || '',
-                      whatsapp: prof.whatsapp || ''
+                      whatsapp: prof.whatsapp || '',
+                      email: prof.email || '',
+                      cep: prof.cep || '',
+                      logradouro: prof.logradouro || '',
+                      numero: prof.numero || '',
+                      complemento: prof.complemento || '',
+                      bairro: prof.bairro || '',
+                      localidade: prof.localidade || '',
+                      uf: prof.uf || ''
                     })}
                     className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                   >
@@ -9582,7 +9805,8 @@ const UsersView = () => {
     email: '',
     password: '',
     status: 'Ativo',
-    plan: 'Básico'
+    plan: 'Básico',
+    role: 'user'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -9599,6 +9823,34 @@ const UsersView = () => {
     onConfirm: () => {},
     type: 'info'
   });
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return 'Admin Master';
+      case 'professional':
+        return 'Profissional';
+      case 'conveniado':
+        return 'Conveniado';
+      case 'user':
+      default:
+        return 'Cliente/Paciente';
+    }
+  };
+
+  const getRoleBadgeClass = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+      case 'professional':
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'conveniado':
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+      case 'user':
+      default:
+        return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('name'));
@@ -9621,7 +9873,7 @@ const UsersView = () => {
       const matchesPlan = filterPlan === 'Todos' || user.plan === filterPlan;
       const matchesStatus = filterStatus === 'Todos' || user.status === filterStatus;
       
-      return matchesSearch && matchesPlan && matchesStatus && user.role !== 'admin';
+      return matchesSearch && matchesPlan && matchesStatus;
     });
   }, [users, searchTerm, filterPlan, filterStatus]);
 
@@ -9683,7 +9935,7 @@ const UsersView = () => {
         email: newUser.email,
         status: newUser.status,
         plan: newUser.plan,
-        role: 'user',
+        role: newUser.role,
         createdAt: Timestamp.now()
       });
       
@@ -9704,7 +9956,7 @@ const UsersView = () => {
       await logAdminAction('CREATE_USER', `Criou o usuário: ${newUser.email}`);
       
       setIsCreatingUser(false);
-      setNewUser({ name: '', email: '', password: '', status: 'Ativo', plan: 'Básico' });
+      setNewUser({ name: '', email: '', password: '', status: 'Ativo', plan: 'Básico', role: 'user' });
       addToast('Usuário criado com sucesso.', 'success');
     } catch (err: any) {
       console.error('Erro ao criar usuário:', err);
@@ -12956,7 +13208,28 @@ export default function App() {
         // Listen to user data in real-time
         unsubscribeUserData = onSnapshot(doc(db, 'users', firebaseUser.uid), async (snapshot) => {
           if (snapshot.exists()) {
-            setUserData(snapshot.data());
+            const data = snapshot.data();
+            setUserData(data);
+
+            // Check if user's email belongs to a registered professional
+            if (data.email) {
+              try {
+                const qProf = query(collection(db, 'professionals'), where('email', '==', data.email));
+                const profSnap = await getDocs(qProf);
+                if (!profSnap.empty) {
+                  const profDoc = profSnap.docs[0];
+                  // If role is not professional or userId is not matched, link them in background
+                  if (data.role !== 'professional') {
+                    await updateDoc(doc(db, 'users', firebaseUser.uid), { role: 'professional' });
+                  }
+                  if (profDoc.data().userId !== firebaseUser.uid) {
+                    await updateDoc(doc(db, 'professionals', profDoc.id), { userId: firebaseUser.uid });
+                  }
+                }
+              } catch (err) {
+                console.error('Erro ao verificar vinculo de profissional:', err);
+              }
+            }
           } else {
             // Create if missing
             const newData = {
@@ -12968,6 +13241,27 @@ export default function App() {
               plan: 'Free',
               createdAt: Timestamp.now()
             };
+
+            // Also check on initial creation if this user is a professional by email
+            if (firebaseUser.email) {
+              try {
+                const qProf = query(collection(db, 'professionals'), where('email', '==', firebaseUser.email));
+                const profSnap = await getDocs(qProf);
+                if (!profSnap.empty) {
+                  newData.role = 'professional';
+                  const profDoc = profSnap.docs[0];
+                  setTimeout(async () => {
+                    try {
+                      await updateDoc(doc(db, 'professionals', profDoc.id), { userId: firebaseUser.uid });
+                    } catch (e) {
+                      console.error('Erro ao vincular id do profissional na criacao:', e);
+                    }
+                  }, 1000);
+                }
+              } catch (err) {
+                console.error(err);
+              }
+            }
             await setDoc(doc(db, 'users', firebaseUser.uid), newData);
             setUserData(newData);
           }

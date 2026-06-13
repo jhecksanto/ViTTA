@@ -73,6 +73,7 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "Link to User UID" },
+        "email": { "type": "string", "format": "email", "description": "Linkage email of the professional" },
         "name": { "type": "string" },
         "specialty": { "type": "string" },
         "registrationNumber": { "type": "string" },
