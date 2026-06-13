@@ -614,7 +614,8 @@ const BookingModal = ({
     return tomorrow.toISOString().split('T')[0];
   });
   const [selectedTime, setSelectedTime] = useState('');
-  const [modality, setModality] = useState<'presencial' | 'telemedicine'>('telemedicine');
+  const [modality, setModality] = useState<'presencial' | 'telemedicine'>('presencial');
+  const [isModalityConfirmed, setIsModalityConfirmed] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -692,7 +693,7 @@ const BookingModal = ({
         imageUrl: professional.imageUrl || 'https://picsum.photos/seed/prof/400/300',
         date: selectedDate,
         time: selectedTime,
-        status: 'upcoming',
+        status: 'pending',
         modality,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
@@ -701,8 +702,8 @@ const BookingModal = ({
       // 1.1 Create Notification
       await addDoc(collection(db, 'notifications'), {
         userId: user.uid,
-        title: 'Consulta Agendada',
-        message: `Sua consulta com ${professional.name} foi agendada para ${new Date(selectedDate).toLocaleDateString('pt-BR')} às ${selectedTime}.`,
+        title: 'Solicitação de Consulta Enviada',
+        message: `Sua solicitação de consulta com ${professional.name} para o dia ${new Date(selectedDate).toLocaleDateString('pt-BR')} às ${selectedTime} foi enviada. Aguardando confirmação do profissional.`,
         type: 'appointment',
         read: false,
         createdAt: Timestamp.now()
@@ -826,7 +827,10 @@ const BookingModal = ({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setModality('presencial')}
+                      onClick={() => {
+                        setModality('presencial');
+                        setIsModalityConfirmed(false);
+                      }}
                       className={`py-3 text-sm font-bold rounded-xl border transition-all ${
                         modality === 'presencial'
                           ? 'border-vitta-green bg-vitta-green/10 text-vitta-green'
@@ -837,7 +841,10 @@ const BookingModal = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setModality('telemedicine')}
+                      onClick={() => {
+                        setModality('telemedicine');
+                        setIsModalityConfirmed(false);
+                      }}
                       className={`py-3 text-sm font-bold rounded-xl border transition-all ${
                         modality === 'telemedicine'
                           ? 'border-vitta-green bg-vitta-green/10 text-vitta-green'
@@ -847,6 +854,21 @@ const BookingModal = ({
                       💻 Telemedicina (Vídeo)
                     </button>
                   </div>
+
+                  {/* Confirmação exigida do tipo de atendimento */}
+                  <label className="flex items-start gap-2.5 mt-3 p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl cursor-pointer select-none hover:border-vitta-green/30 transition-colors">
+                    <input 
+                      type="checkbox"
+                      id="confirm-modality-checkbox"
+                      checked={isModalityConfirmed}
+                      onChange={(e) => setIsModalityConfirmed(e.target.checked)}
+                      className="mt-0.5 rounded border-vitta-border text-vitta-green focus:ring-vitta-green"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-vitta-text-primary">Confirmo que desejo atendimento {modality === 'presencial' ? 'Presencial' : 'por Telemedicina'}</p>
+                      <p className="text-vitta-text-muted mt-0.5 font-normal">É necessário confirmar o Tipo de Atendimento antes de prosseguir com a solicitação.</p>
+                    </div>
+                  </label>
                 </div>
 
                 <div className="space-y-2">
@@ -898,7 +920,7 @@ const BookingModal = ({
                 </button>
                 <button 
                   onClick={handleConfirm}
-                  disabled={isBooking || !selectedTime}
+                  disabled={isBooking || !selectedTime || !isModalityConfirmed}
                   className="flex-1 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isBooking ? (
@@ -906,7 +928,7 @@ const BookingModal = ({
                   ) : (
                     <>
                       <MessageSquare size={18} />
-                      Confirmar
+                      Solicitar Agendamento
                     </>
                   )}
                 </button>
@@ -3525,16 +3547,18 @@ const ProfessionalDashboardView = ({
   useEffect(() => {
     if (!professionalProfile) return;
 
-    const today = new Date().toISOString().split('T')[0];
     const qApt = query(
       collection(db, 'appointments'),
-      where('professionalId', '==', professionalProfile.id),
-      where('date', '==', today)
+      where('professionalId', '==', professionalProfile.id)
     );
 
     const unsubApt = onSnapshot(qApt, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      data.sort((a, b) => a.time.localeCompare(b.time));
+      data.sort((a: any, b: any) => {
+        const dateComp = (a.date || '').localeCompare(b.date || '');
+        if (dateComp !== 0) return dateComp;
+        return (a.time || '').localeCompare(b.time || '');
+      });
       setAppointments(data);
       setLoading(false);
     }, (error) => {
@@ -3594,10 +3618,11 @@ const ProfessionalDashboardView = ({
     );
   }
 
+  const today = new Date().toISOString().split('T')[0];
   const stats = {
-    todayCount: appointments.length,
-    completedToday: appointments.filter(a => a.status === 'completed').length,
-    pendingToday: appointments.filter(a => a.status === 'upcoming' || a.status === 'pending').length,
+    todayCount: appointments.filter(a => a.date === today && a.status !== 'cancelled' && a.status !== 'pending').length,
+    completedToday: appointments.filter(a => a.date === today && a.status === 'completed').length,
+    pendingToday: appointments.filter(a => a.status === 'pending').length,
     averageRating: professionalProfile.rating || 0
   };
 
@@ -3680,126 +3705,229 @@ const ProfessionalDashboardView = ({
       )}
 
       {subTab === 'agenda' && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
-              <ClipboardList className="text-vitta-accent" size={20} />
-              Agenda do Dia
-            </h2>
-          </div>
-
-        <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm overflow-hidden">
-          {appointments.length > 0 ? (
-            <div className="divide-y divide-vitta-border">
-              {appointments.map((apt) => (
-                <div key={apt.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-vitta-surface-2 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent font-bold text-lg">
-                      {apt.patientName?.charAt(0) || 'P'}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-vitta-text-primary">{apt.patientName}</h3>
-                      <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
-                        <span className="font-mono bg-vitta-border px-1.5 py-0.5 rounded">{apt.time}</span>
-                        <span>•</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          apt.modality === 'telemedicine' || apt.modality === 'online'
-                            ? 'bg-vitta-accent-bg text-vitta-accent'
-                            : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
-                        }`}>
-                          {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
-                        </span>
+        <section className="space-y-6">
+          {/* Section 1: Pending requests awaiting professional confirmation */}
+          {appointments.filter(a => a.status === 'pending').length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-xl font-bold text-vitta-amber flex items-center gap-2">
+                <Clock className="text-vitta-amber animate-pulse" size={20} />
+                Solicitações de Agendamento (Aguardando Sua Confirmação)
+              </h2>
+              <div className="bg-vitta-surface border border-vitta-amber/20 rounded-2xl shadow-sm overflow-hidden divide-y divide-vitta-border">
+                {appointments.filter(a => a.status === 'pending').map((apt) => (
+                  <div key={apt.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-vitta-amber/5 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-vitta-amber/10 rounded-full flex items-center justify-center text-vitta-amber font-bold text-lg">
+                        {apt.patientName?.charAt(0) || 'P'}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-vitta-text-primary">{apt.patientName}</h3>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-vitta-text-secondary mt-1">
+                          <span className="font-bold text-vitta-text-primary bg-vitta-surface-3 border border-vitta-border px-2 py-0.5 rounded flex items-center gap-1">
+                            <Calendar size={12} className="text-vitta-green" />
+                            {new Date(apt.date).toLocaleDateString('pt-BR')} às {apt.time}
+                          </span>
+                          <span>•</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            apt.modality === 'telemedicine' || apt.modality === 'online'
+                              ? 'bg-vitta-accent-bg text-vitta-accent'
+                              : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
+                          }`}>
+                            {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => setSelectedPatient({ name: apt.patientName, id: apt.userId })}
-                      className="p-2 text-vitta-text-muted hover:text-vitta-accent rounded-lg hover:bg-vitta-accent-bg transition-all"
-                      title="Ver Ficha do Paciente"
-                    >
-                      <User size={18} />
-                    </button>
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      apt.status === 'upcoming' ? 'bg-blue-500/10 text-blue-500' :
-                      apt.status === 'in_progress' ? 'bg-vitta-accent-bg text-vitta-accent animate-pulse' :
-                      apt.status === 'completed' ? 'bg-vitta-green-bg text-vitta-green' :
-                      'bg-vitta-danger/10 text-vitta-danger'
-                    }`}>
-                      {apt.status === 'upcoming' ? 'Aguardando' : 
-                       apt.status === 'in_progress' ? 'Em Atendimento' : 
-                       apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
-                    </span>
-
-                    {(apt.status === 'upcoming' || apt.status === 'in_progress') && (apt.modality === 'telemedicine' || apt.modality === 'online' || !apt.modality) && (
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setSelectedPatient({ name: apt.patientName, id: apt.userId })}
+                        className="p-2.5 text-vitta-text-muted hover:text-vitta-accent rounded-xl hover:bg-vitta-accent-bg transition-all"
+                        title="Ver Ficha do Paciente"
+                      >
+                        <User size={18} />
+                      </button>
                       <button 
                         onClick={async () => {
-                          if (apt.status === 'upcoming') {
-                            await handleUpdateStatus(apt.id, 'in_progress');
+                          try {
+                            await updateDoc(doc(db, 'appointments', apt.id), { 
+                              status: 'upcoming', 
+                              updatedAt: Timestamp.now() 
+                            });
+                            await addDoc(collection(db, 'notifications'), {
+                              userId: apt.userId,
+                              title: 'Consulta Confirmada',
+                              message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi confirmada com sucesso!`,
+                              type: 'appointment',
+                              read: false,
+                              createdAt: Timestamp.now()
+                            });
+                            addToast('Agendamento confirmado com sucesso.', 'success');
+                          } catch (err) {
+                            console.error(err);
+                            addToast('Erro ao confirmar agendamento.', 'error');
                           }
-                          setActiveTelemedicineApt(apt);
                         }}
                         className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
-                        title="Atendimento por Vídeo"
-                      >
-                        <Video size={14} />
-                        Atender em Vídeo
-                      </button>
-                    )}
-
-                    {apt.status === 'upcoming' && (
-                      <button 
-                        onClick={() => handleUpdateStatus(apt.id, 'in_progress')}
-                        className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
-                      >
-                        <SkipForward size={14} />
-                        Iniciar
-                      </button>
-                    )}
-
-                    {apt.status === 'in_progress' && (
-                      <button 
-                        onClick={() => setSelectedApt(apt)}
-                        className="px-4 py-2 bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-border-2 transition-all flex items-center gap-2"
-                      >
-                        <Stethoscope size={14} />
-                        Registro Clínico
-                      </button>
-                    )}
-
-                    {apt.status === 'in_progress' && (
-                      <button 
-                        onClick={() => handleUpdateStatus(apt.id, 'completed')}
-                        className="px-4 py-2 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all flex items-center gap-2"
+                        title="Confirmar Agendamento"
                       >
                         <Check size={14} />
-                        Finalizar
+                        Confirmar Reserva
                       </button>
-                    )}
-
-                    {apt.status === 'completed' && (
                       <button 
-                        onClick={() => setSelectedApt(apt)}
-                        className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all flex items-center gap-2"
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'appointments', apt.id), { 
+                              status: 'cancelled', 
+                              updatedAt: Timestamp.now() 
+                            });
+                            await addDoc(collection(db, 'notifications'), {
+                              userId: apt.userId,
+                              title: 'Consulta Recusada',
+                              message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi recusada pelo profissional.`,
+                              type: 'appointment',
+                              read: false,
+                              createdAt: Timestamp.now()
+                            });
+                            addToast('Agendamento recusado/ignorado.', 'info');
+                          } catch (err) {
+                            console.error(err);
+                            addToast('Erro ao atualizar agendamento.', 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                        title="Recusar Reserva"
                       >
-                        <FileText size={14} />
-                        Ver Prontuário
+                        <X size={14} />
+                        Recusar
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-12 text-center text-vitta-text-secondary">
-              <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4" />
-              <p className="font-medium">Nenhum agendamento para hoje.</p>
-              <p className="text-xs">Aproveite o tempo livre ou confira sua agenda de amanhã.</p>
+                ))}
+              </div>
             </div>
           )}
-        </div>
-      </section>
+
+          {/* Section 2: Today's schedule */}
+          <div className="space-y-3">
+            <h2 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
+              <ClipboardList className="text-vitta-accent" size={20} />
+              Agenda de Hoje
+            </h2>
+            
+            <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm overflow-hidden">
+              {appointments.filter(a => a.date === today && a.status !== 'pending' && a.status !== 'cancelled').length > 0 ? (
+                <div className="divide-y divide-vitta-border">
+                  {appointments.filter(a => a.date === today && a.status !== 'pending' && a.status !== 'cancelled').map((apt) => (
+                    <div key={apt.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-vitta-surface-2 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent font-bold text-lg">
+                          {apt.patientName?.charAt(0) || 'P'}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-vitta-text-primary">{apt.patientName}</h3>
+                          <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
+                            <span className="font-mono bg-vitta-border px-1.5 py-0.5 rounded">{apt.time}</span>
+                            <span>•</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              apt.modality === 'telemedicine' || apt.modality === 'online'
+                                ? 'bg-vitta-accent-bg text-vitta-accent'
+                                : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
+                            }`}>
+                              {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => setSelectedPatient({ name: apt.patientName, id: apt.userId })}
+                          className="p-2 text-vitta-text-muted hover:text-vitta-accent rounded-lg hover:bg-vitta-accent-bg transition-all"
+                          title="Ver Ficha do Paciente"
+                        >
+                          <User size={18} />
+                        </button>
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          apt.status === 'upcoming' ? 'bg-blue-500/10 text-blue-500' :
+                          apt.status === 'in_progress' ? 'bg-vitta-accent-bg text-vitta-accent animate-pulse' :
+                          apt.status === 'completed' ? 'bg-vitta-green-bg text-vitta-green' :
+                          'bg-vitta-danger/10 text-vitta-danger'
+                        }`}>
+                          {apt.status === 'upcoming' ? 'Agendado' : 
+                           apt.status === 'in_progress' ? 'Em Atendimento' : 
+                           apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
+                        </span>
+
+                        {(apt.status === 'upcoming' || apt.status === 'in_progress') && (apt.modality === 'telemedicine' || apt.modality === 'online' || !apt.modality) && (
+                          <button 
+                            onClick={async () => {
+                              if (apt.status === 'upcoming') {
+                                await handleUpdateStatus(apt.id, 'in_progress');
+                              }
+                              setActiveTelemedicineApt(apt);
+                            }}
+                            className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
+                            title="Atendimento por Vídeo"
+                          >
+                            <Video size={14} />
+                            Atender em Vídeo
+                          </button>
+                        )}
+
+                        {apt.status === 'upcoming' && (
+                          <button 
+                            onClick={() => handleUpdateStatus(apt.id, 'in_progress')}
+                            className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
+                          >
+                            <SkipForward size={14} />
+                            Iniciar
+                          </button>
+                        )}
+
+                        {apt.status === 'in_progress' && (
+                          <button 
+                            onClick={() => setSelectedApt(apt)}
+                            className="px-4 py-2 bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-border-2 transition-all flex items-center gap-2"
+                          >
+                            <Stethoscope size={14} />
+                            Registro Clínico
+                          </button>
+                        )}
+
+                        {apt.status === 'in_progress' && (
+                          <button 
+                            onClick={() => handleUpdateStatus(apt.id, 'completed')}
+                            className="px-4 py-2 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all flex items-center gap-2"
+                          >
+                            <Check size={14} />
+                            Finalizar
+                          </button>
+                        )}
+
+                        {apt.status === 'completed' && (
+                          <button 
+                            onClick={() => setSelectedApt(apt)}
+                            className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all flex items-center gap-2"
+                          >
+                            <FileText size={14} />
+                            Ver Prontuário
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 text-center text-vitta-text-secondary">
+                  <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4" />
+                  <p className="font-medium">Nenhum agendamento para hoje.</p>
+                  <p className="text-xs">Aproveite o tempo livre ou confira sua agenda de amanhã.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       )}
 
       {subTab === 'profile' && (
@@ -10053,6 +10181,19 @@ const UsersView = () => {
                     placeholder="Mínimo 6 caracteres"
                   />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nível de Acesso (Cargo)</label>
+                  <select 
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  >
+                    <option value="user">Cliente/Paciente</option>
+                    <option value="professional">Profissional</option>
+                    <option value="conveniado">Conveniado</option>
+                    <option value="admin">Admin Master</option>
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Status</label>
@@ -10157,14 +10298,16 @@ const UsersView = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cargo / Role</label>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nível de Acesso (Cargo)</label>
                     <select 
                       value={editingUser.role || 'user'}
                       onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
                       className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
-                      <option value="user">Usuário / Paciente</option>
-                      <option value="admin">Administrador</option>
+                      <option value="user">Cliente/Paciente</option>
+                      <option value="professional">Profissional</option>
+                      <option value="conveniado">Conveniado</option>
+                      <option value="admin">Admin Master</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -10297,6 +10440,7 @@ const UsersView = () => {
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Nível de Acesso</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">KYC</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Plano</th>
@@ -10314,6 +10458,11 @@ const UsersView = () => {
                       <p className="text-xs text-vitta-text-secondary">{user.email}</p>
                     </div>
                   </div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded-lg text-xs font-bold ${getRoleBadgeClass(user.role)}`}>
+                    {getRoleLabel(user.role || 'user')}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
@@ -10346,6 +10495,44 @@ const UsersView = () => {
                         <ShieldCheck size={18} />
                       </button>
                     )}
+                    
+                    {/* Alterar Status (Desativar / Ativar) Shortcut */}
+                    {user.status === 'Ativo' ? (
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'users', user.id), { status: 'Inativo' });
+                            await logAdminAction('DEACTIVATE_USER', `Desativou o usuário: ${user.email || user.id}`);
+                            addToast('Usuário desativado com sucesso.', 'success');
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
+                            addToast('Erro ao desativar usuário.', 'error');
+                          }
+                        }}
+                        title="Desativar Usuário"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl"
+                      >
+                        <UserX size={16} />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'users', user.id), { status: 'Ativo' });
+                            await logAdminAction('ACTIVATE_USER', `Ativou o usuário: ${user.email || user.id}`);
+                            addToast('Usuário ativado com sucesso.', 'success');
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
+                            addToast('Erro ao ativar usuário.', 'error');
+                          }
+                        }}
+                        title="Ativar Usuário"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-green transition-colors hover:bg-green-50 dark:hover:bg-green-950/20 rounded-xl"
+                      >
+                        <UserCheck size={16} />
+                      </button>
+                    )}
+
                     <button 
                       onClick={() => setEditingUser(user)}
                       className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
@@ -10364,7 +10551,7 @@ const UsersView = () => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={4} className="px-6 py-10 text-center text-vitta-text-muted">
+                <td colSpan={6} className="px-6 py-10 text-center text-vitta-text-muted">
                   Nenhum usuário encontrado com os filtros aplicados.
                 </td>
               </tr>
@@ -10895,9 +11082,18 @@ const AppointmentsView = ({
           />
         )}
       </AnimatePresence>
-      <section>
-        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meus Agendamentos</h1>
-        <p className="text-vitta-text-secondary">Gerencie suas consultas e horários marcados.</p>
+      <section className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meus Agendamentos</h1>
+          <p className="text-vitta-text-secondary">Gerencie suas consultas e horários marcados.</p>
+        </div>
+        <button 
+          onClick={() => setActiveTab('professionals')}
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-green hover:bg-vitta-green/95 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20 self-start sm:self-auto shrink-0"
+        >
+          <Plus size={18} />
+          Agendar Nova Consulta
+        </button>
       </section>
 
       <div className="space-y-4">
@@ -10946,7 +11142,7 @@ const AppointmentsView = ({
                   'bg-vitta-danger/10 text-vitta-danger'
                 }`}>
                   {apt.status === 'upcoming' ? 'Agendado' : 
-                   apt.status === 'pending' ? 'Pendente' : 
+                   apt.status === 'pending' ? 'Aguardando' : 
                    apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
                 </span>
               </div>
