@@ -1,3 +1,10 @@
+import dotenv from "dotenv";
+// Load environment variables immediately
+dotenv.config();
+
+// Enforce UTC-3 (America/Sao_Paulo) system-wide timezone for the backend process
+process.env.TZ = "America/Sao_Paulo";
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -27,11 +34,23 @@ import twilio from 'twilio';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Env helper to handle surrounding quotes responsibly
+function getEnv(key: string, defaultValue = ""): string {
+  let val = (process.env[key] || defaultValue).trim();
+  if (val.startsWith('"') && val.endsWith('"')) {
+    val = val.slice(1, -1);
+  }
+  if (val.startsWith("'") && val.endsWith("'")) {
+    val = val.slice(1, -1);
+  }
+  return val;
+}
+
 // Initialize Mercado Pago
 let mpClient: MercadoPagoConfig | null = null;
 const getMPClient = () => {
   if (!mpClient) {
-    const accessToken = (process.env.MERCADO_PAGO_ACCESS_TOKEN || "").trim();
+    const accessToken = getEnv("MERCADO_PAGO_ACCESS_TOKEN");
     if (!accessToken) {
       console.warn("MERCADO_PAGO_ACCESS_TOKEN not set. Mercado Pago features will be disabled.");
       return null;
@@ -100,20 +119,31 @@ if (db) {
   })();
 }
 
-// Initialize Twilio
-const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) 
-  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-  : null;
+// Initialize Twilio safely (must start with AC to avoid Twilio initialization throwing an error on empty or invalid configuration)
+const twilioAccountSid = getEnv("TWILIO_ACCOUNT_SID");
+const twilioAuthToken = getEnv("TWILIO_AUTH_TOKEN");
+let twilioClient: any = null;
+if (twilioAccountSid && twilioAccountSid.startsWith("AC") && twilioAuthToken) {
+  try {
+    twilioClient = twilio(twilioAccountSid, twilioAuthToken);
+  } catch (err: any) {
+    console.error("[Twilio] Falha ao inicializar cliente Twilio:", err.message);
+  }
+}
 
 // Initialize Nodemailer
-const emailTransporter = (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+const smtpHost = getEnv("SMTP_HOST");
+const smtpUser = getEnv("SMTP_USER");
+const smtpPass = getEnv("SMTP_PASS");
+const smtpPort = Number(getEnv("SMTP_PORT")) || 587;
+const emailTransporter = (smtpHost && smtpUser && smtpPass)
   ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465,
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPass,
       },
     })
   : null;
@@ -208,7 +238,7 @@ async function startServer() {
       let emailError = null;
 
       // Try sending real SMS if Twilio is configured and a phone number is provided
-      if (twilioClient && phoneNumber && process.env.TWILIO_PHONE_NUMBER) {
+      if (twilioClient && phoneNumber && getEnv("TWILIO_PHONE_NUMBER")) {
         try {
           // Normalize phone number (ensure it's E.164)
           let targetPhone = phoneNumber.replace(/\D/g, '');
@@ -217,8 +247,8 @@ async function startServer() {
           }
 
           await twilioClient.messages.create({
-            body: `Seu código de verificação ViTTA Health é: ${code}. Expira em 5 minutos.`,
-            from: process.env.TWILIO_PHONE_NUMBER,
+            body: `Seu código de verificação ViTTA Health é: ${code}. Expira em 5 minutes.`,
+            from: getEnv("TWILIO_PHONE_NUMBER"),
             to: targetPhone
           });
           smsSent = true;
@@ -233,7 +263,7 @@ async function startServer() {
       if (emailTransporter && email) {
         try {
           await emailTransporter.sendMail({
-            from: process.env.SMTP_FROM || '"ViTTA Health" <ajuda@vittahealth.online>',
+            from: getEnv("SMTP_FROM") || '"ViTTA Health" <ajuda@vittahealth.online>',
             to: email,
             subject: "Seu código de verificação ViTTA Health",
             text: `Seu código de verificação é: ${code}. Este código expira em 5 minutos. Se você não solicitou este código, ignore este e-mail.`,
@@ -360,7 +390,7 @@ async function startServer() {
         body: {
           reason,
           auto_recurring,
-          back_url: back_url || process.env.APP_URL || "https://example.com/callback",
+          back_url: back_url || getEnv("APP_URL") || "https://example.com/callback",
           status: "active"
         }
       });
@@ -416,7 +446,7 @@ async function startServer() {
           preapproval_plan_id: plan_id,
           payer_email,
           card_token_id,
-          back_url: back_url || process.env.APP_URL || "https://example.com/callback",
+          back_url: back_url || getEnv("APP_URL") || "https://example.com/callback",
           status: "authorized"
         }
       });
@@ -444,7 +474,7 @@ async function startServer() {
           payer: {
             email: email
           },
-          notification_url: `${process.env.APP_URL}/api/webhooks/mercado-pago`,
+          notification_url: `${getEnv("APP_URL")}/api/webhooks/mercado-pago`,
           metadata: {
             user_id: userId
           }

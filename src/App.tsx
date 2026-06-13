@@ -183,6 +183,8 @@ import NotificationCenter from './components/NotificationCenter';
 import HelpCenter from './components/HelpCenter';
 import ReviewModal from './components/ReviewModal';
 import KYCWizard from './components/KYCWizard';
+import TelemedicineRoom from './components/TelemedicineRoom';
+import { enqueueOfflineAction } from './lib/offlineQueue';
 
 const Skeleton = ({ className, ...props }: { className?: string, [key: string]: any }) => (
   <div className={`animate-pulse bg-vitta-surface-2 rounded-xl ${className}`} {...props} />
@@ -435,6 +437,7 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
 };
 
 const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => void }) => {
+  const { addToast } = useToast();
   const [metrics, setMetrics] = useState({
     weight: '',
     height: '',
@@ -463,6 +466,13 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
       if (metrics.sleepHours) data.sleepHours = Number(metrics.sleepHours);
       if (metrics.steps) data.steps = Number(metrics.steps);
       if (metrics.waterIntake) data.waterIntake = Number(metrics.waterIntake);
+
+      if (!navigator.onLine) {
+        enqueueOfflineAction('CREATE_METRIC', data);
+        addToast('Você está offline. Suas métricas foram salvas no celular e serão sincronizadas quando a internet voltar.', 'info');
+        onClose();
+        return;
+      }
 
       await addDoc(collection(db, 'health_metrics'), data);
       onClose();
@@ -602,6 +612,7 @@ const BookingModal = ({
     return tomorrow.toISOString().split('T')[0];
   });
   const [selectedTime, setSelectedTime] = useState('');
+  const [modality, setModality] = useState<'presencial' | 'telemedicine'>('telemedicine');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -680,6 +691,7 @@ const BookingModal = ({
         date: selectedDate,
         time: selectedTime,
         status: 'upcoming',
+        modality,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
@@ -694,8 +706,8 @@ const BookingModal = ({
         createdAt: Timestamp.now()
       });
 
-      // 2. Open WhatsApp
-      const phoneNumber = '5528999881386';
+      // 2. Open WhatsApp - Dirigido pelo campo cadastrado no profissional ou fallback geral
+      const phoneNumber = professional.whatsapp ? professional.whatsapp.replace(/\D/g, '') : '5528999881386';
       const formattedDate = new Date(selectedDate).toLocaleDateString('pt-BR');
       const message = `Olá! Gostaria de agendar um atendimento.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Profissional selecionado:*\nNome: ${professional.name}\nEspecialidade: ${professional.specialty}\n\n*Data e Hora:*\n${formattedDate} às ${selectedTime}`;
       
@@ -805,6 +817,34 @@ const BookingModal = ({
                     onChange={(e) => setSelectedDate(e.target.value)}
                     className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Tipo de Atendimento</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setModality('presencial')}
+                      className={`py-3 text-sm font-bold rounded-xl border transition-all ${
+                        modality === 'presencial'
+                          ? 'border-vitta-green bg-vitta-green/10 text-vitta-green'
+                          : 'border-vitta-border bg-vitta-surface hover:border-vitta-text-secondary text-vitta-text-primary'
+                      }`}
+                    >
+                      🏥 Presencial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModality('telemedicine')}
+                      className={`py-3 text-sm font-bold rounded-xl border transition-all ${
+                        modality === 'telemedicine'
+                          ? 'border-vitta-green bg-vitta-green/10 text-vitta-green'
+                          : 'border-vitta-border bg-vitta-surface hover:border-vitta-text-secondary text-vitta-text-primary'
+                      }`}
+                    >
+                      💻 Telemedicina (Vídeo)
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -1044,14 +1084,25 @@ const AddMedicationModal = ({ user, onClose }: { user: any, onClose: () => void 
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'medications'), {
+      const data = {
         userId: user.uid,
         name,
         dosage,
         times,
         category,
         isActive: true,
-        startDate: new Date().toISOString(),
+        startDate: new Date().toISOString()
+      };
+
+      if (!navigator.onLine) {
+        enqueueOfflineAction('CREATE_MED', data);
+        addToast('Você está offline. Medicamento salvo localmente e será enviado ao reconectar.', 'info');
+        onClose();
+        return;
+      }
+
+      await addDoc(collection(db, 'medications'), {
+        ...data,
         createdAt: serverTimestamp()
       });
       addToast('Medicamento cadastrado com sucesso!', 'success');
@@ -1157,14 +1208,25 @@ const AddGoalModal = ({ user, onClose }: { user: any, onClose: () => void }) => 
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'health_goals'), {
+      const data = {
         userId: user.uid,
         type,
         targetValue: target,
         currentValue: 0,
         unit: type === 'steps' ? 'passos' : type === 'weight' ? 'kg' : type === 'water' ? 'ml' : 'horas',
         deadline,
-        status: 'active',
+        status: 'active'
+      };
+
+      if (!navigator.onLine) {
+        enqueueOfflineAction('CREATE_GOAL', data);
+        addToast('Você está offline. Meta cadastrada localmente e será enviada ao reconectar.', 'info');
+        onClose();
+        return;
+      }
+
+      await addDoc(collection(db, 'health_goals'), {
+        ...data,
         createdAt: serverTimestamp()
       });
       addToast('Meta definida com sucesso!', 'success');
@@ -1720,6 +1782,219 @@ const PatientDashboardView = ({ user, userData, setActiveTab }: { user: any, use
           {isGoalModalOpen && (
             <AddGoalModal user={user} onClose={() => setIsGoalModalOpen(false)} />
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HomeView = ({ user, userData, setActiveTab }: { user: any, userData: any, setActiveTab: (tab: string) => void }) => {
+  const resources = [
+    {
+      id: 'professionals',
+      title: 'Profissionais de Saúde',
+      description: 'Encontre especialistas experientes, consulte avaliações reais e agende consultas presenciais ou online por telemedicina.',
+      icon: Users,
+      badge: 'Telemedicina',
+      color: 'accent',
+    },
+    {
+      id: 'appointments',
+      title: 'Meus Agendamentos',
+      description: 'Gerencie suas consultas marcadas, acesse salas virtuais de atendimento e confira o histórico detalhado.',
+      icon: Clock,
+      badge: 'Consultas',
+      color: 'purple',
+    },
+    {
+      id: 'exams',
+      title: 'Meus Exames',
+      description: 'Monitore seus exames laboratoriais e de imagem, com visualização de laudos digitais rápidos e práticos.',
+      icon: ClipboardList,
+      badge: 'Laudos',
+      color: 'emerald',
+    },
+    {
+      id: 'plans',
+      title: 'Plano de Benefícios',
+      description: 'Conheça seu plano de saúde ViTTA, coberturas completas e a ampla rede de parceiros credenciados na sua região.',
+      icon: ShieldCheck,
+      badge: 'Parcerias',
+      color: 'accent',
+    },
+    {
+      id: 'wallets',
+      title: 'Carteira Digital',
+      description: 'Controle seu saldo de moedas ViTTA Coins, realize recargas com segurança e verifique extratos de forma transparente.',
+      icon: Wallet,
+      badge: 'Financeiro',
+      color: 'amber',
+    },
+    {
+      id: 'voucher',
+      title: 'Compra de Vouchers',
+      description: 'Adquira pacotes e vouchers promocionais exclusivos com descontos imperdíveis para exames e consultas médicas.',
+      icon: CreditCard,
+      badge: 'Descontos',
+      color: 'purple',
+    },
+    {
+      id: 'pharmacies',
+      title: 'Farmácias de Plantão',
+      description: 'Localize instantaneamente farmácias em regime de plantão hoje na sua cidade, com telefones e rotas de localização.',
+      icon: Stethoscope,
+      badge: 'Plantão 24h',
+      color: 'emerald',
+    },
+    {
+      id: 'radio',
+      title: 'Rádio ViTTA FM',
+      description: 'Fique sintonizado com excelente seleção musical, podcasts inovadores de saúde e informações de bem-estar ao vivo.',
+      icon: Radio,
+      badge: 'Sintonize',
+      color: 'amber',
+    },
+    {
+      id: 'offers',
+      title: 'Clube de Ofertas',
+      description: 'Desfrute de ofertas exclusivas e cupons de marcas líderes do mercado em bem-estar, cosméticos e nutrição.',
+      icon: Tag,
+      badge: 'Parceiros',
+      color: 'accent',
+    },
+    {
+      id: 'dashboard',
+      title: 'Métricas & Saúde',
+      description: 'Acompanhe dados vitais de bioimpedância, pressão, controle de medicamentos recorrentes e cumprimento de metas.',
+      icon: Activity,
+      badge: 'Painel Vital',
+      color: 'emerald',
+    },
+    {
+      id: 'chat',
+      title: 'Chat Suporte',
+      description: 'Fale diretamente com nossa equipe especializada para solucionar dúvidas cadastrais e pedir assistência médica.',
+      icon: MessageSquare,
+      badge: 'Online',
+      color: 'purple',
+    },
+    {
+      id: 'profile',
+      title: 'Perfil & Segurança',
+      description: 'Edite suas fotos de perfil, altere senhas, cadastre dados adicionais e ative verificação em dois fatores (2FA).',
+      icon: User,
+      badge: 'Configurações',
+      color: 'amber',
+    }
+  ];
+
+  const colorStyles: Record<string, { bg: string, text: string, border: string, hover: string }> = {
+    accent: {
+      bg: 'bg-vitta-accent-bg dark:bg-vitta-accent/10',
+      text: 'text-vitta-accent',
+      border: 'hover:border-vitta-accent/50',
+      hover: 'group-hover:bg-vitta-accent group-hover:text-white',
+    },
+    purple: {
+      bg: 'bg-vitta-purple-bg dark:bg-vitta-purple/10',
+      text: 'text-vitta-purple',
+      border: 'hover:border-vitta-purple/50',
+      hover: 'group-hover:bg-vitta-purple group-hover:text-white',
+    },
+    emerald: {
+      bg: 'bg-vitta-green-bg dark:bg-vitta-green/10',
+      text: 'text-vitta-green',
+      border: 'hover:border-vitta-green/50',
+      hover: 'group-hover:bg-vitta-green group-hover:text-white',
+    },
+    amber: {
+      bg: 'bg-vitta-amber-bg dark:bg-vitta-amber/10',
+      text: 'text-vitta-amber',
+      border: 'hover:border-vitta-amber/50',
+      hover: 'group-hover:bg-vitta-amber group-hover:text-white',
+    },
+  };
+
+  return (
+    <div className="space-y-8 pb-10">
+      {/* Welcome Hero Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-vitta-accent to-vitta-purple p-8 md:p-12 text-white shadow-xl shadow-vitta-accent/15 border border-white/10">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10 max-w-2xl space-y-4">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/15 backdrop-blur-md rounded-full text-xs font-semibold tracking-wider uppercase">
+            <Sparkles size={12} className="text-vitta-amber animate-spin" style={{ animationDuration: '3s' }} /> Portal de Recursos ViTTA
+          </div>
+          <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
+            Olá, <span className="text-white bg-gradient-to-r from-white to-vitta-amber-bg bg-clip-text text-transparent">{user?.displayName?.split(' ')[0] || 'Bem-vindo'}</span>! 🌟
+          </h1>
+          <p className="text-white/80 text-sm md:text-base font-medium leading-relaxed max-w-xl">
+            Sua saúde e bem-estar integrados em um ecossistema completo e inteligente. Explore recursos avançados, consulte médicos experientes, gerencie vouchers e acompanhe suas metas diárias.
+          </p>
+          <div className="flex flex-wrap gap-4 pt-2">
+            <button 
+              id="home-cta-schedule"
+              onClick={() => setActiveTab('professionals')}
+              className="px-5 py-3 bg-white text-vitta-accent font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-102 transition-all duration-200 active:scale-95"
+            >
+              Agendar Nova Consulta
+            </button>
+            <button 
+              id="home-cta-radio"
+              onClick={() => setActiveTab('radio')}
+              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+            >
+              Ouvir Rádio ViTTA
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid of Navigation Cards */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold text-vitta-text-primary tracking-tight">Recursos & Benefícios Exclusivos</h2>
+          <p className="text-xs text-vitta-text-secondary mt-0.5">Clique em um dos cartões abaixo para navegar de forma rápida e intuitiva pela plataforma.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {resources.map((resource) => {
+            const IconComp = resource.icon;
+            const style = colorStyles[resource.color];
+            return (
+              <motion.div
+                key={resource.id}
+                id={`home-resource-card-${resource.id}`}
+                whileHover={{ y: -6, scale: 1.02 }}
+                onClick={() => setActiveTab(resource.id)}
+                className={`group bg-vitta-surface p-6 rounded-2xl border border-vitta-border ${style.border} shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer flex flex-col justify-between h-[230px]`}
+              >
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className={`p-3 rounded-xl ${style.bg} ${style.text} transition-colors duration-300`}>
+                      <IconComp size={22} />
+                    </div>
+                    <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full ${style.bg} ${style.text}`}>
+                      {resource.badge}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-bold text-vitta-text-primary group-hover:text-vitta-accent transition-colors text-sm md:text-base leading-snug">
+                      {resource.title}
+                    </h3>
+                    <p className="text-xs text-vitta-text-secondary line-clamp-3 leading-relaxed">
+                      {resource.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs font-bold text-vitta-accent group-hover:translate-x-1 transition-transform self-start mt-2">
+                  <span>Acessar</span>
+                  <ChevronRight size={14} />
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -3215,7 +3490,13 @@ const ProfessionalFinanceView = ({ user }: { user: any }) => {
   );
 };
 
-const ProfessionalDashboardView = ({ user }: { user: any }) => {
+const ProfessionalDashboardView = ({ 
+  user, 
+  setActiveTelemedicineApt 
+}: { 
+  user: any, 
+  setActiveTelemedicineApt: (apt: any) => void 
+}) => {
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3419,7 +3700,13 @@ const ProfessionalDashboardView = ({ user }: { user: any }) => {
                       <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
                         <span className="font-mono bg-vitta-border px-1.5 py-0.5 rounded">{apt.time}</span>
                         <span>•</span>
-                        <span>Consulta Presencial</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          apt.modality === 'telemedicine' || apt.modality === 'online'
+                            ? 'bg-vitta-accent-bg text-vitta-accent'
+                            : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
+                        }`}>
+                          {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -3442,6 +3729,22 @@ const ProfessionalDashboardView = ({ user }: { user: any }) => {
                        apt.status === 'in_progress' ? 'Em Atendimento' : 
                        apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
                     </span>
+
+                    {(apt.status === 'upcoming' || apt.status === 'in_progress') && (apt.modality === 'telemedicine' || apt.modality === 'online' || !apt.modality) && (
+                      <button 
+                        onClick={async () => {
+                          if (apt.status === 'upcoming') {
+                            await handleUpdateStatus(apt.id, 'in_progress');
+                          }
+                          setActiveTelemedicineApt(apt);
+                        }}
+                        className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
+                        title="Atendimento por Vídeo"
+                      >
+                        <Video size={14} />
+                        Atender em Vídeo
+                      </button>
+                    )}
 
                     {apt.status === 'upcoming' && (
                       <button 
@@ -4942,8 +5245,97 @@ const ProfessionalsManagementView = () => {
     registrationNumber: '',
     availableDays: '',
     price: '',
-    city: ''
+    city: '',
+    imageUrl: '',
+    whatsapp: ''
   });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      processFile(files[0]);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      processFile(files[0]);
+    }
+  };
+
+  const processFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      addToast('Por favor, selecione um arquivo de imagem válido.', 'error');
+      return;
+    }
+    // Set a higher raw limit for upload before compression (e.g., 10MB) to be more user-friendly, since we compress anyway
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('A imagem de origem deve ter menos de 10MB.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Compress with JPEG format at 0.8 quality to significantly shrink storage footprint
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            
+            if (editingItem) {
+              setEditingItem((prev: any) => ({ ...prev, imageUrl: compressedBase64 }));
+            } else {
+              setNewItem(prev => ({ ...prev, imageUrl: compressedBase64 }));
+            }
+            addToast('Imagem de perfil carregada e otimizada!', 'success');
+          } else {
+            addToast('Erro ao otimizar a imagem.', 'error');
+          }
+        };
+        img.onerror = () => {
+          addToast('Erro ao processar imagem para otimização.', 'error');
+        };
+        img.src = event.target.result as string;
+      }
+    };
+    reader.onerror = () => {
+      addToast('Erro ao ler o arquivo de imagem.', 'error');
+    };
+    reader.readAsDataURL(file);
+  };
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -5046,7 +5438,8 @@ const ProfessionalsManagementView = () => {
           city: newItem.city,
           rating: 5.0,
           reviews: 0,
-          imageUrl: 'https://picsum.photos/seed/prof/400/300',
+          imageUrl: newItem.imageUrl || 'https://picsum.photos/seed/prof/400/300',
+          whatsapp: newItem.whatsapp || '',
           createdAt: new Date().toISOString()
         });
         await logAdminAction('CREATE_PROFESSIONAL', `Criou o profissional: ${newItem.name}`);
@@ -5067,7 +5460,9 @@ const ProfessionalsManagementView = () => {
         registrationNumber: '',
         availableDays: '',
         price: '',
-        city: ''
+        city: '',
+        imageUrl: '',
+        whatsapp: ''
       });
       addToast(`${isCreating === 'professional' ? 'Profissional' : 'Categoria'} criado com sucesso.`, 'success');
     } catch (err) {
@@ -5104,6 +5499,56 @@ const ProfessionalsManagementView = () => {
                 </button>
               </div>
               <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4 overflow-y-auto">
+                {(isCreating === 'professional' || (editingItem && editingItem.type === 'professional')) && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 mr-2">Foto de Perfil do Profissional</label>
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => document.getElementById('prof-img-file-input')?.click()}
+                      className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                        isDragging 
+                          ? 'border-vitta-green bg-vitta-green/5' 
+                          : 'border-vitta-border bg-vitta-surface-2 hover:border-vitta-green/40 hover:bg-vitta-surface-3'
+                      }`}
+                    >
+                      <input 
+                        id="prof-img-file-input"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                      
+                      {(editingItem?.imageUrl || newItem.imageUrl) ? (
+                        <div className="relative group/img">
+                          <img 
+                            src={editingItem ? editingItem.imageUrl : newItem.imageUrl} 
+                            alt="Preview do Profissional" 
+                            className="w-20 h-20 rounded-xl object-cover border border-vitta-border shadow-md"
+                          />
+                          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-all">
+                            <Upload size={16} className="text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl bg-vitta-surface border border-vitta-border flex items-center justify-center text-vitta-text-muted">
+                          <User size={24} />
+                        </div>
+                      )}
+
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-vitta-text-primary">
+                          Arraste ou clique para enviar
+                        </p>
+                        <p className="text-[10px] text-vitta-text-muted mt-0.5">
+                          Formatos PNG, JPG ou WEBP até 2MB
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
@@ -5156,6 +5601,22 @@ const ProfessionalsManagementView = () => {
                           ? setEditingItem({ ...editingItem, registrationNumber: e.target.value })
                           : setNewItem({ ...newItem, registrationNumber: e.target.value })
                         }
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">WhatsApp de Direcionamento (com DDD)</label>
+                      <input 
+                        id="professional-whatsapp-input"
+                        type="text" 
+                        placeholder="Ex: 5528999881386"
+                        value={editingItem ? (editingItem.whatsapp || '') : (newItem.whatsapp || '')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem 
+                            ? setEditingItem({ ...editingItem, whatsapp: val })
+                            : setNewItem({ ...newItem, whatsapp: val });
+                        }}
                         className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
@@ -5282,8 +5743,8 @@ const ProfessionalsManagementView = () => {
                       </p>
                     )}
                     {prof.price && (
-                      <p className="text-xs font-bold text-vitta-green mt-1">
-                        {prof.price}
+                      <p className="text-xs font-bold text-vitta-text-primary mt-1">
+                        Valor: <span className="text-vitta-green font-extrabold">{prof.price}</span>
                       </p>
                     )}
                   </div>
@@ -5306,7 +5767,9 @@ const ProfessionalsManagementView = () => {
                       registrationNumber: prof.registrationNumber || '',
                       price: prof.price || '',
                       city: prof.city || '',
-                      availableDays: prof.availableDays || ''
+                      availableDays: prof.availableDays || '',
+                      imageUrl: prof.imageUrl || '',
+                      whatsapp: prof.whatsapp || ''
                     })}
                     className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                   >
@@ -5319,6 +5782,35 @@ const ProfessionalsManagementView = () => {
                     <Trash2 size={16} />
                   </button>
                 </div>
+              </div>
+              
+              <div className="border-t border-vitta-border pt-3 space-y-2 text-xs">
+                {prof.city && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <MapPin size={14} className="text-vitta-text-muted shrink-0" />
+                    <span>{prof.city}</span>
+                  </div>
+                )}
+                {prof.availableDays && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <Calendar size={14} className="text-vitta-text-muted shrink-0" />
+                    <span>{prof.availableDays}</span>
+                  </div>
+                )}
+                {prof.whatsapp && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <Phone size={14} className="text-vitta-green shrink-0" />
+                    <span>WhatsApp: <strong className="font-medium text-vitta-text-primary">{prof.whatsapp}</strong></span>
+                  </div>
+                )}
+                {prof.vittaHealthDiscount && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <Tag size={14} className="text-vitta-accent shrink-0" />
+                    <span>
+                      Desconto Assinante: <span className="font-bold text-vitta-accent">{prof.vittaHealthDiscount}</span>
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="pt-4 border-t border-vitta-border flex justify-between items-center">
                 <div className="flex items-center gap-1 text-vitta-amber">
@@ -5470,6 +5962,12 @@ const ProfessionalsView = ({ user, userData }: { user: any, userData?: any }) =>
                       <div className="flex items-center gap-1 text-[10px] text-vitta-text-muted mt-1">
                         <MapPin size={10} />
                         <span>{prof.city}</span>
+                      </div>
+                    )}
+                    {prof.whatsapp && (
+                      <div className="flex items-center gap-1 text-[10px] text-vitta-text-muted mt-1">
+                        <Phone size={10} className="text-vitta-green" />
+                        <span>WhatsApp (Direto)</span>
                       </div>
                     )}
                     {prof.vittaHealthDiscount && (
@@ -10031,7 +10529,17 @@ const RescheduleModal = ({
   );
 };
 
-const AppointmentsView = ({ user, setActiveTab, setReviewingAppointment }: { user: any, setActiveTab: (tab: string) => void, setReviewingAppointment: (apt: any) => void }) => {
+const AppointmentsView = ({ 
+  user, 
+  setActiveTab, 
+  setReviewingAppointment,
+  setActiveTelemedicineApt 
+}: { 
+  user: any, 
+  setActiveTab: (tab: string) => void, 
+  setReviewingAppointment: (apt: any) => void,
+  setActiveTelemedicineApt: (apt: any) => void 
+}) => {
   const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -10155,7 +10663,16 @@ const AppointmentsView = ({ user, setActiveTab, setReviewingAppointment }: { use
               <img src={apt.imageUrl} alt={apt.professionalName} className="w-16 h-16 rounded-xl object-cover" />
               <div>
                 <h3 className="font-bold text-lg text-vitta-text-primary">{apt.professionalName}</h3>
-                <p className="text-sm text-vitta-text-secondary">{apt.specialty}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-sm text-vitta-text-secondary">{apt.specialty}</p>
+                  <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider ${
+                    apt.modality === 'telemedicine' || apt.modality === 'online'
+                      ? 'bg-vitta-accent-bg text-vitta-accent'
+                      : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
+                  }`}>
+                    {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
+                  </span>
+                </div>
               </div>
             </div>
             
@@ -10182,7 +10699,16 @@ const AppointmentsView = ({ user, setActiveTab, setReviewingAppointment }: { use
                 </span>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                {(apt.status === 'upcoming' || apt.status === 'in_progress') && (apt.modality === 'telemedicine' || apt.modality === 'online' || apt.specialty?.toLowerCase().includes('tele') || !apt.modality) && (
+                  <button
+                    onClick={() => setActiveTelemedicineApt(apt)}
+                    className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/95 transition-all flex items-center gap-1.5 shadow-md shadow-vitta-accent/10"
+                  >
+                    <Video size={14} />
+                    Acessar Teleconsulta
+                  </button>
+                )}
                 {apt.status === 'completed' && !apt.isReviewed && (
                   <button 
                     onClick={() => setReviewingAppointment(apt)}
@@ -11237,12 +11763,12 @@ const VoucherView = ({ user, setActiveTab }: { user: any, setActiveTab: (tab: st
   useEffect(() => {
     if (!user) return;
     setLoadingVouchers(true);
-    const q = query(collection(db, 'vouchers'), where('userId', '==', user.uid));
+    const q = query(collection(db, 'user_vouchers'), where('userId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMyVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoadingVouchers(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'vouchers');
+      handleFirestoreError(error, OperationType.GET, 'user_vouchers');
       setLoadingVouchers(false);
     });
     return () => unsubscribe();
@@ -11250,13 +11776,13 @@ const VoucherView = ({ user, setActiveTab }: { user: any, setActiveTab: (tab: st
 
   const handleRedeem = async (userVoucherId: string) => {
     try {
-      await updateDoc(doc(db, 'vouchers', userVoucherId), {
+      await updateDoc(doc(db, 'user_vouchers', userVoucherId), {
         status: 'redeemed',
         redeemedAt: new Date().toISOString()
       });
-      addToast('Benefício resgatado! Siga as instruções do parceiro.', 'success');
+      addToast('Benefício resgatado com sucesso! Siga as instruções do parceiro.', 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `vouchers/${userVoucherId}`);
+      handleFirestoreError(error, OperationType.UPDATE, `user_vouchers/${userVoucherId}`);
       addToast('Erro ao resgatar benefício.', 'error');
     }
   };
@@ -11363,44 +11889,96 @@ const VoucherView = ({ user, setActiveTab }: { user: any, setActiveTab: (tab: st
                <button onClick={() => setSubTab('store')} className="bg-vitta-surface-2 text-vitta-text-primary px-6 py-2 rounded-xl font-bold border border-vitta-border">Ver Catálogo</button>
              </div>
           ) : (
-            myVouchers.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(voucher => (
-              <div key={voucher.id} className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden flex flex-col">
-                <div className="p-6 flex-1">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-vitta-accent-bg flex items-center justify-center text-vitta-accent">
-                      <Ticket size={24} />
+            myVouchers.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(voucher => {
+              const isReward = !!voucher.isRedeemedReward;
+              return (
+                <div 
+                  key={voucher.id} 
+                  className={`bg-vitta-surface rounded-2xl border shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${
+                    isReward 
+                      ? 'border-amber-400 bg-amber-50/10 shadow-md ring-2 ring-amber-400/20' 
+                      : 'border-vitta-border'
+                  }`}
+                >
+                  <div className="p-6 flex-1">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                        isReward 
+                          ? 'bg-amber-100 text-amber-600 font-bold' 
+                          : 'bg-vitta-accent-bg text-vitta-accent'
+                      }`}>
+                        <Ticket size={24} />
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        {voucher.status === 'active' ? (
+                          <span className="bg-vitta-green-bg text-vitta-green px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><Check size={12}/> Válido</span>
+                        ) : (
+                          <span className="bg-vitta-surface-3 text-vitta-text-muted px-3 py-1 rounded-full text-xs font-bold border border-vitta-border">Resgatado</span>
+                        )}
+                        {isReward && (
+                          <span className="bg-amber-500/15 text-amber-600 text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider">
+                            🪙 Recompensa Vitta Coins
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {voucher.status === 'active' ? (
-                      <span className="bg-vitta-green-bg text-vitta-green px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><Check size={12}/> Válido</span>
-                    ) : (
-                      <span className="bg-vitta-surface-3 text-vitta-text-muted px-3 py-1 rounded-full text-xs font-bold border border-vitta-border">Resgatado</span>
+                    <h3 className="text-lg font-bold text-vitta-text-primary mb-1">{voucher.title}</h3>
+                    <p className="text-sm font-medium text-vitta-accent mb-2">{voucher.partner}</p>
+                    
+                    {voucher.status === 'active' && (
+                      <div className="mt-4 p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/60 text-center space-y-2">
+                        <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Código de Resgate</p>
+                        <p className="font-mono text-sm font-bold text-vitta-text-primary px-3 py-1.5 bg-vitta-surface border border-vitta-border rounded-lg select-all">
+                          {voucher.code || `VITTA-${voucher.id.substring(0, 5).toUpperCase()}`}
+                        </p>
+                        <div className="flex justify-center pt-1">
+                          <div className="w-20 h-20 bg-white p-1 rounded-lg border border-vitta-border flex items-center justify-center">
+                            <div className="grid grid-cols-4 gap-1 w-full h-full opacity-80">
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-white"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              
+                              <div className="bg-white"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-white"></div>
+                              
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-white"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-black rounded-sm"></div>
+                              <div className="bg-white"></div>
+                              <div className="bg-black rounded-sm"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <h3 className="text-lg font-bold text-vitta-text-primary mb-1">{voucher.title}</h3>
-                  <p className="text-sm font-medium text-vitta-accent">{voucher.partner}</p>
+                  <div className="p-4 border-t border-vitta-border bg-vitta-surface-2">
+                    <p className="text-xs text-vitta-text-secondary mb-3">
+                      Adquirido em {new Date(voucher.purchaseDate).toLocaleDateString()}
+                    </p>
+                    {voucher.status === 'active' ? (
+                      <button 
+                        onClick={() => handleRedeem(voucher.id)}
+                        className="w-full py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold flex justify-center items-center gap-2 hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/10"
+                      >
+                        <ArrowUpRight size={16}/> Ativar / Usar Voucher
+                      </button>
+                    ) : (
+                      <div className="text-center py-2 text-xs font-semibold text-vitta-text-secondary/70">
+                        Utilizado em {voucher.redeemedAt ? new Date(voucher.redeemedAt).toLocaleDateString('pt-BR') : new Date(voucher.purchaseDate).toLocaleDateString('pt-BR')}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="p-4 border-t border-vitta-border bg-vitta-surface-2">
-                  <p className="text-xs text-vitta-text-secondary mb-3">
-                    Adquirido em {new Date(voucher.purchaseDate).toLocaleDateString()}
-                  </p>
-                  {voucher.status === 'active' ? (
-                    <button 
-                      onClick={() => handleRedeem(voucher.id)}
-                      className="w-full py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold flex justify-center items-center gap-2 hover:bg-vitta-accent/90"
-                    >
-                      <ArrowUpRight size={16}/> Resgatar Benefício
-                    </button>
-                  ) : (
-                    <button 
-                      disabled
-                      className="w-full py-2 bg-vitta-surface-3 text-vitta-text-muted rounded-xl text-sm font-bold opacity-70 cursor-not-allowed"
-                    >
-                      Já Utilizado
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -12181,7 +12759,8 @@ const LoginView = ({
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const { addToast } = useToast();
+  const [activeTab, setActiveTab] = useState('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -12190,6 +12769,7 @@ export default function App() {
   const [is2FAVerified, setIs2FAVerified] = useState(false);
   const [isHelpCenterOpen, setIsHelpCenterOpen] = useState(false);
   const [reviewingAppointment, setReviewingAppointment] = useState<any>(null);
+  const [activeTelemedicineApt, setActiveTelemedicineApt] = useState<any | null>(null);
 
   // Radio Global State
   const [radioConfig, setRadioConfig] = useState({ 
@@ -12231,6 +12811,40 @@ export default function App() {
       }
     }
   }, [isRadioPlaying, radioConfig.url, setIsRadioPlaying]);
+
+  useEffect(() => {
+    const processOfflineQueue = async () => {
+      if (!navigator.onLine) return;
+      const queue = JSON.parse(localStorage.getItem('vitta_offline_sync_queue') || '[]');
+      if (queue.length === 0) return;
+
+      addToast('Conexão detectada! Sincronizando dados gravados offline...', 'info');
+
+      try {
+        for (const item of queue) {
+          const payload = { ...item.payload };
+          payload.createdAt = Timestamp.now();
+          if (item.type === 'CREATE_METRIC') {
+            await addDoc(collection(db, 'health_metrics'), payload);
+          } else if (item.type === 'CREATE_GOAL') {
+            await addDoc(collection(db, 'health_goals'), payload);
+          } else if (item.type === 'CREATE_MED') {
+            await addDoc(collection(db, 'medications'), payload);
+          }
+        }
+        
+        localStorage.removeItem('vitta_offline_sync_queue');
+        addToast('Todas as atualizações locais foram sincronizadas com sucesso com a nuvem!', 'success');
+      } catch (error) {
+        console.error("Erro ao sincronizar fila offline:", error);
+        addToast('Erro ao sincronizar algumas métricas offline. Tentando na próxima reconexão.', 'error');
+      }
+    };
+
+    window.addEventListener('online', processOfflineQueue);
+    processOfflineQueue();
+    return () => window.removeEventListener('online', processOfflineQueue);
+  }, [addToast]);
 
   useEffect(() => {
     const seedPartners = async () => {
@@ -12408,13 +13022,26 @@ export default function App() {
   const isProfessional = userData?.role === 'professional';
 
   const renderContent = () => {
+    if (activeTelemedicineApt) {
+      return (
+        <TelemedicineRoom 
+          user={user}
+          userData={userData}
+          appointment={activeTelemedicineApt}
+          onLeave={() => setActiveTelemedicineApt(null)}
+        />
+      );
+    }
+
     switch (activeTab) {
+      case 'home':
+        return <HomeView user={user} userData={userData} setActiveTab={setActiveTab} />;
       case 'dashboard': 
         if (isAdmin) return <AdminView user={user} />;
-        if (isProfessional) return <ProfessionalDashboardView user={user} />;
+        if (isProfessional) return <ProfessionalDashboardView user={user} setActiveTelemedicineApt={setActiveTelemedicineApt} />;
         return <PatientDashboardView user={user} userData={userData} setActiveTab={setActiveTab} />;
       case 'professionals': return <ProfessionalsView user={user} userData={userData} />;
-      case 'appointments': return <AppointmentsView user={user} setActiveTab={setActiveTab} setReviewingAppointment={setReviewingAppointment} />;
+      case 'appointments': return <AppointmentsView user={user} setActiveTab={setActiveTab} setReviewingAppointment={setReviewingAppointment} setActiveTelemedicineApt={setActiveTelemedicineApt} />;
       case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} user={user} />;
       case 'wallets': return <WalletsView user={user} />;
       case 'voucher': return <VoucherView user={user} setActiveTab={setActiveTab} />;
@@ -12478,6 +13105,12 @@ export default function App() {
             <div>
               <p className="px-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-4">Navegação</p>
               <nav className="space-y-1">
+                <SidebarItem 
+                  icon={Home} 
+                  label="Página Inicial" 
+                  active={activeTab === 'home'} 
+                  onClick={() => { setActiveTab('home'); setIsSidebarOpen(false); }} 
+                />
                 <SidebarItem 
                   icon={LayoutGrid} 
                   label={isAdmin ? 'Painel Admin' : userData?.role === 'professional' ? 'Painel Médico' : 'Dashboard'} 
