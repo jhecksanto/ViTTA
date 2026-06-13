@@ -3596,6 +3596,35 @@ const ProfessionalDashboardView = ({
 
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [selectedApt, setSelectedApt] = useState<any>(null);
+  const [editingApt, setEditingApt] = useState<any>(null);
+
+  const handleReschedule = async (newDate: string, newTime: string) => {
+    if (!editingApt) return;
+    try {
+      await updateDoc(doc(db, 'appointments', editingApt.id), {
+        date: newDate,
+        time: newTime,
+        updatedAt: Timestamp.now()
+      });
+
+      // Send notification to patient
+      await addDoc(collection(db, 'notifications'), {
+        userId: editingApt.userId,
+        title: 'Consulta Remarcada',
+        message: `Sua consulta com ${professionalProfile.name} foi remarcada para o dia ${new Date(newDate).toLocaleDateString('pt-BR')} às ${newTime}.`,
+        type: 'appointment',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      addToast('Agendamento remarcado com sucesso.', 'success');
+      setEditingApt(null);
+    } catch (err) {
+      console.error('Erro ao remarcar agendamento:', err);
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${editingApt.id}`);
+      addToast('Erro ao remarcar agendamento.', 'error');
+    }
+  };
 
   if (loading) {
     return (
@@ -3642,6 +3671,13 @@ const ProfessionalDashboardView = ({
             isOpen={isScheduleModalOpen}
             professional={professionalProfile}
             onClose={() => setIsScheduleModalOpen(false)}
+          />
+        )}
+        {editingApt && (
+          <RescheduleModal 
+            appointment={editingApt}
+            onClose={() => setEditingApt(null)}
+            onConfirm={handleReschedule}
           />
         )}
       </AnimatePresence>
@@ -3772,7 +3808,15 @@ const ProfessionalDashboardView = ({
                         title="Confirmar Agendamento"
                       >
                         <Check size={14} />
-                        Confirmar Reserva
+                        Confirmar
+                      </button>
+                      <button 
+                        onClick={() => setEditingApt(apt)}
+                        className="px-4 py-2 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                        title="Remarcar Consulta"
+                      >
+                        <Clock size={14} />
+                        Remarcar
                       </button>
                       <button 
                         onClick={async () => {
@@ -3799,7 +3843,7 @@ const ProfessionalDashboardView = ({
                         title="Recusar Reserva"
                       >
                         <X size={14} />
-                        Recusar
+                        Rejeitar
                       </button>
                     </div>
                   </div>
@@ -3876,13 +3920,50 @@ const ProfessionalDashboardView = ({
                         )}
 
                         {apt.status === 'upcoming' && (
-                          <button 
-                            onClick={() => handleUpdateStatus(apt.id, 'in_progress')}
-                            className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
-                          >
-                            <SkipForward size={14} />
-                            Iniciar
-                          </button>
+                          <>
+                            <button 
+                              onClick={() => handleUpdateStatus(apt.id, 'in_progress')}
+                              className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
+                            >
+                              <SkipForward size={14} />
+                              Iniciar
+                            </button>
+                            <button 
+                              onClick={() => setEditingApt(apt)}
+                              className="px-4 py-2 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                              title="Remarcar Consulta"
+                            >
+                              <Clock size={14} />
+                              Remarcar
+                            </button>
+                            <button 
+                              onClick={async () => {
+                                try {
+                                  await updateDoc(doc(db, 'appointments', apt.id), { 
+                                    status: 'cancelled', 
+                                    updatedAt: Timestamp.now() 
+                                  });
+                                  await addDoc(collection(db, 'notifications'), {
+                                    userId: apt.userId,
+                                    title: 'Consulta Cancelada',
+                                    message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi cancelada pelo profissional.`,
+                                    type: 'appointment',
+                                    read: false,
+                                    createdAt: Timestamp.now()
+                                  });
+                                  addToast('Agendamento cancelado com sucesso.', 'info');
+                                } catch (err) {
+                                  console.error(err);
+                                  addToast('Erro ao cancelar agendamento.', 'error');
+                                }
+                              }}
+                              className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                              title="Cancelar Consulta"
+                            >
+                              <X size={14} />
+                              Cancelar
+                            </button>
+                          </>
                         )}
 
                         {apt.status === 'in_progress' && (
@@ -3927,6 +4008,91 @@ const ProfessionalDashboardView = ({
               )}
             </div>
           </div>
+
+          {/* Section 3: Future upcoming appointments */}
+          {appointments.filter(a => a.date > today && a.status === 'upcoming').length > 0 && (
+            <div className="space-y-3 pt-4">
+              <h2 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
+                <Calendar className="text-vitta-accent" size={20} />
+                Próximas Consultas Agendadas
+              </h2>
+              <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm overflow-hidden divide-y divide-vitta-border">
+                {appointments.filter(a => a.date > today && a.status === 'upcoming').map((apt) => (
+                  <div key={apt.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-vitta-surface-2 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent font-bold text-lg">
+                        {apt.patientName?.charAt(0) || 'P'}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-vitta-text-primary">{apt.patientName}</h3>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-vitta-text-secondary mt-1">
+                          <span className="font-bold text-vitta-text-primary bg-vitta-surface-3 border border-vitta-border px-2 py-0.5 rounded flex items-center gap-1">
+                            <Calendar size={12} className="text-vitta-green" />
+                            {new Date(apt.date).toLocaleDateString('pt-BR')} às {apt.time}
+                          </span>
+                          <span>•</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            apt.modality === 'telemedicine' || apt.modality === 'online'
+                              ? 'bg-vitta-accent-bg text-vitta-accent'
+                              : 'bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border'
+                          }`}>
+                            {apt.modality === 'telemedicine' || apt.modality === 'online' ? '💻 Telemedicina' : '🏥 Presencial'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setSelectedPatient({ name: apt.patientName, id: apt.userId })}
+                        className="p-2.5 text-vitta-text-muted hover:text-vitta-accent rounded-xl hover:bg-vitta-accent-bg transition-all"
+                        title="Ver Ficha do Paciente"
+                      >
+                        <User size={18} />
+                      </button>
+                      
+                      <button 
+                        onClick={() => setEditingApt(apt)}
+                        className="px-4 py-2 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                        title="Remarcar Consulta"
+                      >
+                        <Clock size={14} />
+                        Remarcar
+                      </button>
+
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'appointments', apt.id), { 
+                              status: 'cancelled', 
+                              updatedAt: Timestamp.now() 
+                            });
+                            await addDoc(collection(db, 'notifications'), {
+                              userId: apt.userId,
+                              title: 'Consulta Cancelada',
+                              message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi cancelada pelo profissional.`,
+                              type: 'appointment',
+                              read: false,
+                              createdAt: Timestamp.now()
+                            });
+                            addToast('Agendamento cancelado com sucesso.', 'info');
+                          } catch (err) {
+                            console.error(err);
+                            addToast('Erro ao cancelar agendamento.', 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                        title="Cancelar Consulta"
+                      >
+                        <X size={14} />
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
