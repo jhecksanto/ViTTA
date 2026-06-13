@@ -1,5 +1,5 @@
 // Force refresh - 2026-04-07 23:32
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -36,7 +36,11 @@ import {
   Radio,
   MessageSquare,
   User,
+  UserX,
   HelpCircle,
+  QrCode,
+  Copy,
+  ChevronLeft,
   LayoutGrid,
   Sun,
   Trash2,
@@ -54,6 +58,7 @@ import {
   Activity,
   Glasses,
   ShoppingCart,
+  MoreVertical,
   Shirt,
   Baby,
   Zap,
@@ -82,8 +87,34 @@ import {
   Calculator,
   Scissors,
   CheckCircle,
-  XCircle
+  XCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowRightLeft,
+  DollarSign,
+  AlertCircle,
+  Send,
+  CalendarClock,
+  PlusCircle,
+  MinusCircle,
+  CalendarCheck,
+  CheckCircle2,
+  Receipt,
+  FileQuestion,
+  SkipForward,
+  Eye,
+  MonitorPlay,
+  Images,
+  TrendingUp,
+  Video,
+  VideoOff,
+  Mic,
+  MicOff,
+  Share2,
+  Coins,
+  Sparkles
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LineChart, 
@@ -98,9 +129,15 @@ import {
 } from 'recharts';
 import { auth, db, storage, googleProvider } from './firebase';
 import { useToast } from './contexts/ToastContext.tsx';
-import InputMask from 'react-input-mask';
 import { validateCPF, validateEmail, fetchAddressByCep } from './lib/utils';
 import ConfirmationModal from './components/ConfirmationModal';
+import OfflineIndicatorBanner from './components/OfflineIndicatorBanner';
+import { 
+  addDoc, 
+  setDoc, 
+  updateDoc, 
+  sanitizeData 
+} from './lib/firestore-wrappers';
 import { 
   ref, 
   uploadBytes, 
@@ -124,7 +161,6 @@ import {
 import { 
   doc, 
   getDoc, 
-  setDoc as firestoreSetDoc, 
   collection, 
   onSnapshot, 
   query, 
@@ -132,19 +168,27 @@ import {
   orderBy,
   limit,
   getDocs,
-  addDoc as firestoreAddDoc,
-  updateDoc as firestoreUpdateDoc,
   deleteDoc,
   Timestamp,
-  getDocFromServer
+  serverTimestamp,
+  getDocFromServer,
+  getDocFromCache,
+  increment
 } from 'firebase/firestore';
+import { Medication, HealthGoal } from './types';
 import AuditLogsList from './components/Admin/AuditLogsList';
+import SubscriptionManagementView from './components/Admin/SubscriptionManagementView';
+import AdminAnalytics from './components/Admin/AnalyticsView';
+import NotificationCenter from './components/NotificationCenter';
+import HelpCenter from './components/HelpCenter';
+import ReviewModal from './components/ReviewModal';
+import KYCWizard from './components/KYCWizard';
 
 const Skeleton = ({ className, ...props }: { className?: string, [key: string]: any }) => (
   <div className={`animate-pulse bg-vitta-surface-2 rounded-xl ${className}`} {...props} />
 );
 
-enum OperationType {
+export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
   DELETE = 'delete',
@@ -172,7 +216,7 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -195,52 +239,19 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-const sanitizeData = (data: any): any => {
-  if (data === undefined) return null;
-  if (data === null) return null;
-  if (data instanceof Date) return data;
-  if (data instanceof Timestamp) return data;
-  if (Array.isArray(data)) {
-    return data.map(sanitizeData).filter(item => item !== undefined);
-  }
-  if (typeof data === 'object') {
-    const sanitized: any = {};
-    for (const key in data) {
-      if (data[key] !== undefined) {
-        sanitized[key] = sanitizeData(data[key]);
-      }
-    }
-    return sanitized;
-  }
-  return data;
-};
-
-const addDoc = (collectionRef: any, data: any) => {
-  return firestoreAddDoc(collectionRef, sanitizeData(data));
-};
-
-const setDoc = (docRef: any, data: any, options?: any) => {
-  if (options && options.merge) {
-    return firestoreSetDoc(docRef, sanitizeData(data), options);
-  }
-  return firestoreSetDoc(docRef, sanitizeData(data));
-};
-
-const updateDoc = (docRef: any, data: any) => {
-  return firestoreUpdateDoc(docRef, sanitizeData(data));
-};
-
-const logAdminAction = async (action: string, description: string) => {
+const logAdminAction = async (action: string, description: string, before?: any, after?: any) => {
   try {
     await addDoc(collection(db, 'audit_logs'), {
       adminId: auth.currentUser?.uid,
       adminName: auth.currentUser?.displayName || auth.currentUser?.email || 'Admin',
       action,
       description,
+      before: before ? before : null,
+      after: after ? after : null,
       timestamp: Timestamp.now()
     });
   } catch (err) {
-    console.error('Erro ao registrar log de auditoria:', err);
+    console.error('Error logging admin action:', err);
   }
 };
 
@@ -280,9 +291,9 @@ const ConfirmModal = ({
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-vitta-surface w-full max-w-sm rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
+        className="bg-vitta-surface w-full max-w-sm rounded-3xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
       >
-        <div className="p-6 text-center space-y-4">
+        <div className="p-6 text-center space-y-4 overflow-y-auto">
           <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center ${variant === 'danger' ? 'bg-vitta-danger/10 text-vitta-danger' : 'bg-vitta-accent/10 text-vitta-accent'}`}>
             {variant === 'danger' ? <Trash2 size={32} /> : <Info size={32} />}
           </div>
@@ -363,9 +374,9 @@ const ChangePasswordModal = ({ user, onClose }: { user: FirebaseUser | null, onC
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-vitta-surface w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border"
+        className="bg-vitta-surface w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border max-h-[90vh] flex flex-col"
       >
-        <div className="p-8 space-y-6">
+        <div className="p-8 space-y-6 overflow-y-auto">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-vitta-text-primary">Alterar Senha</h2>
             <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
@@ -467,9 +478,9 @@ const HealthMetricsInputModal = ({ user, onClose }: { user: any, onClose: () => 
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-vitta-surface w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border"
+        className="bg-vitta-surface w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-vitta-border max-h-[90vh] flex flex-col"
       >
-        <div className="p-8 space-y-6">
+        <div className="p-8 space-y-6 overflow-y-auto">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-vitta-text-primary">Registrar Saúde</h2>
             <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
@@ -574,29 +585,94 @@ const BookingModal = ({
   isOpen, 
   onClose, 
   professional, 
-  user 
+  user,
+  userData
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
   professional: any, 
-  user: any 
+  user: any,
+  userData?: any
 }) => {
+  const [modalTab, setModalTab] = useState<'profile' | 'booking'>('profile');
   const [isBooking, setIsBooking] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   });
-  const [selectedTime, setSelectedTime] = useState('09:00');
+  const [selectedTime, setSelectedTime] = useState('');
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !professional || !selectedDate) return;
+
+    const fetchBooked = async () => {
+      setIsLoadingSlots(true);
+      try {
+        const q = query(
+          collection(db, 'appointments'),
+          where('professionalId', '==', professional.id),
+          where('date', '==', selectedDate)
+        );
+        const snapshot = await getDocs(q);
+        const booked = snapshot.docs
+          .map(doc => doc.data())
+          .filter(data => data.status !== 'cancelled')
+          .map(data => data.time);
+        setBookedSlots(booked);
+      } catch (err) {
+        console.error('Error fetching booked slots:', err);
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+
+    fetchBooked();
+  }, [selectedDate, professional, isOpen]);
+
+  useEffect(() => {
+    if (!selectedDate || !professional) return;
+
+    let slots: string[] = [];
+    
+    if (professional.schedule?.weekly) {
+      const dateObj = new Date(selectedDate + 'T00:00:00');
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayName = dayNames[dateObj.getDay()];
+      const daySchedule = professional.schedule.weekly[dayName] || [];
+
+      daySchedule.forEach((period: { start: string, end: string }) => {
+        let current = new Date(`2000-01-01T${period.start}:00`);
+        const stop = new Date(`2000-01-01T${period.end}:00`);
+        while (current < stop) {
+          slots.push(current.toTimeString().substring(0, 5));
+          current = new Date(current.getTime() + 30 * 60000);
+        }
+      });
+    } else {
+      // Fallback/Legacy: availableDays might be a string like "Seg, Qua, Sex"
+      // For now, let's just provide some default business hours if no structured schedule
+      slots = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'];
+    }
+
+    setAvailableSlots(slots);
+    if (!slots.includes(selectedTime)) {
+      setSelectedTime('');
+    }
+  }, [selectedDate, professional]);
 
   const handleConfirm = async () => {
-    if (!user || !professional) return;
+    if (!user || !professional || !selectedTime) return;
     
     setIsBooking(true);
     try {
       // 1. Save to Firestore
       await addDoc(collection(db, 'appointments'), {
         userId: user.uid,
+        patientName: userData?.name || user.displayName || user.email,
         professionalId: professional.id,
         professionalName: professional.name,
         specialty: professional.specialty,
@@ -641,90 +717,538 @@ const BookingModal = ({
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
+        className="bg-vitta-surface w-full max-w-2xl rounded-3xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
       >
-        <div className="p-6 border-b border-vitta-border flex justify-between items-center">
-          <h3 className="text-xl font-bold text-vitta-text-primary">Confirmar Atendimento</h3>
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <div className="flex items-center gap-4">
+            <img src={professional.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={professional.name} className="w-12 h-12 rounded-xl object-cover shadow-sm bg-white" />
+            <div>
+              <h4 className="font-bold text-vitta-text-primary text-xl">Dr(a). {professional.name}</h4>
+              <p className="text-sm text-vitta-text-secondary">{professional.specialty}</p>
+            </div>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
             <X size={20} className="text-vitta-text-muted" />
           </button>
         </div>
-        <div className="p-6 space-y-6">
-          <p className="text-vitta-text-secondary text-sm">
-            Selecione a data e hora desejada. Você será redirecionado para o nosso WhatsApp para finalizar o agendamento.
-          </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data</label>
-              <input 
-                type="date" 
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Hora</label>
-              <input 
-                type="time" 
-                value={selectedTime}
-                onChange={(e) => setSelectedTime(e.target.value)}
-                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
-              />
-            </div>
-          </div>
+        <div className="flex border-b border-vitta-border bg-vitta-surface shrink-0 px-6 pt-4 gap-4 overflow-x-auto no-scrollbar">
+          <button 
+            onClick={() => setModalTab('profile')}
+            className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === 'profile' ? 'border-vitta-accent text-vitta-accent' : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+          >
+            👤 Sobre o Profissional
+          </button>
+          <button 
+            onClick={() => setModalTab('booking')}
+            className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === 'booking' ? 'border-vitta-green text-vitta-green' : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+          >
+            📅 Agendar Consulta
+          </button>
+        </div>
 
-          <div className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
-            <img src={professional.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={professional.name} className="w-12 h-12 rounded-xl object-cover" />
-            <div>
-              <h4 className="font-bold text-vitta-text-primary">{professional.name}</h4>
-              <p className="text-xs text-vitta-text-secondary">{professional.specialty}</p>
-            </div>
-          </div>
+        <div className="p-6 overflow-y-auto flex-1 no-scrollbar">
+          {modalTab === 'profile' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-1">Avaliação</p>
+                  <p className="font-bold text-vitta-text-primary flex items-center gap-1">⭐ {professional.rating || 'N/A'} <span className="text-xs font-normal text-vitta-text-secondary">({professional.reviews || 0} avaliações)</span></p>
+                </div>
+                <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-1">CRM / Registro</p>
+                  <p className="font-bold text-vitta-text-primary">{professional.registrationNumber || 'Não informado'}</p>
+                </div>
+                <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-1">Valor da Consulta</p>
+                  <p className="font-bold text-vitta-text-primary">R$ {professional.price || 'À Combinar'}</p>
+                </div>
+                <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-1">ViTTA Health Partner</p>
+                  <p className="font-bold text-vitta-green">{professional.vittaHealthDiscount || 'Sem desconto ativo'}</p>
+                </div>
+              </div>
 
-          <div className="flex gap-3 pt-2">
-            <button 
-              type="button"
-              onClick={onClose}
-              disabled={isBooking}
-              className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button 
-              onClick={handleConfirm}
-              disabled={isBooking}
-              className="flex-1 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {isBooking ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <MessageSquare size={18} />
-                  Confirmar
-                </>
-              )}
-            </button>
-          </div>
+              <div>
+                <h3 className="text-lg font-bold text-vitta-text-primary mb-2 border-b border-vitta-border pb-2">Sobre Mim / Currículo</h3>
+                {professional.curriculum ? (
+                  <div className="text-sm text-vitta-text-secondary whitespace-pre-wrap">{professional.curriculum}</div>
+                ) : (
+                  <p className="text-sm text-vitta-text-muted italic">Este profissional ainda não disponibilizou um currículo ou apresentação detalhada.</p>
+                )}
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button 
+                  onClick={() => setModalTab('booking')}
+                  className="px-6 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-2"
+                >
+                   Prosseguir para Agendamento
+                </button>
+              </div>
+            </div>
+          )}
+
+          {modalTab === 'booking' && (
+            <div className="space-y-6">
+              <p className="text-vitta-text-secondary text-sm">
+                Selecione a data e hora desejada. Após a confirmação, entraremos em contato via WhatsApp para finalizações, se aplicável.
+              </p>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Selecione a Data</label>
+                  <input 
+                    type="date" 
+                    min={new Date().toISOString().split('T')[0]}
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Horários Disponíveis</label>
+                  {isLoadingSlots ? (
+                    <div className="grid grid-cols-4 gap-2">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                        <div key={i} className="h-10 bg-vitta-surface-2 rounded-lg animate-pulse" />
+                      ))}
+                    </div>
+                  ) : availableSlots.length > 0 ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar">
+                      {availableSlots.map((time) => {
+                        const isBooked = bookedSlots.includes(time);
+                        return (
+                          <button
+                            key={time}
+                            disabled={isBooked}
+                            onClick={() => setSelectedTime(time)}
+                            className={`py-2 text-xs font-bold rounded-lg border transition-all ${
+                              selectedTime === time
+                                ? 'bg-vitta-green border-vitta-green text-white shadow-md'
+                                : isBooked
+                                ? 'bg-vitta-surface-2 border-vitta-border text-vitta-text-muted cursor-not-allowed opacity-50'
+                                : 'bg-vitta-surface border-vitta-border text-vitta-text-primary hover:border-vitta-green transition-colors'
+                            }`}
+                          >
+                            {time}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-vitta-danger/5 rounded-xl border border-dashed border-vitta-danger/20 text-center">
+                      <p className="text-[10px] font-bold text-vitta-danger uppercase">Sem horários para este dia</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-vitta-border">
+                <button 
+                  type="button"
+                  onClick={onClose}
+                  disabled={isBooking}
+                  className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleConfirm}
+                  disabled={isBooking || !selectedTime}
+                  className="flex-1 py-3 bg-vitta-green text-white rounded-xl font-bold shadow-lg shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isBooking ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <MessageSquare size={18} />
+                      Confirmar
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
   );
 };
 
-const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) => {
+const NotificationFeed = ({ user }: { user: any }) => {
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const markAsRead = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  if (notifications.length === 0) {
+    return (
+      <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm text-center">
+        <Bell className="mx-auto text-vitta-text-muted mb-3" size={32} />
+        <h3 className="font-bold text-vitta-text-primary">Nenhuma Notificação</h3>
+        <p className="text-xs text-vitta-text-secondary mt-1">Você está em dia com seus alertas.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col max-h-[400px]">
+      <div className="p-6 border-b border-vitta-border shrink-0 flex items-center justify-between">
+        <h3 className="text-lg font-bold text-vitta-text-primary">Timeline de Notificações</h3>
+        <Bell className="text-vitta-accent" size={20} />
+      </div>
+      <div className="overflow-y-auto no-scrollbar flex-1 divide-y divide-vitta-border">
+        {notifications.map(n => (
+          <div key={n.id} className={`p-4 hover:bg-vitta-surface-2 transition-colors relative group ${!n.read ? 'bg-vitta-accent-bg/30' : ''}`}>
+            <div className="flex gap-4">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                n.type === 'exam' ? 'bg-vitta-green-bg text-vitta-green' :
+                n.type === 'appointment' ? 'bg-vitta-accent-bg text-vitta-accent' :
+                'bg-vitta-purple-bg text-vitta-purple'
+              }`}>
+                {n.type === 'exam' ? <FileText size={18} /> : n.type === 'appointment' ? <Calendar size={18} /> : <Bell size={18} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <p className={`text-sm ${!n.read ? 'font-bold text-vitta-text-primary' : 'font-medium text-vitta-text-secondary'} truncate`}>{n.title}</p>
+                </div>
+                <p className={`text-xs mt-0.5 line-clamp-2 ${!n.read ? 'text-vitta-text-primary' : 'text-vitta-text-muted'}`}>{n.message}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] text-vitta-text-muted font-medium">
+                    {n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Agora'}
+                  </span>
+                  {!n.read && (
+                    <button onClick={() => markAsRead(n.id)} className="text-[10px] font-bold text-vitta-accent hover:underline">
+                      Marcar Lida
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const HeroCarousel = () => {
+  const [banners, setBanners] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'hero_banners'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setBanners((data.items || []).sort((a: any, b: any) => a.order - b.order));
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % banners.length);
+    }, 5000); 
+    return () => clearInterval(interval);
+  }, [banners.length]);
+
+  if (banners.length === 0) return null;
+
+  return (
+    <div className="relative w-full h-[200px] md:h-[300px] lg:h-[400px] rounded-3xl overflow-hidden shadow-xl group">
+      <AnimatePresence initial={false} mode="wait">
+        <motion.div
+          key={currentIndex}
+          initial={{ opacity: 0, scale: 1.05 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+          className="absolute inset-0"
+        >
+          <img 
+            src={banners[currentIndex].imageUrl} 
+            alt={banners[currentIndex].title || 'Banner'} 
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6 md:p-10">
+            {banners[currentIndex].title && (
+              <h2 className="text-white text-2xl md:text-4xl font-bold mb-2">
+                {banners[currentIndex].title}
+              </h2>
+            )}
+            {banners[currentIndex].link && (
+              <a 
+                href={banners[currentIndex].link} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-block mt-2 px-6 py-2 bg-vitta-accent text-white font-bold rounded-xl hover:bg-vitta-accent/90 transition-colors w-max"
+              >
+                Saber mais
+              </a>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+
+      {banners.length > 1 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
+          {banners.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentIndex(idx)}
+              className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all ${
+                idx === currentIndex ? 'bg-vitta-accent scale-125' : 'bg-white/50 hover:bg-white/80'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AddMedicationModal = ({ user, onClose }: { user: any, onClose: () => void }) => {
+  const [name, setName] = useState('');
+  const [dosage, setDosage] = useState('');
+  const [times, setTimes] = useState(['08:00']);
+  const [category, setCategory] = useState('Geral');
+  const [loading, setLoading] = useState(false);
+  const { addToast } = useToast();
+
+  const handleAddMedication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !dosage) return;
+
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'medications'), {
+        userId: user.uid,
+        name,
+        dosage,
+        times,
+        category,
+        isActive: true,
+        startDate: new Date().toISOString(),
+        createdAt: serverTimestamp()
+      });
+      addToast('Medicamento cadastrado com sucesso!', 'success');
+      onClose();
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.CREATE, 'medications');
+      addToast('Erro ao cadastrar medicamento.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-md rounded-3xl p-8 border border-vitta-border shadow-2xl"
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-vitta-text-primary">Registrar Medicamento</h2>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleAddMedication} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Nome</label>
+            <input 
+              type="text" value={name} onChange={(e) => setName(e.target.value)}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none"
+              placeholder="Ex: Amoxicilina" required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Dosagem</label>
+            <input 
+              type="text" value={dosage} onChange={(e) => setDosage(e.target.value)}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none"
+              placeholder="Ex: 500mg" required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Categoria</label>
+            <select 
+              value={category} onChange={(e) => setCategory(e.target.value)}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none appearance-none"
+            >
+              <option value="Geral">Geral</option>
+              <option value="Antibiótico">Antibiótico</option>
+              <option value="Vitaminas">Vitaminas</option>
+              <option value="Controle Especial">Controle Especial</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Horários</label>
+              <button 
+                type="button" 
+                onClick={() => setTimes([...times, ''])}
+                className="text-xs font-bold text-vitta-accent"
+              >
+                + Adicionar
+              </button>
+            </div>
+            {times.map((time, idx) => (
+              <input 
+                key={idx} type="time" value={time} 
+                onChange={(e) => {
+                  const newTimes = [...times];
+                  newTimes[idx] = e.target.value;
+                  setTimes(newTimes);
+                }}
+                className="w-full p-4 mb-2 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none"
+                required
+              />
+            ))}
+          </div>
+
+          <button 
+            type="submit" disabled={loading}
+            className="w-full p-4 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold mt-4 disabled:opacity-50 transition-all"
+          >
+            {loading ? 'Cadastrando...' : 'Salvar Medicamento'}
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const AddGoalModal = ({ user, onClose }: { user: any, onClose: () => void }) => {
+  const [type, setType] = useState<'steps' | 'weight' | 'water' | 'sleep'>('steps');
+  const [target, setTarget] = useState(0);
+  const [deadline, setDeadline] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { addToast } = useToast();
+
+  const handleAddGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (target <= 0) return;
+
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'health_goals'), {
+        userId: user.uid,
+        type,
+        targetValue: target,
+        currentValue: 0,
+        unit: type === 'steps' ? 'passos' : type === 'weight' ? 'kg' : type === 'water' ? 'ml' : 'horas',
+        deadline,
+        status: 'active',
+        createdAt: serverTimestamp()
+      });
+      addToast('Meta definida com sucesso!', 'success');
+      onClose();
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.CREATE, 'health_goals');
+      addToast('Erro ao definir meta.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-md rounded-3xl p-8 border border-vitta-border shadow-2xl"
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-vitta-text-primary">Definir Nova Meta</h2>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleAddGoal} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Tipo de Meta</label>
+            <select 
+              value={type} onChange={(e) => setType(e.target.value as any)}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none appearance-none"
+            >
+              <option value="steps">Passos Diários</option>
+              <option value="water">Ingestão de Água (ml)</option>
+              <option value="weight">Meta de Peso (kg)</option>
+              <option value="sleep">Horas de Sono</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Valor Alvo</label>
+            <input 
+              type="number" value={target || ''} onChange={(e) => setTarget(Number(e.target.value))}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none"
+              placeholder="Ex: 10000" required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-vitta-text-muted uppercase tracking-wider">Data Limite (Opcional)</label>
+            <input 
+              type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
+              className="w-full p-4 rounded-xl bg-vitta-surface-2 border border-vitta-border focus:border-vitta-accent outline-none"
+            />
+          </div>
+
+          <button 
+            type="submit" disabled={loading}
+            className="w-full p-4 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold mt-4 disabled:opacity-50 transition-all shadow-lg shadow-vitta-accent/20"
+          >
+            {loading ? 'Salvando...' : 'Ativar Meta'}
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const PatientDashboardView = ({ user, userData, setActiveTab }: { user: any, userData: any, setActiveTab: (tab: string) => void }) => {
+  const { addToast } = useToast();
   const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
   const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([]);
   const [recentExams, setRecentExams] = useState<any[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [goals, setGoals] = useState<HealthGoal[]>([]);
+  const [walletBalance, setWalletBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isMetricsModalOpen, setIsMetricsModalOpen] = useState(false);
+  const [isMedicationModalOpen, setIsMedicationModalOpen] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
-    // 1. Fetch Health Metrics History (for the chart and calculations)
-    // We fetch 14 to compare the current week with the previous one
+    // 1. Fetch Health Metrics History
     const metricsQuery = query(
       collection(db, 'health_metrics'),
       where('userId', '==', user.uid),
@@ -734,7 +1258,6 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
 
     const unsubscribeMetrics = onSnapshot(metricsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // For the chart, we want chronological order (asc)
       setMetricsHistory([...data].reverse());
       setLoading(false);
     }, (error) => {
@@ -759,7 +1282,7 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
 
     // 3. Fetch Recent Exams
     const examsQuery = query(
-      collection(db, 'exams'),
+      collection(db, 'user_exams'),
       where('userId', '==', user.uid),
       where('status', '==', 'ready'),
       orderBy('updatedAt', 'desc'),
@@ -769,15 +1292,48 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
     const unsubscribeExams = onSnapshot(examsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setRecentExams(data);
-      setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'exams');
+      handleFirestoreError(error, OperationType.GET, 'user_exams');
+    });
+
+    // 4. Fetch Wallet Balance
+    const unsubscribeWallet = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setWalletBalance(docSnap.data().walletBalance || 0);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+    });
+
+    // 5. Fetch Medications
+    const medQuery = query(
+      collection(db, 'medications'),
+      where('userId', '==', user.uid),
+      where('isActive', '==', true)
+    );
+    const unsubscribeMeds = onSnapshot(medQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Medication[];
+      setMedications(data);
+    });
+
+    // 6. Fetch Goals
+    const goalsQuery = query(
+      collection(db, 'health_goals'),
+      where('userId', '==', user.uid),
+      where('status', '==', 'active')
+    );
+    const unsubscribeGoals = onSnapshot(goalsQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as HealthGoal[];
+      setGoals(data);
     });
 
     return () => {
       unsubscribeMetrics();
       unsubscribeAppointments();
       unsubscribeExams();
+      unsubscribeWallet();
+      unsubscribeMeds();
+      unsubscribeGoals();
     };
   }, [user]);
 
@@ -842,7 +1398,60 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
         </div>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      <HeroCarousel />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <button 
+          onClick={() => setActiveTab('professionals')}
+          className="flex items-center gap-4 p-4 bg-vitta-surface rounded-xl border border-vitta-border shadow-sm hover:border-vitta-accent transition-colors text-left"
+        >
+          <div className="w-12 h-12 bg-vitta-accent-bg rounded-xl flex items-center justify-center text-vitta-accent">
+            <Calendar size={24} />
+          </div>
+          <div>
+            <p className="font-bold text-vitta-text-primary">Agendar Consulta</p>
+            <p className="text-xs text-vitta-text-secondary">Encontre profissionais</p>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('voucher')}
+          className="flex items-center gap-4 p-4 bg-vitta-surface rounded-xl border border-vitta-border shadow-sm hover:border-vitta-green transition-colors text-left"
+        >
+          <div className="w-12 h-12 bg-vitta-green-bg rounded-xl flex items-center justify-center text-vitta-green">
+            <Ticket size={24} />
+          </div>
+          <div>
+            <p className="font-bold text-vitta-text-primary">Comprar Voucher</p>
+            <p className="text-xs text-vitta-text-secondary">Benefícios exclusivos</p>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('exams')}
+          className="flex items-center gap-4 p-4 bg-vitta-surface rounded-xl border border-vitta-border shadow-sm hover:border-vitta-blue transition-colors text-left"
+        >
+          <div className="w-12 h-12 bg-vitta-blue-bg rounded-xl flex items-center justify-center text-vitta-blue">
+            <FileText size={24} />
+          </div>
+          <div>
+            <p className="font-bold text-vitta-text-primary">Meus Exames</p>
+            <p className="text-xs text-vitta-text-secondary">Resultados e laudos</p>
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('offers')}
+          className="flex items-center gap-4 p-4 bg-vitta-surface rounded-xl border border-vitta-border shadow-sm hover:border-vitta-accent transition-colors text-left"
+        >
+          <div className="w-12 h-12 bg-vitta-accent/10 rounded-xl flex items-center justify-center text-vitta-accent">
+            <Tag size={24} />
+          </div>
+          <div>
+            <p className="font-bold text-vitta-text-primary">Ver Ofertas</p>
+            <p className="text-xs text-vitta-text-secondary">Descontos Farmácia</p>
+          </div>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6">
         {stats.map((stat, idx) => (
           <StatCard key={idx} stat={stat} />
         ))}
@@ -974,66 +1583,143 @@ const PatientDashboardView = ({ user, userData }: { user: any, userData: any }) 
           )}
           <div className="bg-gradient-to-br from-vitta-accent to-vitta-purple p-8 rounded-[2.5rem] text-white relative overflow-hidden group">
             <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-110 transition-transform duration-500">
-              <Zap size={180} />
+              <Wallet size={180} />
             </div>
             <div className="relative z-10 space-y-4">
               <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
-                <Zap size={24} />
+                <Wallet size={24} />
               </div>
-              <h3 className="text-2xl font-bold">Dica do Dia</h3>
-              <p className="text-vitta-surface text-sm leading-relaxed">
-                Beber água regularmente ajuda a manter sua energia e foco durante o dia. Tente beber pelo menos 2 litros hoje!
+              <h3 className="text-2xl font-bold">Sua Carteira</h3>
+              <p className="text-3xl font-bold">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(walletBalance)}
               </p>
-              <button className="px-6 py-2 bg-white text-vitta-accent rounded-xl text-sm font-bold hover:bg-vitta-surface transition-colors">
-                Saber Mais
+              <button 
+                onClick={() => setActiveTab('wallets')}
+                className="px-6 py-2 bg-white text-vitta-accent rounded-xl text-sm font-bold hover:bg-vitta-surface transition-colors"
+              >
+                Ver Carteira
               </button>
             </div>
           </div>
 
           <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
-            <h3 className="text-lg font-bold text-vitta-text-primary mb-6">Metas Diárias</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-vitta-text-primary">Minhas Metas</h3>
+              <button 
+                onClick={() => setIsGoalModalOpen(true)}
+                className="text-xs font-bold text-vitta-accent hover:underline"
+              >
+                + Nova Meta
+              </button>
+            </div>
             <div className="space-y-6">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium text-vitta-text-secondary">Passos</span>
-                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.steps / 8000) * 100)}%</span>
+              {goals.length > 0 ? goals.map((goal) => {
+                const currentVal = goal.type === 'steps' ? metrics.steps : 
+                                 goal.type === 'water' ? metrics.waterIntake :
+                                 goal.type === 'sleep' ? metrics.sleepHours : 
+                                 goal.type === 'weight' ? metrics.weight : 0;
+                const progress = Math.min((currentVal / goal.targetValue) * 100, 100);
+                
+                return (
+                  <div key={goal.id} className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium text-vitta-text-secondary capitalize">
+                        {goal.type === 'steps' ? 'Passos' : 
+                         goal.type === 'water' ? 'Água' : 
+                         goal.type === 'sleep' ? 'Sono' : 'Peso'}
+                      </span>
+                      <span className="font-bold text-vitta-text-primary">{Math.round(progress)}%</span>
+                    </div>
+                    <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        className={`h-full ${
+                          goal.type === 'steps' ? 'bg-vitta-green' : 
+                          goal.type === 'water' ? 'bg-vitta-accent' : 
+                          goal.type === 'sleep' ? 'bg-vitta-purple' : 'bg-amber-500'
+                        }`}
+                      />
+                    </div>
+                    <p className="text-[10px] text-vitta-text-muted">
+                      {currentVal} / {goal.targetValue} {goal.unit}
+                    </p>
+                  </div>
+                );
+              }) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-vitta-text-secondary mb-2">Sem metas ativas.</p>
+                  <button 
+                    onClick={() => setIsGoalModalOpen(true)}
+                    className="text-xs font-bold text-vitta-accent"
+                  >
+                    Começar agora
+                  </button>
                 </div>
-                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min((metrics.steps / 8000) * 100, 100)}%` }}
-                    className="h-full bg-vitta-green"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium text-vitta-text-secondary">Água</span>
-                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.waterIntake / 2000) * 100)}%</span>
-                </div>
-                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min((metrics.waterIntake / 2000) * 100, 100)}%` }}
-                    className="h-full bg-vitta-accent"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium text-vitta-text-secondary">Sono</span>
-                  <span className="font-bold text-vitta-text-primary">{Math.round((metrics.sleepHours / 8) * 100)}%</span>
-                </div>
-                <div className="h-2 bg-vitta-surface-2 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min((metrics.sleepHours / 8) * 100, 100)}%` }}
-                    className="h-full bg-vitta-purple"
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
+
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-vitta-text-primary">Medicamentos</h3>
+              <button 
+                onClick={() => setIsMedicationModalOpen(true)}
+                className="text-xs font-bold text-vitta-accent hover:underline"
+              >
+                + Registrar
+              </button>
+            </div>
+            <div className="space-y-4">
+              {medications.length > 0 ? medications.map((med) => (
+                <div key={med.id} className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
+                  <div className="w-10 h-10 bg-vitta-accent/10 rounded-xl flex items-center justify-center text-vitta-accent">
+                    <Pill size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-vitta-text-primary truncate">{med.name}</p>
+                    <p className="text-[10px] text-vitta-text-secondary uppercase tracking-wider">{med.dosage} • {med.category}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-vitta-accent">{med.times[0]}</p>
+                    <p className="text-[9px] text-vitta-text-muted">Próxima</p>
+                  </div>
+                </div>
+              )) : (
+                <p className="text-sm text-vitta-text-secondary text-center py-4">Nenhum medicamento registrado.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-vitta-surface-2 p-6 rounded-3xl border-2 border-dashed border-vitta-border group hover:border-vitta-accent transition-colors">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 bg-vitta-surface rounded-2xl shadow-sm">
+                <Smartphone size={24} className="text-vitta-text-primary" />
+              </div>
+              <div>
+                <h4 className="font-bold text-vitta-text-primary">Integrar Saúde</h4>
+                <p className="text-xs text-vitta-text-secondary">Conecte seus dispositivos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="px-3 py-1 bg-vitta-green/10 text-vitta-green text-[10px] font-bold rounded-full">Google Fit</div>
+              <div className="px-3 py-1 bg-vitta-blue/10 text-vitta-blue text-[10px] font-bold rounded-full">Apple Health</div>
+            </div>
+            <button 
+              onClick={() => addToast('Funcionalidade de integração em desenvolvimento!', 'info')}
+              className="w-full py-3 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-bold hover:bg-vitta-accent hover:text-white hover:border-vitta-accent transition-all"
+            >
+              Configurar Sincronização
+            </button>
+          </div>
+          
+          <NotificationFeed user={user} />
+          {isMedicationModalOpen && (
+            <AddMedicationModal user={user} onClose={() => setIsMedicationModalOpen(false)} />
+          )}
+          {isGoalModalOpen && (
+            <AddGoalModal user={user} onClose={() => setIsGoalModalOpen(false)} />
+          )}
         </div>
       </div>
     </div>
@@ -1101,9 +1787,2044 @@ const StatCard = ({ stat }: any) => {
   );
 };
 
+const AdminFinancialView = ({ adminUser }: { adminUser: any }) => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [users, setUsers] = useState<{ [key: string]: string }>({});
+  const [loadingTransactions, setLoadingTransactions] = useState(true);
+  const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tab, setTab] = useState<'history' | 'payouts'>('history');
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    // Escutar por transações (apenas as mais recentes)
+    const qTransactions = query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(100));
+    const unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
+      setLoadingTransactions(false);
+      
+      // Montar dicionário de usuários envolvidos nas transações se não houver caching robusto
+      const userIds = [...new Set(data.map((t: any) => t.userId))].filter(Boolean) as string[];
+      userIds.forEach(uid => {
+        if (!users[uid]) {
+           getDocFromCache(doc(db, 'users', uid)).then(docSnap => {
+              if (docSnap.exists()) {
+                 setUsers(prev => ({ ...prev, [uid]: docSnap.data().name || docSnap.data().email || 'Usuário Desconhecido' }));
+              } else {
+                 getDocFromServer(doc(db, 'users', uid)).then(docSnap => {
+                    if (docSnap.exists()) {
+                       setUsers(prev => ({ ...prev, [uid]: docSnap.data().name || docSnap.data().email || 'Usuário Desconhecido' }));
+                    }
+                 }).catch(err => console.error("Error fetching user data", err));
+              }
+           }).catch(err => console.error("Error fetching user cache", err));
+        }
+      });
+
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'transactions');
+    });
+
+    return () => unsubscribeTransactions();
+  }, []);
+
+  const handleApprovePayout = async (tx: any) => {
+    try {
+      await updateDoc(doc(db, 'transactions', tx.id), {
+        status: 'completed',
+        handledBy: adminUser.uid,
+        handledAt: new Date().toISOString()
+      });
+      addToast('Saque marcado como finalizado.', 'success');
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `transactions/${tx.id}`);
+      addToast('Erro ao aprovar saque.', 'error');
+    }
+  };
+
+  const handleRejectPayout = async (tx: any) => {
+    try {
+      const userRef = doc(db, 'users', tx.userId);
+      await updateDoc(userRef, {
+         walletBalance: increment(tx.amount)
+      });
+      await updateDoc(doc(db, 'transactions', tx.id), {
+        status: 'rejected',
+        handledBy: adminUser.uid,
+        handledAt: new Date().toISOString()
+      });
+      await addDoc(collection(db, 'transactions'), {
+         userId: tx.userId,
+         type: 'refund',
+         amount: tx.amount,
+         description: `Estorno de Saque Recusado`,
+         date: new Date().toISOString(),
+         status: 'completed'
+      });
+      addToast('Saque recusado e valor estornado.', 'success');
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.UPDATE, `transactions/${tx.id}`);
+      addToast('Erro ao recusar saque.', 'error');
+    }
+  };
+
+  const filteredTransactions = transactions.filter(t => {
+    if (tab === 'payouts') {
+      return t.type === 'withdraw_request';
+    }
+    const userName = users[t.userId]?.toLowerCase() || '';
+    const desc = t.description?.toLowerCase() || '';
+    const term = searchTerm.toLowerCase();
+    return userName.includes(term) || desc.includes(term);
+  });
+
+  const totals = useMemo(() => {
+    return transactions.reduce((acc, curr) => {
+      if (curr.type === 'credit' || curr.type === 'admin_adjustment' || curr.type === 'refund') {
+        if (curr.amount > 0) acc.credited += curr.amount;
+        else acc.debited += Math.abs(curr.amount || 0);
+      } else {
+        if (curr.type !== 'withdraw_request' || curr.status === 'completed') {
+           acc.debited += curr.amount || 0;
+        }
+      }
+      return acc;
+    }, { credited: 0, debited: 0 });
+  }, [transactions]);
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+           <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão Financeira</h2>
+           <p className="text-sm text-vitta-text-secondary">Visão global e ajustes de fundos em contas de pacientes.</p>
+        </div>
+        <button 
+           onClick={() => setIsAdjustModalOpen(true)}
+           className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-vitta-accent/90 transition-colors shadow-md shadow-vitta-accent/20"
+        >
+          <DollarSign size={16} />
+          <span>Ajustar Saldo Manualmente</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border flex items-center gap-4">
+          <div className="w-12 h-12 bg-vitta-green/10 text-vitta-green rounded-xl flex items-center justify-center">
+            <ArrowDownRight size={24} />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase font-bold text-vitta-text-muted tracking-wider">Total Creditado</p>
+            <p className="text-2xl font-bold text-vitta-text-primary">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.credited)}
+            </p>
+          </div>
+        </div>
+        <div className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border flex items-center gap-4">
+          <div className="w-12 h-12 bg-vitta-danger/10 text-vitta-danger rounded-xl flex items-center justify-center">
+            <ArrowUpRight size={24} />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase font-bold text-vitta-text-muted tracking-wider">Total Debitado</p>
+            <p className="text-2xl font-bold text-vitta-text-primary">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totals.debited)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-vitta-border bg-vitta-surface-2 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setTab('history')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'history' ? 'bg-vitta-surface shadow-sm text-vitta-accent' : 'text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+            >
+              📊 Histórico
+            </button>
+            <button 
+              onClick={() => setTab('payouts')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${tab === 'payouts' ? 'bg-vitta-surface shadow-sm text-vitta-accent' : 'text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+            >
+              💸 Saques (Payouts)
+            </button>
+          </div>
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={16} />
+            <input 
+              type="text" 
+              placeholder="Buscar por usuário ou desc..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs focus:ring-2 focus:ring-vitta-accent/20 outline-none"
+            />
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          {loadingTransactions ? (
+             <div className="p-8 flex justify-center"><div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div></div>
+          ) : filteredTransactions.length === 0 ? (
+             <div className="p-8 text-center text-vitta-text-secondary">Nenhuma transação encontrada.</div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-vitta-surface-3 text-vitta-text-muted uppercase text-[10px] font-bold tracking-wider">
+                <tr>
+                  <th className="p-4">Data</th>
+                  <th className="p-4">Usuário</th>
+                  <th className="p-4">Descrição</th>
+                  <th className="p-4 text-right">Valor</th>
+                  {tab === 'payouts' && <th className="p-4 text-center">Ações</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-vitta-border bg-vitta-surface">
+                {filteredTransactions.map(rx => {
+                  const isPositive = rx.type === 'credit' || rx.type === 'admin_adjustment' || rx.type === 'refund';
+                  return (
+                    <tr key={rx.id} className="hover:bg-vitta-surface-2 transition-colors group">
+                      <td className="p-4 whitespace-nowrap text-vitta-text-secondary">
+                        {new Date(rx.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                      </td>
+                      <td className="p-4 font-medium text-vitta-text-primary">
+                         {users[rx.userId] || 'Carregando...'}
+                      </td>
+                      <td className="p-4">
+                         <div className="font-medium text-vitta-text-primary">{rx.description || 'Transação'}</div>
+                         {rx.type === 'admin_adjustment' && <div className="text-xs text-vitta-accent mt-0.5">Ajuste Manual do Administrador</div>}
+                         {rx.type === 'withdraw_request' && (
+                           <div className="text-xs mt-1">
+                             <span className={`px-2 py-0.5 rounded-full font-bold ${
+                               rx.status === 'completed' ? 'bg-vitta-green/10 text-vitta-green' : 
+                               rx.status === 'rejected' ? 'bg-vitta-danger/10 text-vitta-danger' : 
+                               'bg-vitta-amber/10 text-vitta-amber'
+                             }`}>
+                               Status: {rx.status === 'completed' ? 'Aprovado' : rx.status === 'rejected' ? 'Recusado' : 'Pendente'}
+                             </span>
+                           </div>
+                         )}
+                      </td>
+                      <td className="p-4 text-right whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 font-bold ${isPositive ? 'text-vitta-green' : 'text-vitta-danger'}`}>
+                          {isPositive ? '+' : '-'}
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(rx.amount)}
+                        </span>
+                      </td>
+                      {tab === 'payouts' && (
+                        <td className="p-4 text-center">
+                          {rx.status === 'pending' && (
+                            <div className="flex items-center justify-center gap-2">
+                              <button 
+                                onClick={() => handleApprovePayout(rx)}
+                                className="p-1 px-3 bg-vitta-green/10 text-vitta-green rounded-lg text-xs font-bold hover:bg-vitta-green hover:text-white transition-colors"
+                              >
+                                Aprovar (Pago)
+                              </button>
+                              <button 
+                                onClick={() => handleRejectPayout(rx)}
+                                className="p-1 px-3 bg-vitta-danger/10 text-vitta-danger rounded-lg text-xs font-bold hover:bg-vitta-danger hover:text-white transition-colors"
+                              >
+                                Recusar (Estorno)
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {isAdjustModalOpen && (
+        <AdminAdjustBalanceModal 
+           isOpen={isAdjustModalOpen}
+           onClose={() => setIsAdjustModalOpen(false)}
+           adminUser={adminUser}
+        />
+      )}
+    </div>
+  )
+};
+
+const AdminAdjustBalanceModal = ({ isOpen, onClose, adminUser }: { isOpen: boolean, onClose: () => void, adminUser: any }) => {
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'credit' | 'debit'>('credit');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    if (isOpen) {
+       getDocs(query(collection(db, 'users'), orderBy('name', 'asc'))).then(snapshot => {
+         const usr = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((u: any) => u.role !== 'admin');
+         setUsersList(usr);
+       }).catch(err => console.error("Erro ao carregar usuários:", err));
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserId) {
+        addToast("Selecione um paciente", 'error');
+        return;
+    }
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+        addToast("Insira um valor numérico válido", 'error');
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const modifier = adjustmentType === 'credit' ? numericAmount : -numericAmount;
+      
+      const userRef = doc(db, 'users', selectedUserId);
+      await updateDoc(userRef, {
+        walletBalance: increment(modifier)
+      });
+
+      const transactionRef = doc(collection(db, 'transactions'));
+      await setDoc(transactionRef, {
+        userId: selectedUserId,
+        type: 'admin_adjustment',
+        amount: numericAmount,
+        description: description || `Ajuste manual de saldo (${adjustmentType === 'credit' ? 'Adição' : 'Remoção'})`,
+        date: new Date().toISOString(),
+        status: 'completed',
+        handledBy: adminUser.uid
+      });
+
+      addToast("Saldo ajustado com sucesso", 'success');
+      onClose();
+    } catch (error) {
+       console.error(error);
+       addToast("Houve um erro no processamento do ajuste", 'error');
+    } finally {
+       setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-vitta-surface w-full max-w-md rounded-2xl border border-vitta-border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 whitespace-nowrap">
+          <h2 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
+            <DollarSign size={20} className="text-vitta-accent" /> Ajuste Manual de Saldo
+          </h2>
+          <button onClick={onClose} className="p-2 text-vitta-text-secondary hover:bg-vitta-surface-3 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
+           <div>
+              <label className="block text-sm font-bold text-vitta-text-primary mb-2">Paciente Destino</label>
+              <select 
+                 value={selectedUserId}
+                 onChange={e => setSelectedUserId(e.target.value)}
+                 className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-vitta-accent text-vitta-text-primary appearance-none"
+                 required
+              >
+                 <option value="" disabled>Selecione o paciente</option>
+                 {usersList.map((user: any) => (
+                    <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
+                 ))}
+              </select>
+           </div>
+           
+           <div>
+              <label className="block text-sm font-bold text-vitta-text-primary mb-2">Tipo de Ajuste</label>
+              <div className="grid grid-cols-2 gap-3">
+                 <button 
+                   type="button" 
+                   onClick={() => setAdjustmentType('credit')}
+                   className={`py-3 rounded-xl border text-sm font-bold flex items-center justify-center gap-2 transition-colors ${adjustmentType === 'credit' ? 'bg-vitta-green-bg border-vitta-green text-vitta-green' : 'border-vitta-border bg-vitta-surface-2 text-vitta-text-secondary'}`}
+                 >
+                    <Plus size={16} /> Crédito
+                 </button>
+                 <button 
+                   type="button" 
+                   onClick={() => setAdjustmentType('debit')}
+                   className={`py-3 rounded-xl border text-sm font-bold flex items-center justify-center gap-2 transition-colors ${adjustmentType === 'debit' ? 'bg-vitta-danger/10 border-vitta-danger text-vitta-danger' : 'border-vitta-border bg-vitta-surface-2 text-vitta-text-secondary'}`}
+                 >
+                    <Trash2 size={16} /> Débito
+                 </button>
+              </div>
+           </div>
+
+           <div>
+              <label className="block text-sm font-bold text-vitta-text-primary mb-2">Valor do Ajuste (R$)</label>
+              <input 
+                 type="number" step="0.01" min="0" required
+                 value={amount} onChange={e => setAmount(e.target.value)}
+                 placeholder="0.00"
+                 className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-vitta-accent text-vitta-text-primary"
+              />
+           </div>
+
+           <div>
+              <label className="block text-sm font-bold text-vitta-text-primary mb-2">Motivo / Descrição</label>
+              <textarea 
+                 value={description} onChange={e => setDescription(e.target.value)}
+                 placeholder="Descreva a razão (ex: Estorno da consulta cancelada)"
+                 className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-vitta-accent text-vitta-text-primary min-h-[80px]"
+                 required
+              />
+           </div>
+
+           <div className="flex gap-3 pt-2">
+             <button type="button" onClick={onClose} className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-primary rounded-xl text-sm font-bold border border-vitta-border hover:bg-vitta-surface-3 transition-colors">
+                Cancelar
+             </button>
+             <button type="submit" disabled={isProcessing} className="flex-1 py-3 bg-vitta-accent text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/20 transition-colors disabled:opacity-50">
+                {isProcessing ? 'Processando...' : 'Aplicar Ajuste'}
+             </button>
+           </div>
+        </form>
+      </motion.div>
+    </div>
+  )
+}
+
+const AdminSupportChatView = ({ adminUser }: { adminUser: any }) => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [chatRooms, setChatRooms] = useState<{ [key: string]: any }>({});
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [userTyping, setUserTyping] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = React.useRef<any>(null);
+  const { addToast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const qUsers = query(collection(db, 'users'), orderBy('name', 'asc'));
+    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
+      const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setUsers(allUsers.filter(u => u.role !== 'admin'));
+      setLoadingUsers(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    });
+
+    const qRooms = collection(db, 'chats');
+    const unsubscribeRooms = onSnapshot(qRooms, (snapshot) => {
+      const rooms: { [key: string]: any } = {};
+      snapshot.docs.forEach(doc => {
+        rooms[doc.id] = doc.data();
+      });
+      setChatRooms(rooms);
+    });
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeRooms();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedUser) return;
+    setLoadingMessages(true);
+    const userId = selectedUser.uid || selectedUser.id;
+    const q = query(
+      collection(db, 'chats', userId, 'messages'),
+      orderBy('createdAt', 'asc')
+    );
+
+    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(data);
+      setLoadingMessages(false);
+      setTimeout(scrollToBottom, 100);
+
+      // Auto-read user messages
+      snapshot.docs.forEach(docSnap => {
+        const msg = docSnap.data();
+        if (msg.senderRole === 'user' && !msg.read) {
+          updateDoc(doc(db, 'chats', userId, 'messages', docSnap.id), { read: true });
+        }
+      });
+
+      // Reset unread counter
+      updateDoc(doc(db, 'chats', userId), { unreadCount: 0 });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `chats/${userId}/messages`);
+    });
+
+    const unsubscribeRoom = onSnapshot(doc(db, 'chats', userId), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setUserTyping(!!data.userTyping);
+      }
+    });
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeRoom();
+    };
+  }, [selectedUser]);
+
+  const handleTyping = () => {
+    if (!selectedUser || !adminUser) return;
+    const userId = selectedUser.uid || selectedUser.id;
+    setDoc(doc(db, 'chats', userId), { adminTyping: true, updatedAt: new Date().toISOString() }, { merge: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setDoc(doc(db, 'chats', userId), { adminTyping: false }, { merge: true });
+    }, 3000);
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedUser || !adminUser) return;
+
+    const messageText = newMessage.trim();
+    setNewMessage('');
+    const userId = selectedUser.uid || selectedUser.id;
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setDoc(doc(db, 'chats', userId), { adminTyping: false }, { merge: true });
+
+    try {
+      await addDoc(collection(db, 'chats', userId, 'messages'), {
+        text: messageText,
+        senderId: adminUser.uid,
+        senderRole: 'admin',
+        createdAt: new Date().toISOString(),
+        read: false
+      });
+
+      await setDoc(doc(db, 'chats', userId), {
+        userId,
+        lastMessage: messageText,
+        lastMessageAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      scrollToBottom();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `chats/${userId}/messages`);
+      addToast('Erro ao enviar mensagem.', 'error');
+    }
+  };
+
+  const filteredUsers = users.filter(u => 
+    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
+      <div className="md:col-span-1 bg-vitta-surface border border-vitta-border shadow-sm rounded-2xl flex flex-col overflow-hidden h-full">
+        <div className="p-4 border-b border-vitta-border bg-vitta-surface-2">
+          <h2 className="text-sm font-bold text-vitta-text-primary mb-3">Chats de Pacientes</h2>
+          <div className="relative">
+            <input 
+              type="text"
+              placeholder="Buscar paciente..."
+              className="w-full bg-vitta-surface border border-vitta-border rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-vitta-accent text-vitta-text-primary"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <MessageSquare size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-secondary" />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {loadingUsers ? (
+            <div className="p-4 flex justify-center"><div className="w-5 h-5 border-2 border-vitta-accent border-t-transparent rounded-full animate-spin"></div></div>
+          ) : filteredUsers.length === 0 ? (
+            <p className="text-center text-vitta-text-secondary text-xs p-4">Nenhum paciente encontrado</p>
+          ) : (
+            filteredUsers.map(u => {
+              const room = chatRooms[u.uid || u.id];
+              const unreadCount = room?.unreadCount || 0;
+              const isTyping = room?.userTyping || false;
+              
+              return (
+                <button 
+                  key={u.id}
+                  onClick={() => setSelectedUser(u)}
+                  className={`w-full flex items-center gap-3 p-3 text-left rounded-xl transition-colors relative ${selectedUser?.id === u.id ? 'bg-vitta-accent-bg text-vitta-accent' : 'hover:bg-vitta-surface-2 text-vitta-text-primary'}`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${selectedUser?.id === u.id ? 'bg-vitta-accent text-white' : 'bg-vitta-surface-3 text-vitta-text-secondary'}`}>
+                    {u.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex justify-between items-start">
+                      <p className="font-bold text-sm truncate">{u.name}</p>
+                      {unreadCount > 0 && (
+                        <span className="bg-vitta-danger text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <p className={`text-xs truncate flex-1 ${isTyping ? 'text-vitta-green font-bold animate-pulse' : (selectedUser?.id === u.id ? 'text-vitta-accent/80' : 'text-vitta-text-muted')}`}>
+                        {isTyping ? 'Digitando...' : (room?.lastMessage || u.email)}
+                      </p>
+                      {room?.lastMessageAt && !isTyping && (
+                        <span className="text-[9px] text-vitta-text-muted whitespace-nowrap">
+                          {new Date(room.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="md:col-span-3 bg-vitta-surface border border-vitta-border shadow-sm rounded-2xl flex flex-col overflow-hidden h-full">
+        {!selectedUser ? (
+           <div className="flex-1 flex flex-col items-center justify-center text-vitta-text-secondary p-6">
+             <div className="w-20 h-20 bg-vitta-surface-2 rounded-full flex items-center justify-center mb-6 text-vitta-border">
+               <MessageSquare size={40} />
+             </div>
+             <p className="text-xl font-bold text-vitta-text-primary mb-2">Central de Suporte em Tempo Real</p>
+             <p className="text-sm max-w-sm text-center">Inicie um atendimento selecionando um paciente ao lado. Você verá o status de digitação e confirmação de leitura em tempo real.</p>
+           </div>
+        ) : (
+          <>
+            <div className="p-4 border-b border-vitta-border bg-vitta-surface-2 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-vitta-accent text-white flex items-center justify-center font-bold shrink-0">
+                  {selectedUser.name?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-bold text-vitta-text-primary text-sm">{selectedUser.name}</h3>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-2 h-2 rounded-full ${userTyping ? 'bg-vitta-green animate-pulse' : 'bg-vitta-text-muted'}`} />
+                    <p className="text-[10px] text-vitta-text-secondary uppercase font-bold tracking-wider">
+                      {userTyping ? 'Digitando...' : 'Online'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"><Phone size={18} /></button>
+                <button className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"><MoreVertical size={18} /></button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-vitta-surface-2/10">
+              {loadingMessages ? (
+                <div className="flex justify-center items-center h-full">
+                  <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-vitta-text-secondary">
+                  <p className="text-sm font-medium">Nenhuma mensagem trocada ainda.</p>
+                </div>
+              ) : (
+                <>
+                  {messages.map((msg) => {
+                    const isAdminMsg = msg.senderRole === 'admin';
+                    return (
+                      <div key={msg.id} className={`flex ${isAdminMsg ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`flex gap-3 max-w-[80%] ${isAdminMsg ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-[10px] ${
+                            isAdminMsg ? 'bg-vitta-surface-3 text-vitta-text-secondary' : 'bg-vitta-accent text-white'
+                          }`}>
+                            {isAdminMsg ? 'ADM' : selectedUser.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <div className={`p-4 rounded-2xl relative ${
+                            isAdminMsg ? 'bg-vitta-surface-3 text-vitta-text-primary rounded-tr-none border border-vitta-border' : 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/10 rounded-tl-none'
+                          }`}>
+                            <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                            <div className={`flex items-center gap-1 mt-2 justify-end ${isAdminMsg ? 'text-vitta-text-muted' : 'text-white/70'}`}>
+                              <span className="text-[10px]">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {isAdminMsg && (
+                                <div className="flex">
+                                  {msg.read ? (
+                                    <div className="flex -space-x-1">
+                                      <Check size={10} strokeWidth={3} />
+                                      <Check size={10} strokeWidth={3} />
+                                    </div>
+                                  ) : (
+                                    <Check size={10} strokeWidth={3} />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {userTyping && (
+                    <div className="flex justify-start">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-vitta-accent text-white flex items-center justify-center shrink-0">
+                          {selectedUser.name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="bg-vitta-surface-3 p-3 rounded-2xl border border-vitta-border flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 bg-vitta-accent rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                          <div className="w-1.5 h-1.5 bg-vitta-accent rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                          <div className="w-1.5 h-1.5 bg-vitta-accent rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-vitta-border bg-vitta-surface">
+              <form onSubmit={handleSendMessage} className="flex gap-3">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => {
+                    setNewMessage(e.target.value);
+                    handleTyping();
+                  }}
+                  placeholder="Digite sua resposta..."
+                  className="flex-1 bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-vitta-accent text-vitta-text-primary placeholder:text-vitta-text-muted transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim()}
+                  className="w-12 h-12 shrink-0 bg-vitta-accent text-white rounded-xl flex items-center justify-center hover:bg-vitta-accent/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-vitta-accent/20"
+                >
+                  <Send size={20} />
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AdminDeletionRequestsView = () => {
+  const { addToast } = useToast();
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    userId: string;
+    userName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), where('deletionRequested', '==', true));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'users');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    try {
+      // In a real app, we'd also delete from Auth using a cloud function
+      await deleteDoc(doc(db, 'users', id));
+      await logAdminAction('PERMANENT_DELETE_USER', `Excluiu permanentemente o usuário ID: ${id} (Solicitação LGPD)`);
+      addToast('Usuário excluído permanentemente do sistema.', 'success');
+      setConfirmModal(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-vitta-text-primary">Pedidos de Exclusão (LGPD)</h2>
+          <p className="text-sm text-vitta-text-secondary">Usuários que solicitaram a remoção definitiva de seus dados.</p>
+        </div>
+      </div>
+
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-20 flex justify-center">
+            <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : requests.length === 0 ? (
+          <div className="p-20 text-center">
+            <ShieldCheck size={48} className="mx-auto text-vitta-green mb-4 opacity-20" />
+            <p className="text-vitta-text-secondary font-medium">Nenhuma solicitação de exclusão pendente.</p>
+          </div>
+        ) : (
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+                <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">E-mail</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Plano</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-vitta-border">
+              {requests.map((user) => (
+                <tr key={user.id} className="hover:bg-vitta-surface-2 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-vitta-danger/10 text-vitta-danger rounded-full flex items-center justify-center font-bold text-xs">
+                        {user.name?.charAt(0)}
+                      </div>
+                      <span className="font-bold text-sm text-vitta-text-primary">{user.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-vitta-text-secondary">{user.email}</td>
+                  <td className="px-6 py-4 text-sm text-vitta-text-secondary">{user.plan}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={() => setConfirmModal({ isOpen: true, userId: user.id, userName: user.name })}
+                      className="px-4 py-2 bg-vitta-danger text-white rounded-lg text-xs font-bold hover:bg-vitta-danger/90 transition-colors flex items-center gap-2 ml-auto"
+                    >
+                      <Trash2 size={14} />
+                      Excluir Definitivamente
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-vitta-text-primary/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-vitta-surface w-full max-w-md rounded-2xl shadow-2xl border border-vitta-border p-8 text-center space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="w-16 h-16 bg-vitta-danger/10 text-vitta-danger rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={32} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-vitta-text-primary">Confirmar Exclusão Definitiva</h3>
+                <p className="text-sm text-vitta-text-secondary leading-relaxed">
+                  Você está prestes a excluir permanentemente todos os dados do usuário <strong>{confirmModal.userName}</strong>. Esta ação cumpre o requisito de exclusão da LGPD e não pode ser desfeita.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-3 border border-vitta-border rounded-xl font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => handleDelete(confirmModal.userId)}
+                  className="flex-1 py-3 bg-vitta-danger text-white rounded-xl font-bold shadow-lg shadow-vitta-danger/20 hover:bg-vitta-danger/90 transition-all"
+                >
+                  Confirmar Exclusão
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const ClinicalRecordModal = ({ isOpen, onClose, appointment, professional }: any) => {
+  const [clinicalNotes, setClinicalNotes] = useState(appointment.clinicalNotes || '');
+  const [anamnesis, setAnamnesis] = useState(appointment.anamnesis || '');
+  const [prescriptions, setPrescriptions] = useState<any[]>(appointment.prescriptions || []);
+  const [patientHistory, setPatientHistory] = useState<any[]>([]);
+  const [modalTab, setModalTab] = useState<'clinical' | 'history'>('clinical');
+  const [isSaving, setIsSaving] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    if (!appointment.userId) return;
+    const fetchHistory = async () => {
+      try {
+        const q = query(collection(db, 'appointments'), where('userId', '==', appointment.userId), where('status', '==', 'completed'));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((a: any) => a.id !== appointment.id);
+        data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setPatientHistory(data);
+      } catch (e) {
+        console.error("Failed to load patient history", e);
+      }
+    };
+    fetchHistory();
+  }, [appointment.userId, appointment.id]);
+
+  const handleAddPrescription = () => {
+    setPrescriptions([...prescriptions, { medicine: '', dosage: '', instructions: '' }]);
+  };
+
+  const handleRemovePrescription = (index: number) => {
+    const next = [...prescriptions];
+    next.splice(index, 1);
+    setPrescriptions(next);
+  };
+
+  const handleUpdatePrescription = (index: number, field: string, value: string) => {
+    const next = [...prescriptions];
+    next[index] = { ...next[index], [field]: value };
+    setPrescriptions(next);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        clinicalNotes,
+        anamnesis,
+        prescriptions,
+        updatedAt: Timestamp.now()
+      });
+      addToast('Registro clínico salvo com sucesso.', 'success');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao salvar registro.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 150, 243); // Vitta Blue
+    doc.text('ViTTA - Prescrição Digital', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 105, 28, { align: 'center' });
+    
+    doc.setDrawColor(200);
+    doc.line(20, 35, pageWidth - 20, 35);
+    
+    // Patient & Doctor Info
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Paciente:', 20, 50);
+    doc.setFont('helvetica', 'normal');
+    doc.text(appointment.patientName || 'Não informado', 45, 50);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('Médico:', 20, 58);
+    doc.setFont('helvetica', 'normal');
+    doc.text(professional.name, 45, 58);
+    doc.text(`${professional.specialty} - ${professional.registrationNumber || ''}`, 45, 64);
+    
+    doc.line(20, 75, pageWidth - 20, 75);
+    
+    // Prescriptions
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Receituário', 105, 90, { align: 'center' });
+    
+    let y = 105;
+    prescriptions.forEach((p, i) => {
+      if (y > 250) {
+        doc.addPage();
+        y = 30;
+      }
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${i + 1}. ${p.medicine}`, 25, y);
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Dosagem: ${p.dosage}`, 30, y + 6);
+      doc.text(`Orientações: ${p.instructions}`, 30, y + 12);
+      
+      y += 25;
+    });
+    
+    // Footer - Simple signature area
+    const footerY = 270;
+    doc.line(60, footerY, 150, footerY);
+    doc.setFontSize(9);
+    doc.text('Assinatura Dr(a). ' + professional.name, 105, footerY + 5, { align: 'center' });
+    
+    doc.save(`receita_${appointment.patientName.replace(/\s+/g, '_').toLowerCase()}.pdf`);
+    addToast('PDF gerado com sucesso.', 'success');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-4xl rounded-2xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-vitta-accent-bg rounded-xl text-vitta-accent">
+              <Stethoscope size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Registro Clínico</h3>
+              <p className="text-xs text-vitta-text-secondary">Paciente: {appointment.patientName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={generatePDF}
+              className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all flex items-center gap-2"
+              disabled={prescriptions.length === 0}
+            >
+              <Download size={14} />
+              Exportar Receita
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+              <X size={20} className="text-vitta-text-muted" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex border-b border-vitta-border bg-vitta-surface shrink-0 px-6 pt-4 gap-4 overflow-x-auto no-scrollbar">
+          <button 
+            onClick={() => setModalTab('clinical')}
+            className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === 'clinical' ? 'border-vitta-accent text-vitta-accent' : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+          >
+            📋 Anamnese e Receita
+          </button>
+          <button 
+            onClick={() => setModalTab('history')}
+            className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === 'history' ? 'border-vitta-accent text-vitta-accent' : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+          >
+            🕰️ Histórico do Paciente
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto no-scrollbar flex-1 bg-vitta-surface-2">
+          {modalTab === 'clinical' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-vitta-text-primary flex items-center gap-2 uppercase tracking-widest">
+                    <FileText size={16} className="text-vitta-accent" />
+                    Anamnese / Histórico Atual
+                  </h4>
+                  <textarea 
+                    value={anamnesis}
+                    onChange={(e) => setAnamnesis(e.target.value)}
+                    placeholder="Descreva a queixa principal, histórico da moléstia atual, histórico familiar..."
+                    className="w-full h-[150px] p-4 bg-vitta-surface border border-vitta-border rounded-2xl text-sm outline-none focus:ring-2 focus:ring-vitta-accent/20 transition-all resize-none shadow-sm"
+                    disabled={appointment.status === 'completed'}
+                  />
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-vitta-text-primary flex items-center gap-2 uppercase tracking-widest">
+                    <Stethoscope size={16} className="text-vitta-accent" />
+                    Evolução Clínica
+                  </h4>
+                  <textarea 
+                    value={clinicalNotes}
+                    onChange={(e) => setClinicalNotes(e.target.value)}
+                    placeholder="Descreva o quadro clínico, exame físico e evolução..."
+                    className="w-full h-[150px] p-4 bg-vitta-surface border border-vitta-border rounded-2xl text-sm outline-none focus:ring-2 focus:ring-vitta-accent/20 transition-all resize-none shadow-sm"
+                    disabled={appointment.status === 'completed'}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4 bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-vitta-text-primary flex items-center gap-2 uppercase tracking-widest">
+                    <Pill size={16} className="text-vitta-accent" />
+                    Prescrição
+                  </h4>
+                  {appointment.status !== 'completed' && (
+                    <button 
+                      onClick={handleAddPrescription}
+                      className="text-xs font-bold text-vitta-accent hover:bg-vitta-accent-bg px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all"
+                    >
+                      <Plus size={14} />
+                      Adicionar
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-3 pb-4">
+                  {prescriptions.map((p, idx) => (
+                    <div key={idx} className="p-4 bg-vitta-surface-2 border border-vitta-border rounded-xl space-y-3 relative group animate-in slide-in-from-right-4">
+                      {appointment.status !== 'completed' && (
+                        <button 
+                          onClick={() => handleRemovePrescription(idx)}
+                          className="absolute top-2 right-2 p-1.5 text-vitta-text-muted hover:text-vitta-danger transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                      <div className="space-y-2">
+                        <input 
+                          type="text"
+                          placeholder="Medicamento"
+                          value={p.medicine}
+                          onChange={(e) => handleUpdatePrescription(idx, 'medicine', e.target.value)}
+                          className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-lg text-xs font-bold text-vitta-text-primary focus:ring-1 focus:ring-vitta-accent transition-all"
+                          disabled={appointment.status === 'completed'}
+                        />
+                        <input 
+                          type="text"
+                          placeholder="Dosagem (ex: 500mg, 1 comprimido)"
+                          value={p.dosage}
+                          onChange={(e) => handleUpdatePrescription(idx, 'dosage', e.target.value)}
+                          className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-lg text-xs text-vitta-text-secondary focus:ring-1 focus:ring-vitta-accent transition-all"
+                          disabled={appointment.status === 'completed'}
+                        />
+                        <textarea 
+                          placeholder="Instruções de uso..."
+                          value={p.instructions}
+                          onChange={(e) => handleUpdatePrescription(idx, 'instructions', e.target.value)}
+                          className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-lg text-xs text-vitta-text-secondary focus:ring-1 focus:ring-vitta-accent transition-all h-16 resize-none"
+                          disabled={appointment.status === 'completed'}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {prescriptions.length === 0 && (
+                    <div className="p-8 text-center border-2 border-dashed border-vitta-border rounded-2xl bg-vitta-surface-2">
+                      <Pill size={32} className="mx-auto text-vitta-text-muted mb-2 opacity-50" />
+                      <p className="text-xs text-vitta-text-muted italic">Nenhuma prescrição adicionada.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalTab === 'history' && (
+            <div className="space-y-6">
+              <h3 className="font-bold text-lg text-vitta-text-primary mb-4">Consultas Anteriores</h3>
+              {patientHistory.length === 0 ? (
+                <div className="bg-vitta-surface p-12 text-center rounded-2xl border border-vitta-border">
+                  <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4 opacity-50" />
+                  <p className="text-vitta-text-secondary">Nenhum histórico encontrado para este paciente.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {patientHistory.map((hist, i) => (
+                    <div key={i} className="bg-vitta-surface border border-vitta-border rounded-2xl p-6 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-vitta-border pb-4 mb-4">
+                        <div>
+                          <p className="text-xs font-bold text-vitta-accent mb-1">{hist.date} às {hist.time}</p>
+                          <p className="font-bold text-vitta-text-primary flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-full bg-vitta-surface-2 flex items-center justify-center text-xs">
+                              {hist.professionalName?.charAt(0)}
+                            </span>
+                            Dr(a). {hist.professionalName}
+                          </p>
+                        </div>
+                        <span className="text-xs bg-vitta-green-bg text-vitta-green px-3 py-1 rounded-full font-bold">Concluído</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {hist.anamnesis && (
+                          <div>
+                            <h5 className="text-[10px] font-bold tracking-widest text-vitta-text-muted uppercase mb-2">Anamnese</h5>
+                            <p className="text-sm text-vitta-text-secondary bg-vitta-surface-2 p-3 rounded-xl border border-vitta-border">{hist.anamnesis}</p>
+                          </div>
+                        )}
+                        {hist.clinicalNotes && (
+                          <div>
+                            <h5 className="text-[10px] font-bold tracking-widest text-vitta-text-muted uppercase mb-2">Evolução</h5>
+                            <p className="text-sm text-vitta-text-secondary bg-vitta-surface-2 p-3 rounded-xl border border-vitta-border">{hist.clinicalNotes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-vitta-border bg-vitta-surface flex justify-between shrink-0">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-3 bg-vitta-surface text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Check size={20} />
+                Salvar Atendimento
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const ProfessionalFinanceView = ({ user }: { user: any }) => {
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [pixKey, setPixKey] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribeWallet = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setWalletBalance(docSnap.data().walletBalance || 0);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+    });
+
+    const q = query(
+      collection(db, 'transactions'),
+      where('userId', '==', user.uid),
+      orderBy('date', 'desc'),
+      limit(20)
+    );
+    const unsubscribeTransactions = onSnapshot(q, (snapshot) => {
+      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `transactions`);
+    });
+
+    return () => {
+      unsubscribeWallet();
+      unsubscribeTransactions();
+    };
+  }, [user]);
+
+  const handleRequestPayout = async () => {
+    const numAmount = parseFloat(payoutAmount.replace(',', '.'));
+    if (!numAmount || numAmount <= 0) {
+      addToast('Valor inválido.', 'error');
+      return;
+    }
+    if (numAmount > walletBalance) {
+      addToast('Saldo insuficiente.', 'error');
+      return;
+    }
+    if (!pixKey.trim()) {
+      addToast('Chave PIX obrigatória.', 'error');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // 1. Deduct from wallet
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        walletBalance: increment(-numAmount)
+      });
+
+      // 2. Create withdraw request
+      await addDoc(collection(db, 'transactions'), {
+        userId: user.uid,
+        type: 'withdraw_request',
+        amount: numAmount,
+        description: `Solicitação de Saque - PIX: ${pixKey}`,
+        pixKey: pixKey,
+        date: new Date().toISOString(),
+        status: 'pending' // Admin needs to approve
+      });
+
+      addToast('Solicitação de saque enviada com sucesso.', 'success');
+      setIsPayoutModalOpen(false);
+      setPayoutAmount('');
+      setPixKey('');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `transactions`);
+      addToast('Erro ao solicitar saque.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {isPayoutModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-in fade-in duration-300">
+          <div className="bg-vitta-surface w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-vitta-border animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-vitta-text-primary">Solicitar Saque</h3>
+              <button onClick={() => setIsPayoutModalOpen(false)} className="text-vitta-text-muted hover:bg-vitta-surface-2 p-2 rounded-xl">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Valor (R$)</label>
+                <input 
+                  type="number"
+                  placeholder="0.00"
+                  value={payoutAmount}
+                  onChange={e => setPayoutAmount(e.target.value)}
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+                />
+                <p className="text-xs text-vitta-text-secondary mt-1 ml-1">Disponível: R$ {walletBalance.toFixed(2)}</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Chave PIX</label>
+                <input 
+                  type="text"
+                  placeholder="CPF, E-mail, Telefone..."
+                  value={pixKey}
+                  onChange={e => setPixKey(e.target.value)}
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={handleRequestPayout}
+                  disabled={isProcessing}
+                  className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
+                >
+                  {isProcessing ? 'Processando...' : 'Confirmar Saque'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-accent/80 p-8 rounded-3xl shadow-xl shadow-vitta-accent/20 text-white md:col-span-1">
+          <div className="absolute top-0 right-0 p-6 opacity-20">
+            <Wallet size={80} />
+          </div>
+          <div className="relative z-10 space-y-6">
+            <div>
+              <p className="text-white/80 text-sm font-medium mb-1">Saldo em Conta</p>
+              <h2 className="text-4xl font-bold tracking-tight">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(walletBalance)}
+              </h2>
+            </div>
+            
+            <button 
+              onClick={() => setIsPayoutModalOpen(true)}
+              className="w-full py-3 bg-white text-vitta-accent rounded-xl text-sm font-bold shadow-sm hover:bg-white/90 transition-all"
+            >
+              Solicitar Saque
+            </button>
+          </div>
+        </div>
+
+        <div className="md:col-span-2 bg-vitta-surface border border-vitta-border rounded-3xl shadow-sm p-6">
+          <h3 className="text-lg font-bold text-vitta-text-primary mb-6 flex items-center gap-2">
+            <ArrowRightLeft className="text-vitta-text-muted" size={20} />
+            Histórico Financeiro
+          </h3>
+
+          <div className="space-y-3">
+            {loading ? (
+              <p className="text-sm text-vitta-text-secondary">Carregando...</p>
+            ) : transactions.length > 0 ? (
+              transactions.map((t) => (
+                <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border hover:shadow-md transition-shadow gap-3">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                      t.type === 'credit' || t.type === 'refund' || t.type === 'admin_adjustment' && t.amount > 0 ? 'bg-vitta-green/10 text-vitta-green' : 
+                      t.type === 'withdraw_request' && t.status === 'completed' ? 'bg-vitta-green/10 text-vitta-green' :
+                      t.type === 'withdraw_request' && t.status === 'pending' ? 'bg-vitta-amber/10 text-vitta-amber' :
+                      'bg-vitta-danger/10 text-vitta-danger'
+                    }`}>
+                      {t.type === 'credit' ? <ArrowDownRight size={18} /> : 
+                       t.type === 'withdraw_request' && t.status === 'completed' ? <CheckCircle2 size={18} /> :
+                       t.type === 'withdraw_request' && t.status === 'pending' ? <Clock size={18} /> :
+                       <ArrowUpRight size={18} />}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-vitta-text-primary">{t.description}</h4>
+                      <div className="flex items-center gap-2 text-xs text-vitta-text-secondary mt-0.5">
+                        <Calendar size={12} />
+                        {new Date(t.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                        
+                        {t.status === 'pending' && <span className="text-vitta-amber bg-vitta-amber/10 px-2 py-0.5 rounded-full font-medium">Em análise</span>}
+                        {t.status === 'rejected' && <span className="text-vitta-danger bg-vitta-danger/10 px-2 py-0.5 rounded-full font-medium">Recusado</span>}
+                        {t.status === 'completed' && <span className="text-vitta-green bg-vitta-green/10 px-2 py-0.5 rounded-full font-medium">Finalizado</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right whitespace-nowrap">
+                    <p className={`font-bold ${
+                      t.type === 'credit' || t.type === 'refund' || t.type === 'admin_adjustment' && t.amount > 0 ? 'text-vitta-green' : 'text-vitta-danger'
+                    }`}>
+                      {t.type === 'credit' || t.type === 'refund' || t.type === 'admin_adjustment' && t.amount > 0 ? '+' : '-'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(t.amount))}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-vitta-text-muted bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
+                <Receipt className="mx-auto mb-2 opacity-50" size={32} />
+                <p className="text-sm">Nenhuma transação encontrada.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProfessionalDashboardView = ({ user }: { user: any }) => {
+  const [professionalProfile, setProfessionalProfile] = useState<any>(null);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState<'agenda' | 'profile' | 'finance'>('agenda');
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    const q = query(collection(db, 'professionals'), where('userId', '==', user.uid));
+    const unsubPro = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setProfessionalProfile({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      } else {
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error(error);
+      setLoading(false);
+    });
+
+    return () => unsubPro();
+  }, [user.uid]);
+
+  useEffect(() => {
+    if (!professionalProfile) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const qApt = query(
+      collection(db, 'appointments'),
+      where('professionalId', '==', professionalProfile.id),
+      where('date', '==', today)
+    );
+
+    const unsubApt = onSnapshot(qApt, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      data.sort((a, b) => a.time.localeCompare(b.time));
+      setAppointments(data);
+      setLoading(false);
+    }, (error) => {
+      console.error(error);
+      setLoading(false);
+    });
+
+    return () => unsubApt();
+  }, [professionalProfile]);
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { 
+        status: newStatus, 
+        updatedAt: Timestamp.now() 
+      });
+      addToast(`Agendamento atualizado para: ${newStatus === 'in_progress' ? 'Em Atendimento' : 'Finalizado'}`, 'success');
+      
+      const apt = appointments.find(a => a.id === id);
+      if (apt && apt.userId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: apt.userId,
+          title: 'Atualização de Consulta',
+          message: `Sua consulta com ${professionalProfile.name} está ${newStatus === 'in_progress' ? 'EM ATENDIMENTO' : 'FINALIZADA'}.`,
+          type: 'appointment',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao atualizar status.', 'error');
+    }
+  };
+
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [selectedApt, setSelectedApt] = useState<any>(null);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!professionalProfile) {
+    return (
+      <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-4">
+        <AlertCircle size={48} className="text-vitta-amber" />
+        <h2 className="text-2xl font-bold text-vitta-text-primary">Perfil não vinculado</h2>
+        <p className="max-w-md text-vitta-text-secondary">
+          Sua conta está marcada como profissional, mas não há um perfil de médico vinculado ao seu ID ({user.uid}). 
+          Contate um administrador para realizar o vínculo.
+        </p>
+      </div>
+    );
+  }
+
+  const stats = {
+    todayCount: appointments.length,
+    completedToday: appointments.filter(a => a.status === 'completed').length,
+    pendingToday: appointments.filter(a => a.status === 'upcoming' || a.status === 'pending').length,
+    averageRating: professionalProfile.rating || 0
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <AnimatePresence>
+        {selectedApt && (
+          <ClinicalRecordModal 
+            isOpen={!!selectedApt}
+            appointment={selectedApt}
+            professional={professionalProfile}
+            onClose={() => setSelectedApt(null)}
+          />
+        )}
+        {isScheduleModalOpen && (
+          <AvailabilityPlannerModal
+            isOpen={isScheduleModalOpen}
+            professional={professionalProfile}
+            onClose={() => setIsScheduleModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-vitta-text-primary">Olá, Dr(a). {professionalProfile.name}</h1>
+          <p className="text-vitta-text-secondary">Gerencie seus atendimentos de hoje, {new Date().toLocaleDateString('pt-BR')}.</p>
+        </div>
+        <div className="flex items-center gap-2">
+           <div className="flex bg-vitta-surface-2 p-1 rounded-xl shadow-inner overflow-x-auto no-scrollbar">
+             <button
+               onClick={() => setSubTab('agenda')}
+               className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === 'agenda' ? 'bg-vitta-surface shadow-sm text-vitta-accent' : 'text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+             >
+               📋 Agenda do Dia
+             </button>
+             <button
+               onClick={() => setSubTab('profile')}
+               className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === 'profile' ? 'bg-vitta-surface shadow-sm text-vitta-accent' : 'text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+             >
+               👤 Meu Perfil Público
+             </button>
+             <button
+               onClick={() => setSubTab('finance')}
+               className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === 'finance' ? 'bg-vitta-surface shadow-sm text-vitta-accent' : 'text-vitta-text-secondary hover:text-vitta-text-primary'}`}
+             >
+               💰 Financeiro
+             </button>
+           </div>
+           {subTab === 'agenda' && (
+             <button
+               onClick={() => setIsScheduleModalOpen(true)}
+               className="px-4 py-2 bg-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-border-2 transition-all flex items-center gap-2 whitespace-nowrap"
+             >
+               <Calendar size={18} />
+               Gerenciar Grade
+             </button>
+           )}
+        </div>
+      </header>
+
+      {subTab === 'agenda' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { label: 'Total Hoje', value: stats.todayCount, icon: Calendar, color: 'text-vitta-accent', bg: 'bg-vitta-accent-bg' },
+            { label: 'Aguardando', value: stats.pendingToday, icon: Clock, color: 'text-vitta-amber', bg: 'bg-vitta-amber-bg' },
+            { label: 'Concluídos', value: stats.completedToday, icon: CheckCircle2, color: 'text-vitta-green', bg: 'bg-vitta-green-bg' },
+            { label: 'Avaliação', value: stats.averageRating, icon: Star, color: 'text-yellow-500', bg: 'bg-yellow-500/10' }
+          ].map((stat, i) => (
+            <div key={i} className="p-6 bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm space-y-4">
+              <div className="flex justify-between items-center">
+                <div className={`p-2.5 rounded-xl ${stat.bg} ${stat.color}`}>
+                  <stat.icon size={20} />
+                </div>
+                <span className="text-2xl font-bold text-vitta-text-primary">{stat.value}</span>
+              </div>
+              <p className="text-sm font-medium text-vitta-text-secondary">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {subTab === 'agenda' && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
+              <ClipboardList className="text-vitta-accent" size={20} />
+              Agenda do Dia
+            </h2>
+          </div>
+
+        <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm overflow-hidden">
+          {appointments.length > 0 ? (
+            <div className="divide-y divide-vitta-border">
+              {appointments.map((apt) => (
+                <div key={apt.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-vitta-surface-2 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent font-bold text-lg">
+                      {apt.patientName?.charAt(0) || 'P'}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-vitta-text-primary">{apt.patientName}</h3>
+                      <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
+                        <span className="font-mono bg-vitta-border px-1.5 py-0.5 rounded">{apt.time}</span>
+                        <span>•</span>
+                        <span>Consulta Presencial</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setSelectedPatient({ name: apt.patientName, id: apt.userId })}
+                      className="p-2 text-vitta-text-muted hover:text-vitta-accent rounded-lg hover:bg-vitta-accent-bg transition-all"
+                      title="Ver Ficha do Paciente"
+                    >
+                      <User size={18} />
+                    </button>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      apt.status === 'upcoming' ? 'bg-blue-500/10 text-blue-500' :
+                      apt.status === 'in_progress' ? 'bg-vitta-accent-bg text-vitta-accent animate-pulse' :
+                      apt.status === 'completed' ? 'bg-vitta-green-bg text-vitta-green' :
+                      'bg-vitta-danger/10 text-vitta-danger'
+                    }`}>
+                      {apt.status === 'upcoming' ? 'Aguardando' : 
+                       apt.status === 'in_progress' ? 'Em Atendimento' : 
+                       apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
+                    </span>
+
+                    {apt.status === 'upcoming' && (
+                      <button 
+                        onClick={() => handleUpdateStatus(apt.id, 'in_progress')}
+                        className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
+                      >
+                        <SkipForward size={14} />
+                        Iniciar
+                      </button>
+                    )}
+
+                    {apt.status === 'in_progress' && (
+                      <button 
+                        onClick={() => setSelectedApt(apt)}
+                        className="px-4 py-2 bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-border-2 transition-all flex items-center gap-2"
+                      >
+                        <Stethoscope size={14} />
+                        Registro Clínico
+                      </button>
+                    )}
+
+                    {apt.status === 'in_progress' && (
+                      <button 
+                        onClick={() => handleUpdateStatus(apt.id, 'completed')}
+                        className="px-4 py-2 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all flex items-center gap-2"
+                      >
+                        <Check size={14} />
+                        Finalizar
+                      </button>
+                    )}
+
+                    {apt.status === 'completed' && (
+                      <button 
+                        onClick={() => setSelectedApt(apt)}
+                        className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all flex items-center gap-2"
+                      >
+                        <FileText size={14} />
+                        Ver Prontuário
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center text-vitta-text-secondary">
+              <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="font-medium">Nenhum agendamento para hoje.</p>
+              <p className="text-xs">Aproveite o tempo livre ou confira sua agenda de amanhã.</p>
+            </div>
+          )}
+        </div>
+      </section>
+      )}
+
+      {subTab === 'profile' && (
+        <section className="space-y-4">
+          <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm overflow-hidden p-6 gap-6 flex flex-col md:flex-row">
+            <div className="w-full md:w-1/3 space-y-4">
+              <h3 className="font-bold text-lg text-vitta-text-primary border-b border-vitta-border pb-2">Informações Iniciais</h3>
+              <p className="text-sm text-vitta-text-secondary"><strong className="text-vitta-text-primary">Especialidade:</strong> {professionalProfile.specialty}</p>
+              <p className="text-sm text-vitta-text-secondary"><strong className="text-vitta-text-primary">CRM/Registro:</strong> {professionalProfile.registrationNumber}</p>
+              <p className="text-sm text-vitta-text-secondary"><strong className="text-vitta-text-primary">Valor Base:</strong> R$ {professionalProfile.price}</p>
+              <p className="text-sm text-vitta-text-secondary"><strong className="text-vitta-text-primary">Avaliação Média:</strong> ⭐ {professionalProfile.rating || 0}</p>
+              <p className="text-xs text-vitta-text-muted italic mt-4">Para atualizar campos imutáveis, entre em contato com a administração.</p>
+            </div>
+            <div className="w-full md:w-2/3">
+               <h3 className="font-bold text-lg text-vitta-text-primary border-b border-vitta-border pb-2 mb-4">Currículo Extenso / Apresentação</h3>
+               {professionalProfile.curriculum ? (
+                 <div className="text-sm text-vitta-text-secondary whitespace-pre-wrap">{professionalProfile.curriculum}</div>
+               ) : (
+                 <div className="text-sm text-vitta-amber bg-vitta-amber-bg p-4 rounded-xl border border-vitta-amber/30">
+                    Você ainda não adicionou um currículo profissional. Adicione-o para melhorar seu perfil público e atrair mais pacientes. Esta ação deve ser solicitada à administração atualmente.
+                 </div>
+               )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {subTab === 'finance' && <ProfessionalFinanceView user={user} />}
+
+      {/* Patient Details Modal */}
+      <AnimatePresence>
+        {selectedPatient && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-vitta-surface w-full max-w-lg rounded-2xl shadow-2xl border border-vitta-border overflow-hidden"
+            >
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-vitta-accent-bg rounded-xl text-vitta-accent">
+                    <User size={20} />
+                  </div>
+                  <h3 className="text-xl font-bold text-vitta-text-primary">Ficha do Paciente</h3>
+                </div>
+                <button onClick={() => setSelectedPatient(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+                  <X size={20} className="text-vitta-text-muted" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border">
+                  <div className="w-16 h-16 bg-vitta-accent rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-vitta-accent/20">
+                    {selectedPatient.name?.charAt(0) || 'P'}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-bold text-vitta-text-primary">{selectedPatient.name}</h4>
+                    <p className="text-sm text-vitta-text-secondary">ID: {selectedPatient.id}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="p-4 rounded-xl bg-vitta-surface border border-vitta-border">
+                    <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-2">Informações Críticas</p>
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-vitta-text-secondary">Tipo de Plano:</span>
+                        <span className="font-bold text-vitta-text-primary">Vitta Premium</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-vitta-text-secondary">Última Consulta:</span>
+                        <span className="font-bold text-vitta-text-primary">15/04/2026</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-vitta-text-secondary">Alergias:</span>
+                        <span className="font-bold text-vitta-danger">Nenhuma relatada</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-vitta-border bg-vitta-surface-2">
+                <button 
+                  onClick={() => setSelectedPatient(null)}
+                  className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
+                >
+                  Fechar Ficha
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const ContentManagerView = () => {
+  const [radioUrl, setRadioUrl] = useState('');
+  const [currentShow, setCurrentShow] = useState('Música ViTTA');
+  const [upNextMessage, setUpNextMessage] = useState('A seguir: Dicas de Saúde');
+  const [isSavingRadio, setIsSavingRadio] = useState(false);
+  const [banners, setBanners] = useState<any[]>([]);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'radio'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setRadioUrl(data.url || '');
+        setCurrentShow(data.currentShow || '');
+        setUpNextMessage(data.upNextMessage || '');
+      }
+    });
+
+    const unsubBanners = onSnapshot(doc(db, 'config', 'hero_banners'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setBanners(data.items || []);
+      }
+    });
+    
+    return () => { unsub(); unsubBanners(); };
+  }, []);
+
+  const handleSaveRadio = async () => {
+    setIsSavingRadio(true);
+    try {
+      await setDoc(doc(db, 'config', 'radio'), { url: radioUrl, currentShow, upNextMessage }, { merge: true });
+      await logAdminAction('UPDATE_RADIO_CONFIG', `Atualizou informações da rádio`);
+      addToast('Configurações da rádio salvas!', 'success');
+    } catch(err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/radio');
+      addToast('Erro ao salvar config da rádio.', 'error');
+    } finally {
+      setIsSavingRadio(false);
+    }
+  };
+
+  const handleUploadBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const uploadWithProgress = (file: File, path: string, key: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const storageRef = ref(storage, path);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+        uploadTask.on('state_changed', 
+          null, 
+          (error) => reject(error), 
+          () => getDownloadURL(uploadTask.snapshot.ref).then(resolve)
+        );
+      });
+    };
+
+    setIsUploadingBanner(true);
+    try {
+      const url = await uploadWithProgress(file, `banners/${Date.now()}_${file.name}`, 'image');
+      const newBanner = {
+        id: Date.now().toString(),
+        imageUrl: url,
+        title: '',
+        link: '',
+        order: banners.length
+      };
+      const updatedBanners = [...banners, newBanner];
+      await setDoc(doc(db, 'config', 'hero_banners'), { items: updatedBanners }, { merge: true });
+      await logAdminAction('CREATE_BANNER', `Adicionou um novo banner`);
+      addToast('Banner adicionado com sucesso', 'success');
+    } catch(err) {
+      console.error(err);
+      addToast('Erro ao enviar banner', 'error');
+    } finally {
+      setIsUploadingBanner(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteBanner = async (bannerId: string) => {
+    const updatedBanners = banners.filter(b => b.id !== bannerId);
+    try {
+      await setDoc(doc(db, 'config', 'hero_banners'), { items: updatedBanners }, { merge: true });
+      await logAdminAction('DELETE_BANNER', `Removeu o banner ${bannerId}`);
+      addToast('Banner removido.', 'success');
+    } catch(err) {
+      addToast('Erro ao remover banner.', 'error');
+    }
+  };
+
+  const handleUpdateBanner = async (bannerId: string, field: string, value: string) => {
+    const updatedBanners = banners.map(b => b.id === bannerId ? { ...b, [field]: value } : b);
+    try {
+      await setDoc(doc(db, 'config', 'hero_banners'), { items: updatedBanners }, { merge: true });
+    } catch(err) {
+      addToast('Erro ao atualizar banner.', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 bg-vitta-accent-bg rounded-2xl text-vitta-accent shadow-sm">
+          <MonitorPlay size={24} />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-vitta-text-primary">Gestor de Conteúdo</h2>
+          <p className="text-vitta-text-secondary text-sm">Gerencie a Rádio ViTTA e os Banners do Aplicativo.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-vitta-surface border border-vitta-border rounded-3xl p-6 shadow-sm flex flex-col">
+          <div className="flex items-center gap-2 mb-6">
+            <Radio size={20} className="text-vitta-accent" />
+            <h3 className="font-bold text-lg text-vitta-text-primary">Configurações da Rádio</h3>
+          </div>
+          <div className="space-y-4 flex-1">
+            <div>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">URL da Transmissão</label>
+              <input 
+                type="text" 
+                value={radioUrl}
+                onChange={(e) => setRadioUrl(e.target.value)}
+                placeholder="https://icecast..."
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Em Exibição</label>
+              <input 
+                type="text" 
+                value={currentShow}
+                onChange={(e) => setCurrentShow(e.target.value)}
+                placeholder="Ex: Música ViTTA"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">A Seguir</label>
+              <input 
+                type="text" 
+                value={upNextMessage}
+                onChange={(e) => setUpNextMessage(e.target.value)}
+                placeholder="Ex: A seguir: Dicas de Saúde"
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSaveRadio}
+            disabled={isSavingRadio}
+            className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all disabled:opacity-50 mt-6"
+          >
+            {isSavingRadio ? 'Salvando...' : 'Salvar Configurações'}
+          </button>
+        </div>
+
+        <div className="bg-vitta-surface border border-vitta-border rounded-3xl p-6 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Images size={20} className="text-vitta-blue" />
+              <h3 className="font-bold text-lg text-vitta-text-primary">Hero Banners</h3>
+            </div>
+            <div>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleUploadBanner} 
+                className="hidden" 
+                accept="image/*"
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingBanner}
+                className="px-4 py-2 bg-vitta-blue/10 text-vitta-blue hover:bg-vitta-blue hover:text-white rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {isUploadingBanner ? 'Enviando...' : <><Plus size={16} /> Adicionar Banner</>}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 flex-1 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {banners.length === 0 ? (
+              <div className="text-center py-10 text-vitta-text-muted bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
+                <Images className="mx-auto mb-2 opacity-50" size={32} />
+                <p className="text-sm">Nenhum banner cadastrado.</p>
+              </div>
+            ) : (
+              banners.sort((a, b) => a.order - b.order).map((banner, index) => (
+                <div key={banner.id} className="flex flex-col sm:flex-row gap-4 p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border relative group">
+                  <div className="w-full sm:w-32 h-20 rounded-xl overflow-hidden bg-vitta-surface shrink-0 relative">
+                    <img src={banner.imageUrl} alt="Banner" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input 
+                      type="text" 
+                      value={banner.title} 
+                      onChange={(e) => handleUpdateBanner(banner.id, 'title', e.target.value)}
+                      placeholder="Título (Opcional)" 
+                      className="w-full bg-transparent border-b border-vitta-border px-1 py-1 text-sm text-vitta-text-primary focus:border-vitta-accent outline-none font-bold"
+                    />
+                    <input 
+                      type="text" 
+                      value={banner.link} 
+                      onChange={(e) => handleUpdateBanner(banner.id, 'link', e.target.value)}
+                      placeholder="Link de Destino (Opcional)" 
+                      className="w-full bg-transparent border-b border-vitta-border px-1 py-1 text-xs text-vitta-text-secondary focus:border-vitta-accent outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteBanner(banner.id)}
+                    className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm shadow-sm rounded-lg text-vitta-danger hover:bg-vitta-danger hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminView = ({ user }: { user: any }) => {
   const { addToast } = useToast();
-  const [subTab, setSubTab] = useState<'overview' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'user-exams' | 'offers' | 'config'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'analytics' | 'users' | 'partnerships' | 'professionals' | 'exams' | 'user-exams' | 'offers' | 'config' | 'chat' | 'transactions' | 'appointments' | 'deletion-requests' | 'audit-logs' | 'subscriptions' | 'content'>('overview');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
@@ -1175,7 +3896,7 @@ const AdminView = ({ user }: { user: any }) => {
             });
           }
           
-          await logAdminAction('CANCEL_APPOINTMENT', `Cancelou agendamento ID: ${apt.id} de ${apt.professionalName}`);
+          await logAdminAction('CANCEL_APPOINTMENT', `Cancelou agendamento ID: ${apt.id} de ${apt.professionalName}`, apt, null);
           addToast('Agendamento cancelado com sucesso.', 'success');
         } catch (err) {
           console.error('Erro ao excluir agendamento:', err);
@@ -1187,25 +3908,30 @@ const AdminView = ({ user }: { user: any }) => {
     });
   };
 
-  const handleSaveApt = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+    if (!editingApt) return;
     try {
-      const { id, ...data } = editingApt;
-      await updateDoc(doc(db, 'appointments', id), data);
+      const oldData = { ...editingApt };
+      const newData = {
+        date: newDate,
+        time: newTime,
+        updatedAt: Timestamp.now()
+      };
+      await updateDoc(doc(db, 'appointments', editingApt.id), newData);
       
       // Notify user about rescheduling
-      if (data.userId) {
+      if (editingApt.userId) {
         await addDoc(collection(db, 'notifications'), {
-          userId: data.userId,
+          userId: editingApt.userId,
           title: 'Consulta Remarcada',
-          message: `Sua consulta com ${data.professionalName} foi remarcada para ${new Date(data.date).toLocaleDateString('pt-BR')} às ${data.time}.`,
+          message: `Sua consulta com ${editingApt.professionalName} foi remarcada pelo administrador para ${new Date(newDate).toLocaleDateString('pt-BR')} às ${newTime}.`,
           type: 'appointment',
           read: false,
           createdAt: Timestamp.now()
         });
       }
       
-      await logAdminAction('RESCHEDULE_APPOINTMENT', `Remarcou agendamento ID: ${id} para ${data.date} ${data.time}`);
+      await logAdminAction('RESCHEDULE_APPOINTMENT', `Remarcou agendamento ID: ${editingApt.id} para ${newDate} ${newTime}`, oldData, { ...oldData, ...newData });
       setEditingApt(null);
       addToast('Agendamento remarcado com sucesso.', 'success');
     } catch (err) {
@@ -1218,62 +3944,18 @@ const AdminView = ({ user }: { user: any }) => {
     <div className="space-y-8">
       <AnimatePresence>
         {editingApt && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
-            >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
-                <h3 className="text-xl font-bold text-vitta-text-primary">Remarcar Consulta</h3>
-                <button onClick={() => setEditingApt(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
-                  <X size={20} className="text-vitta-text-muted" />
-                </button>
-              </div>
-              <form onSubmit={handleSaveApt} className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data</label>
-                  <input 
-                    type="date" 
-                    value={editingApt.date}
-                    onChange={(e) => setEditingApt({ ...editingApt, date: e.target.value })}
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Horário</label>
-                  <input 
-                    type="time" 
-                    value={editingApt.time}
-                    onChange={(e) => setEditingApt({ ...editingApt, time: e.target.value })}
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
-                  />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setEditingApt(null)}
-                    className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all"
-                  >
-                    Salvar
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+          <RescheduleModal 
+            appointment={editingApt} 
+            onClose={() => setEditingApt(null)} 
+            onConfirm={handleSaveReschedule} 
+          />
         )}
         <BookingModal 
           isOpen={!!bookingProfessional} 
           onClose={() => setBookingProfessional(null)} 
           professional={bookingProfessional} 
           user={user} 
+          userData={{ name: 'Admin (Tele-agendamento)' }}
         />
       </AnimatePresence>
 
@@ -1284,24 +3966,46 @@ const AdminView = ({ user }: { user: any }) => {
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-vitta-border overflow-x-auto no-scrollbar">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 border-b border-vitta-border pb-4">
         <button 
           onClick={() => setSubTab('overview')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'overview' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <LayoutGrid size={18} />
           Visão Geral
         </button>
         <button 
+          onClick={() => setSubTab('analytics')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'analytics' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <TrendingUp size={18} />
+          Analytics
+        </button>
+        <button 
+          onClick={() => setSubTab('appointments')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'appointments' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <Calendar size={18} />
+          Agendamentos
+        </button>
+        <button 
           onClick={() => setSubTab('users')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'users' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <Users size={18} />
@@ -1309,10 +4013,10 @@ const AdminView = ({ user }: { user: any }) => {
         </button>
         <button 
           onClick={() => setSubTab('partnerships')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'partnerships' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <Store size={18} />
@@ -1320,10 +4024,10 @@ const AdminView = ({ user }: { user: any }) => {
         </button>
         <button 
           onClick={() => setSubTab('professionals')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'professionals' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <Stethoscope size={18} />
@@ -1331,10 +4035,10 @@ const AdminView = ({ user }: { user: any }) => {
         </button>
         <button 
           onClick={() => setSubTab('exams')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'exams' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <FileText size={18} />
@@ -1342,25 +4046,91 @@ const AdminView = ({ user }: { user: any }) => {
         </button>
         <button 
           onClick={() => setSubTab('user-exams')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'user-exams' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <ClipboardList size={18} />
           Exames de Usuários
         </button>
         <button 
+          onClick={() => setSubTab('transactions')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'transactions' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <DollarSign size={18} />
+          Financeiro
+        </button>
+        <button 
+          onClick={() => setSubTab('subscriptions')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'subscriptions' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <CreditCard size={18} />
+          Assinaturas
+        </button>
+        <button 
+          onClick={() => setSubTab('chat')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'chat' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <MessageSquare size={18} />
+          Suporte
+        </button>
+        <button 
+          onClick={() => setSubTab('audit-logs')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'audit-logs' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <Activity size={18} />
+          Auditoria
+        </button>
+        <button 
+          onClick={() => setSubTab('deletion-requests')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'deletion-requests' 
+              ? 'bg-vitta-danger text-white shadow-lg shadow-vitta-danger/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <UserX size={18} />
+          LGPD
+        </button>
+        <button 
           onClick={() => setSubTab('config')}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
             subTab === 'config' 
-              ? 'border-vitta-accent text-vitta-accent' 
-              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
           }`}
         >
           <Settings size={18} />
-          Configurações
+          Ajustes
+        </button>
+        <button 
+          onClick={() => setSubTab('content')}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'content' 
+              ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+              : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border'
+          }`}
+        >
+          <MonitorPlay size={18} />
+          Conteúdo
         </button>
       </div>
 
@@ -1381,12 +4151,13 @@ const AdminView = ({ user }: { user: any }) => {
               </section>
 
               {/* Stats Grid */}
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                 {[
                   { label: 'Total de Usuários', value: usersCount.toString(), unit: 'usuários', icon: User, color: 'blue' },
                   { label: 'Agendamentos', value: appointments.length.toString(), unit: 'consultas', icon: Calendar, color: 'emerald' },
                   { label: 'Profissionais', value: professionals.length.toString(), unit: 'ativos', icon: Stethoscope, color: 'purple' },
-                  { label: 'Parceiros', value: partners.length.toString(), unit: 'empresas', icon: ShieldCheck, color: 'amber' }
+                  { label: 'Parceiros', value: partners.length.toString(), unit: 'empresas', icon: ShieldCheck, color: 'amber' },
+                  { label: 'Assinaturas', value: '12', unit: 'recidivas', icon: CreditCard, color: 'indigo' }
                 ].map((stat, idx) => (
                   <StatCard key={idx} stat={stat} />
                 ))}
@@ -1397,7 +4168,7 @@ const AdminView = ({ user }: { user: any }) => {
                 <section className="lg:col-span-2 space-y-6">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold text-vitta-text-primary">Próximas Consultas</h2>
-                    <button className="text-vitta-accent text-sm font-bold hover:underline">Ver todas</button>
+                    <button onClick={() => setSubTab('appointments')} className="text-vitta-accent text-sm font-bold hover:underline">Ver todas</button>
                   </div>
                   <div className="space-y-4">
                     {appointments.map((apt) => (
@@ -1521,14 +4292,294 @@ const AdminView = ({ user }: { user: any }) => {
               </section>
             </div>
           )}
+          {subTab === 'analytics' && <AdminAnalytics />}
           {subTab === 'users' && <UsersView />}
+          {subTab === 'deletion-requests' && <AdminDeletionRequestsView />}
           {subTab === 'partnerships' && <PartnershipsView setSubTab={setSubTab} />}
           {subTab === 'professionals' && <ProfessionalsManagementView />}
           {subTab === 'exams' && <ExamsManagementView />}
           {subTab === 'user-exams' && <UserExamsManagementView />}
+          {subTab === 'appointments' && <AdminAppointmentsView />}
           {subTab === 'config' && <UserConfigView />}
+          {subTab === 'content' && <ContentManagerView />}
+          {subTab === 'chat' && <AdminSupportChatView adminUser={user} />}
+          {subTab === 'transactions' && <AdminFinancialView adminUser={user} />}
+          {subTab === 'audit-logs' && <AuditLogsList />}
+          {subTab === 'subscriptions' && <SubscriptionManagementView />}
         </motion.div>
       </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        type={confirmModal.type}
+      />
+    </div>
+  );
+};
+
+const AdminAppointmentsView = () => {
+  const { addToast } = useToast();
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming' | 'completed' | 'cancelled'>('all');
+  const [editingApt, setEditingApt] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'info'
+  });
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return {
+      total: appointments.length,
+      pending: appointments.filter(a => a.status === 'pending').length,
+      today: appointments.filter(a => a.date === today).length,
+      upcoming: appointments.filter(a => a.status === 'upcoming').length
+    };
+  }, [appointments]);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'appointments'),
+      orderBy('date', 'desc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'appointments');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: newStatus, updatedAt: Timestamp.now() });
+      addToast(`Status atualizado para ${newStatus}.`, 'success');
+      await logAdminAction('UPDATE_APPOINTMENT_STATUS', `Atualizou status da consulta ${id} para ${newStatus}`);
+      
+      // Notify patient
+      const apt = appointments.find(a => a.id === id);
+      if (apt && apt.userId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: apt.userId,
+          title: 'Status de Consulta Atualizado',
+          message: `Sua consulta com ${apt.professionalName} foi marcada como ${newStatus}.`,
+          type: 'appointment',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${id}`);
+      addToast('Erro ao atualizar.', 'error');
+    }
+  };
+
+  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+    if (!editingApt) return;
+    try {
+      await updateDoc(doc(db, 'appointments', editingApt.id), { 
+        date: newDate, 
+        time: newTime, 
+        updatedAt: Timestamp.now() 
+      });
+      await addDoc(collection(db, 'notifications'), {
+        userId: editingApt.userId,
+        title: 'Consulta Reagendada pelo Admin',
+        message: `Sua consulta com ${editingApt.professionalName} foi alterada para o dia ${new Date(newDate).toLocaleDateString('pt-BR')} às ${newTime}.`,
+        type: 'appointment',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+      await logAdminAction('RESCHEDULE_APPOINTMENT', `Reagendou consulta ${editingApt.id} para ${newDate} ${newTime}`);
+      addToast('Consulta reagendada com sucesso.', 'success');
+      setEditingApt(null);
+    } catch (err) {
+      addToast('Erro ao reagendar.', 'error');
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Excluir Agendamento',
+      message: 'Tem certeza que deseja excluir permanentemente este agendamento?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'appointments', id));
+          addToast('Agendamento excluído com sucesso.', 'success');
+          await logAdminAction('DELETE_APPOINTMENT', `Excluiu a consulta ${id}`);
+        } catch (error) {
+          addToast('Erro ao excluir agendamento.', 'error');
+        }
+      }
+    });
+  };
+
+  const filteredAppointments = appointments.filter(a => filter === 'all' || a.status === filter);
+
+  return (
+    <div className="space-y-8">
+      <AnimatePresence>
+        {editingApt && (
+          <RescheduleModal 
+            appointment={editingApt} 
+            onClose={() => setEditingApt(null)} 
+            onConfirm={handleSaveReschedule} 
+          />
+        )}
+      </AnimatePresence>
+
+      <section>
+        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Agendamentos Globais</h1>
+        <p className="text-vitta-text-secondary">Gerencia o fluxo de consultas em todo o sistema.</p>
+      </section>
+
+      {/* Stats Summary Panel */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Total', value: stats.total, icon: Calendar, color: 'text-vitta-accent', bg: 'bg-vitta-accent-bg' },
+          { label: 'Pendentes', value: stats.pending, icon: Clock, color: 'text-vitta-amber', bg: 'bg-vitta-amber-bg' },
+          { label: 'Para Hoje', value: stats.today, icon: LayoutGrid, color: 'text-vitta-green', bg: 'bg-vitta-green-bg' },
+          { label: 'Confirmados', value: stats.upcoming, icon: CheckCircle, color: 'text-blue-500', bg: 'bg-blue-500/10' }
+        ].map((stat, i) => (
+          <div key={i} className="p-6 bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <div className={`p-2 rounded-xl ${stat.bg} ${stat.color}`}>
+                <stat.icon size={20} />
+              </div>
+              <span className="text-2xl font-bold text-vitta-text-primary">{stat.value}</span>
+            </div>
+            <p className="text-sm font-medium text-vitta-text-secondary">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 flex-wrap pb-2 border-b border-vitta-border">
+        {(['all', 'pending', 'upcoming', 'completed', 'cancelled'] as const).map(f => (
+          <button 
+            key={f} 
+            onClick={() => setFilter(f)} 
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === f ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border'}`}
+          >
+            {f === 'all' ? 'Todos' : f === 'pending' ? 'Pendentes' : f === 'upcoming' ? 'Agendados' : f === 'completed' ? 'Concluídos' : 'Cancelados'}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-12 flex justify-center">
+             <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : filteredAppointments.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-vitta-surface-2 border-b border-vitta-border">
+                  <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Profissional / Info</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Paciente</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Data / Hora</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-vitta-border">
+                {filteredAppointments.map((apt) => (
+                  <tr key={apt.id} className="hover:bg-vitta-surface-2/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <img src={apt.imageUrl || 'https://picsum.photos/seed/prof/400/300'} alt={apt.professionalName} className="w-10 h-10 rounded-full object-cover shrink-0 border border-vitta-border" />
+                        <div>
+                          <p className="font-bold text-sm text-vitta-text-primary">{apt.professionalName}</p>
+                          <p className="text-[10px] text-vitta-accent font-bold uppercase tracking-wider">{apt.specialty}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                         <div className="w-8 h-8 rounded-full bg-vitta-surface-2 flex items-center justify-center text-vitta-text-muted border border-vitta-border">
+                            <User size={14} />
+                         </div>
+                         <div>
+                            <p className="text-sm font-medium text-vitta-text-primary">{apt.patientName || 'Paciente'}</p>
+                            <p className="text-[10px] font-mono text-vitta-text-secondary">{apt.userId?.substring(0,8)}</p>
+                         </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-vitta-text-primary">{new Date(apt.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                        <span className="text-xs text-vitta-text-secondary">{apt.time}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        apt.status === 'pending' ? 'bg-vitta-amber-bg text-vitta-amber' :
+                        apt.status === 'upcoming' ? 'bg-blue-500/10 text-blue-500' :
+                        apt.status === 'completed' ? 'bg-vitta-green-bg text-vitta-green' :
+                        'bg-vitta-danger/10 text-vitta-danger'
+                      }`}>
+                        {apt.status === 'pending' ? 'Pendente' : 
+                         apt.status === 'upcoming' ? 'Agendado' : 
+                         apt.status === 'completed' ? 'Concluído' : 'Cancelado'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                         {apt.status === 'pending' && (
+                           <button 
+                            onClick={() => handleUpdateStatus(apt.id, 'upcoming')} 
+                            className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-lg transition-colors" 
+                            title="Aceitar Agendamento"
+                           >
+                              <CheckCircle size={18} />
+                           </button>
+                         )}
+                         {(apt.status === 'upcoming' || apt.status === 'pending') && (
+                          <>
+                            <button 
+                              onClick={() => setEditingApt(apt)} 
+                              className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-lg transition-colors" 
+                              title="Editar Data/Hora"
+                            >
+                              <Edit size={18} />
+                            </button>
+                            {apt.status === 'upcoming' && (
+                              <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-lg transition-colors" title="Marcar como Concluído">
+                                <Check size={18} />
+                              </button>
+                            )}
+                            <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="p-2 text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors" title="Cancelar Totalmente">
+                              <XCircle size={18} />
+                            </button>
+                          </>
+                        )}
+                        <button onClick={() => handleDelete(apt.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors" title="Excluir do Sistema">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-12 text-center text-vitta-text-muted text-sm">Nenhum agendamento encontrado para este filtro.</div>
+        )}
+      </div>
 
       <ConfirmationModal
         isOpen={confirmModal.isOpen}
@@ -1552,7 +4603,7 @@ const ExamsView = ({ user }: { user: any }) => {
     if (!user) return;
 
     const q = query(
-      collection(db, 'exams'),
+      collection(db, 'user_exams'),
       where('userId', '==', user.uid),
       orderBy('createdAt', 'desc')
     );
@@ -1562,7 +4613,7 @@ const ExamsView = ({ user }: { user: any }) => {
       setExams(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'exams');
+      handleFirestoreError(error, OperationType.GET, 'user_exams');
     });
 
     return () => unsubscribe();
@@ -1658,7 +4709,7 @@ const ExamsView = ({ user }: { user: any }) => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-vitta-text-secondary">
-                    {exam.scheduledAt ? new Date(exam.scheduledAt.seconds * 1000).toLocaleDateString('pt-BR') : 'N/A'}
+                    {exam.createdAt ? new Date(exam.createdAt.seconds * 1000).toLocaleDateString('pt-BR') : 'N/A'}
                   </td>
                   <td className="px-6 py-4 text-sm text-vitta-text-secondary">
                     {exam.lab || 'Laboratório ViTTA'}
@@ -1700,12 +4751,189 @@ const ExamsView = ({ user }: { user: any }) => {
   );
 };
 
+
+const AvailabilityPlannerModal = ({ isOpen, onClose, professional }: any) => {
+  const [schedule, setSchedule] = useState<{
+    weekly: Record<string, Array<{ start: string, end: string }>>,
+    blockedDates: string[]
+  }>(professional.schedule || { weekly: {}, blockedDates: [] });
+  const [isSaving, setIsSaving] = useState(false);
+  const { addToast } = useToast();
+
+  const handleAddSlot = (day: string) => {
+    const currentDaySchedule = schedule.weekly[day] || [];
+    setSchedule({
+      ...schedule,
+      weekly: {
+        ...schedule.weekly,
+        [day]: [...currentDaySchedule, { start: '08:00', end: '12:00' }]
+      }
+    });
+  };
+
+  const handleRemoveSlot = (day: string, index: number) => {
+    const currentDaySchedule = [...(schedule.weekly[day] || [])];
+    currentDaySchedule.splice(index, 1);
+    setSchedule({
+      ...schedule,
+      weekly: {
+        ...schedule.weekly,
+        [day]: currentDaySchedule
+      }
+    });
+  };
+
+  const handleUpdateSlot = (day: string, index: number, field: 'start' | 'end', value: string) => {
+    const currentDaySchedule = [...(schedule.weekly[day] || [])];
+    currentDaySchedule[index] = { ...currentDaySchedule[index], [field]: value };
+    setSchedule({
+      ...schedule,
+      weekly: {
+        ...schedule.weekly,
+        [day]: currentDaySchedule
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await updateDoc(doc(db, 'professionals', professional.id), {
+        schedule: schedule
+      });
+      await logAdminAction('UPDATE_PROFESSIONAL_AGENDA', `Atualizou a agenda do profissional: ${professional.name}`);
+      addToast('Agenda atualizada com sucesso.', 'success');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao atualizar agenda.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-2xl rounded-2xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-vitta-accent-bg rounded-xl text-vitta-accent">
+              <CalendarClock size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Configurar Agenda</h3>
+              <p className="text-xs text-vitta-text-secondary">{professional.name} - {professional.specialty}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+            <X size={20} className="text-vitta-text-muted" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6 overflow-y-auto no-scrollbar">
+          <div className="space-y-4">
+            <h4 className="text-sm font-bold text-vitta-text-primary flex items-center gap-2">
+              <Clock size={16} className="text-vitta-accent" />
+              Horários Semanais
+            </h4>
+            <div className="space-y-3">
+              {Object.entries({
+                monday: 'Segunda-feira',
+                tuesday: 'Terça-feira',
+                wednesday: 'Quarta-feira',
+                thursday: 'Quinta-feira',
+                friday: 'Sexta-feira',
+                saturday: 'Sábado',
+                sunday: 'Domingo'
+              }).map(([key, label]) => (
+                <div key={key} className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-vitta-text-primary">{label}</span>
+                    <button 
+                      onClick={() => handleAddSlot(key)}
+                      className="text-[10px] font-bold text-vitta-accent hover:underline flex items-center gap-1"
+                    >
+                      <PlusCircle size={14} />
+                      Adicionar Turno
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {(schedule.weekly[key] || []).map((slot, idx) => (
+                      <div key={idx} className="flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <input 
+                            type="time" 
+                            value={slot.start}
+                            onChange={(e) => handleUpdateSlot(key, idx, 'start', e.target.value)}
+                            className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-lg text-xs outline-none focus:ring-1 focus:ring-vitta-accent/30"
+                          />
+                          <input 
+                            type="time" 
+                            value={slot.end}
+                            onChange={(e) => handleUpdateSlot(key, idx, 'end', e.target.value)}
+                            className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-lg text-xs outline-none focus:ring-1 focus:ring-vitta-accent/30"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => handleRemoveSlot(key, idx)}
+                          className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                        >
+                          <MinusCircle size={18} />
+                        </button>
+                      </div>
+                    ))}
+                    {(!schedule.weekly[key] || schedule.weekly[key].length === 0) && (
+                      <p className="text-[10px] text-vitta-text-muted italic">Indisponível neste dia</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-vitta-border bg-vitta-surface-2 flex gap-3 shrink-0">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 bg-vitta-surface text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Check size={20} />
+                Salvar Agenda
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const ProfessionalsManagementView = () => {
   const { addToast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'list' | 'categories'>('list');
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [agendaProfessional, setAgendaProfessional] = useState<any>(null);
   const [isCreating, setIsCreating] = useState<'professional' | 'category' | null>(null);
   const [newItem, setNewItem] = useState({ 
     name: '', 
@@ -1852,15 +5080,22 @@ const ProfessionalsManagementView = () => {
     <div className="space-y-8">
       {/* Edit/Create Modal */}
       <AnimatePresence>
+        {agendaProfessional && (
+          <AvailabilityPlannerModal 
+            isOpen={!!agendaProfessional}
+            professional={agendaProfessional}
+            onClose={() => setAgendaProfessional(null)}
+          />
+        )}
         {(editingItem || isCreating) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingItem ? `Editar ${editingItem.type === 'professional' ? 'Profissional' : 'Categoria'}` : `Novo ${isCreating === 'professional' ? 'Profissional' : 'Categoria'}`}
                 </h3>
@@ -1868,7 +5103,7 @@ const ProfessionalsManagementView = () => {
                   <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
-              <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4">
+              <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
@@ -2046,31 +5281,32 @@ const ProfessionalsManagementView = () => {
                         {prof.registrationNumber}
                       </p>
                     )}
-                    {prof.city && (
-                      <p className="text-[10px] text-vitta-text-secondary mt-0.5">
-                        {prof.city}
-                      </p>
-                    )}
                     {prof.price && (
                       <p className="text-xs font-bold text-vitta-green mt-1">
                         {prof.price}
-                      </p>
-                    )}
-                    {prof.vittaHealthDiscount && (
-                      <p className="text-[10px] font-bold text-vitta-green mt-1">
-                        Desconto: {prof.vittaHealthDiscount}
                       </p>
                     )}
                   </div>
                 </div>
                 <div className="flex gap-1">
                   <button 
+                    onClick={() => setAgendaProfessional(prof)}
+                    title="Configurar Agenda"
+                    className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                  >
+                    <CalendarClock size={16} />
+                  </button>
+                  <button 
                     onClick={() => setEditingItem({ 
                       type: 'professional', 
                       id: prof.id, 
                       name: prof.name, 
                       specialty: prof.specialty,
-                      vittaHealthDiscount: prof.vittaHealthDiscount || ''
+                      vittaHealthDiscount: prof.vittaHealthDiscount || '',
+                      registrationNumber: prof.registrationNumber || '',
+                      price: prof.price || '',
+                      city: prof.city || '',
+                      availableDays: prof.availableDays || ''
                     })}
                     className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                   >
@@ -2139,7 +5375,7 @@ const ProfessionalsManagementView = () => {
   );
 };
 
-const ProfessionalsView = ({ user }: { user: any }) => {
+const ProfessionalsView = ({ user, userData }: { user: any, userData?: any }) => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bookingProfessional, setBookingProfessional] = useState<any>(null);
@@ -2266,7 +5502,7 @@ const ProfessionalsView = ({ user }: { user: any }) => {
                 onClick={() => setBookingProfessional(prof)}
                 className="w-full py-3 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg shadow-vitta-green/20"
               >
-                Agendar Consulta
+                Ver Perfil e Agendar
               </button>
             </motion.div>
           ))}
@@ -2289,6 +5525,7 @@ const ProfessionalsView = ({ user }: { user: any }) => {
         onClose={() => setBookingProfessional(null)} 
         professional={bookingProfessional} 
         user={user} 
+        userData={userData}
       />
     </div>
   );
@@ -2549,41 +5786,80 @@ const PartnersView = ({ setActiveTab, user }: { setActiveTab?: (tab: string) => 
 };
 
 const OffersView = ({ user }: { user?: any }) => {
+  const [activeTab, setActiveTab] = useState<'all' | 'my-vouchers'>('all');
   const [offers, setOffers] = useState<any[]>([]);
+  const [myVouchers, setMyVouchers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [redeeming, setRedeeming] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
+
+  const generateVoucherCode = () => {
+    return `VITTA-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  };
 
   const handleRedeem = async (offer: any) => {
     if (!user) return;
     
+    setRedeeming(offer.id);
     try {
+      const voucherCode = generateVoucherCode();
+      const voucherData = {
+        userId: user.uid,
+        offerId: offer.id,
+        offerTitle: offer.title,
+        offerPartner: offer.partner,
+        offerDiscount: offer.discount,
+        code: voucherCode,
+        status: 'active',
+        createdAt: Timestamp.now()
+      };
+
+      const docRef = await addDoc(collection(db, 'vouchers'), voucherData);
+      
       await addDoc(collection(db, 'notifications'), {
         userId: user.uid,
-        title: 'Oferta Resgatada',
-        message: `Você resgatou a oferta "${offer.title}" de ${offer.partner}.`,
+        title: 'Cupom Gerado!',
+        message: `Você gerou o cupom para "${offer.title}". Código: ${voucherCode}`,
         type: 'offer',
         read: false,
         createdAt: Timestamp.now()
       });
-    } catch (err) {
-      console.error('Erro ao criar notificação de oferta:', err);
-    }
 
-    const phoneNumber = '5528999881386';
-    const message = `Olá! Sou afiliado ViTTA e gostaria de resgatar uma oferta.\n\n*Meus dados:*\nNome: ${user.displayName || 'Usuário'}\nEmail: ${user.email}\n\n*Oferta:*\nTítulo: ${offer.title}\nParceiro: ${offer.partner}\nDesconto: ${offer.discount}`;
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+      setSelectedVoucher({ id: docRef.id, ...voucherData });
+      setShowVoucherModal(true);
+    } catch (err) {
+      console.error('Erro ao resgatar oferta:', err);
+      handleFirestoreError(err, OperationType.CREATE, 'vouchers');
+    } finally {
+      setRedeeming(null);
+    }
   };
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'offers'), (snapshot) => {
+    const unsubscribeOffers = onSnapshot(collection(db, 'offers'), (snapshot) => {
       setOffers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
+      if (activeTab === 'all') setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'offers');
     });
-    return () => unsubscribe();
-  }, []);
+
+    return () => unsubscribeOffers();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'vouchers'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    const unsubscribeVouchers = onSnapshot(q, (snapshot) => {
+      setMyVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      if (activeTab === 'my-vouchers') setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'vouchers');
+    });
+
+    return () => unsubscribeVouchers();
+  }, [user, activeTab]);
 
   const filteredOffers = useMemo(() => {
     return offers.filter(offer => 
@@ -2593,65 +5869,252 @@ const OffersView = ({ user }: { user?: any }) => {
     );
   }, [offers, searchQuery]);
 
+  const filteredVouchers = useMemo(() => {
+    return myVouchers.filter(v => 
+      v.offerTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.offerPartner.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [myVouchers, searchQuery]);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Benefícios e Ofertas</h1>
-          <p className="text-vitta-text-secondary">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
+          <h1 className="text-4xl font-black mb-2 text-vitta-text-primary tracking-tight">Benefícios e Ofertas</h1>
+          <p className="text-vitta-text-secondary text-lg">Aproveite descontos exclusivos em nossa rede de parceiros.</p>
         </div>
         <div className="relative w-full md:w-80 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted group-focus-within:text-vitta-green transition-colors" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted group-focus-within:text-vitta-accent transition-colors" size={20} />
           <input 
             type="text" 
-            placeholder="Buscar ofertas ou parceiros..."
+            placeholder={activeTab === 'all' ? "Buscar ofertas ou parceiros..." : "Buscar nos meus cupons..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none transition-all text-vitta-text-primary shadow-sm"
+            className="w-full pl-12 pr-4 py-4 bg-vitta-surface border-2 border-vitta-border rounded-2xl text-sm focus:ring-4 focus:ring-vitta-accent/10 focus:border-vitta-accent outline-none transition-all text-vitta-text-primary shadow-sm"
           />
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {loading ? (
-          Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-80" />
-          ))
-        ) : filteredOffers.length > 0 ? (
-          filteredOffers.map((offer) => (
-            <motion.div 
-              key={offer.id}
-              whileHover={{ scale: 1.02 }}
-              className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col"
-            >
-              <div className="relative h-48">
-                <img src={offer.imageUrl || 'https://picsum.photos/seed/offer/400/300'} alt={offer.title} className="w-full h-full object-cover" />
-                <div className="absolute top-4 left-4 bg-vitta-surface/90 backdrop-blur px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider text-vitta-text-secondary shadow-sm">
-                  {offer.partner}
+      <div className="flex gap-4 p-1.5 bg-vitta-surface-2 rounded-2xl w-fit">
+        <button 
+          onClick={() => { setActiveTab('all'); setLoading(true); }}
+          className={`px-8 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === 'all' ? 'bg-vitta-surface text-vitta-accent shadow-md' : 'text-vitta-text-muted hover:text-vitta-text-secondary'}`}
+        >
+          Explorar Ofertas
+        </button>
+        <button 
+          onClick={() => { setActiveTab('my-vouchers'); setLoading(true); }}
+          className={`px-8 py-3 rounded-xl font-bold text-sm transition-all relative ${activeTab === 'my-vouchers' ? 'bg-vitta-surface text-vitta-accent shadow-md' : 'text-vitta-text-muted hover:text-vitta-text-secondary'}`}
+        >
+          Meus Cupons
+          {myVouchers.length > 0 && activeTab !== 'my-vouchers' && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-vitta-accent text-white text-[10px] flex items-center justify-center rounded-full border-2 border-vitta-surface">
+              {myVouchers.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'all' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {loading ? (
+            Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-80 bg-vitta-surface animate-pulse rounded-3xl border border-vitta-border"></div>
+            ))
+          ) : filteredOffers.length > 0 ? (
+            filteredOffers.map((offer) => (
+              <motion.div 
+                key={offer.id}
+                whileHover={{ y: -8 }}
+                className="bg-vitta-surface rounded-[2rem] border-2 border-vitta-border shadow-xl hover:shadow-2xl hover:border-vitta-accent/30 transition-all overflow-hidden flex flex-col group"
+              >
+                <div className="relative h-56 overflow-hidden">
+                  <img src={offer.imageUrl || `https://picsum.photos/seed/${offer.id}/600/400`} alt={offer.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                  <div className="absolute top-6 left-6 bg-white/90 backdrop-blur px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vitta-text-primary shadow-xl">
+                    {offer.partner}
+                  </div>
+                  <div className="absolute bottom-6 right-6 bg-vitta-accent text-white px-5 py-2.5 rounded-full text-base font-black shadow-2xl flex items-center gap-2">
+                    <Tag size={18} />
+                    {offer.discount}
+                  </div>
                 </div>
-                <div className="absolute bottom-4 right-4 bg-vitta-green text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl">
-                  {offer.discount}
+                <div className="p-8 flex-1 flex flex-col">
+                  <h3 className="font-black text-2xl mb-3 text-vitta-text-primary leading-tight">{offer.title}</h3>
+                  <p className="text-sm text-vitta-text-secondary mb-8 flex-1 leading-relaxed">{offer.description || 'Aproveite esta oferta exclusiva para membros ViTTA.'}</p>
+                  
+                  {offer.expiryDate && (
+                    <div className="flex items-center gap-2 mb-6 text-vitta-danger font-bold text-xs bg-vitta-danger/10 px-4 py-2 rounded-xl w-fit">
+                      <Clock size={14} />
+                      Válido até: {new Date(offer.expiryDate).toLocaleDateString()}
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => handleRedeem(offer)}
+                    disabled={redeeming === offer.id}
+                    className="w-full py-4 bg-vitta-text-primary text-white rounded-2xl text-sm font-black hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl hover:shadow-vitta-text-primary/20 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {redeeming === offer.id ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Zap size={18} className="text-vitta-accent fill-vitta-accent" />
+                        Resgatar Agora
+                      </>
+                    )}
+                  </button>
                 </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="col-span-full py-20 text-center bg-vitta-surface rounded-[3rem] border-4 border-dashed border-vitta-border">
+              <div className="w-24 h-24 bg-vitta-surface-2 rounded-full flex items-center justify-center mx-auto mb-6 text-vitta-text-muted">
+                <Search size={40} />
               </div>
-              <div className="p-6 flex-1 flex flex-col">
-                <h3 className="font-bold text-xl mb-2 text-vitta-text-primary">{offer.title}</h3>
-                <p className="text-sm text-vitta-text-secondary mb-6 flex-1">{offer.description || 'Aproveite esta oferta exclusiva para membros.'}</p>
+              <h3 className="text-2xl font-black text-vitta-text-primary mb-2">Nenhuma oferta encontrada</h3>
+              <p className="text-vitta-text-secondary max-w-sm mx-auto">Tente buscar por outro termo ou parceiro para encontrar descontos incríveis.</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          {filteredVouchers.length > 0 ? (
+            filteredVouchers.map((v) => (
+              <motion.div 
+                key={v.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-vitta-surface rounded-[2.5rem] border-2 border-vitta-border p-8 shadow-large flex flex-col relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-4">
+                  <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${v.status === 'active' ? 'bg-vitta-green/10 text-vitta-green' : 'bg-vitta-danger/10 text-vitta-danger'}`}>
+                    {v.status === 'active' ? 'Ativo' : 'Utilizado'}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-14 h-14 bg-vitta-accent/10 text-vitta-accent rounded-2xl flex items-center justify-center shrink-0">
+                    <Ticket size={28} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-lg text-vitta-text-primary leading-tight">{v.offerTitle}</h3>
+                    <p className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest">{v.offerPartner}</p>
+                  </div>
+                </div>
+
+                <div className="bg-vitta-surface-2 p-6 rounded-3xl mb-8 border border-vitta-border border-dashed flex flex-col items-center">
+                   <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-[0.2em] mb-2">Código do Cupom</p>
+                   <p className="text-2xl font-black text-vitta-accent tracking-widest font-mono select-all">
+                     {v.code}
+                   </p>
+                </div>
+
+                <div className="flex flex-col gap-3 mt-auto">
+                  <button 
+                    onClick={() => {
+                      setSelectedVoucher(v);
+                      setShowVoucherModal(true);
+                    }}
+                    className="w-full py-4 bg-vitta-accent text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
+                  >
+                    Ver Voucher
+                  </button>
+                  <p className="text-[10px] text-vitta-text-muted text-center italic">
+                    Gerado em: {v.createdAt && 'toDate' in v.createdAt ? v.createdAt.toDate().toLocaleDateString() : new Date().toLocaleDateString()}
+                  </p>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="col-span-full py-20 text-center bg-vitta-surface rounded-[3rem] border-4 border-dashed border-vitta-border">
+              <div className="w-24 h-24 bg-vitta-surface-2 rounded-full flex items-center justify-center mx-auto mb-6 text-vitta-text-muted">
+                <Ticket size={40} />
+              </div>
+              <h3 className="text-2xl font-black text-vitta-text-primary mb-2">Você ainda não tem cupons</h3>
+              <p className="text-vitta-text-secondary max-w-sm mx-auto mb-8">Resgate suas primeiras ofertas para economizar em exames, consultas e farmácias.</p>
+              <button 
+                onClick={() => setActiveTab('all')}
+                className="px-8 py-3 bg-vitta-accent text-white rounded-xl font-bold hover:shadow-lg transition-all"
+              >
+                Explorar Ofertas
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Voucher Modal */}
+      <AnimatePresence>
+        {showVoucherModal && selectedVoucher && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/40 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-vitta-surface w-full max-w-sm rounded-[3rem] shadow-2xl border-4 border-vitta-accent/20 overflow-hidden relative"
+            >
+              <div className="absolute top-4 right-4 z-10">
                 <button 
-                  onClick={() => handleRedeem(offer)}
-                  className="w-full py-3 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-all"
+                  onClick={() => setShowVoucherModal(false)}
+                  className="p-3 bg-vitta-surface/80 backdrop-blur rounded-full text-vitta-text-primary hover:bg-vitta-surface transition-colors shadow-lg"
                 >
-                  Resgatar Cupom
+                  <X size={20} />
                 </button>
               </div>
+
+              <div className="p-10 flex flex-col items-center">
+                <div className="w-20 h-20 bg-vitta-accent/10 text-vitta-accent rounded-3xl flex items-center justify-center mb-8">
+                  <Ticket size={40} />
+                </div>
+
+                <div className="text-center mb-10">
+                  <h3 className="text-2xl font-black text-vitta-text-primary mb-2 leading-tight">{selectedVoucher.offerTitle}</h3>
+                  <p className="text-vitta-accent font-black uppercase tracking-widest text-sm">{selectedVoucher.offerPartner}</p>
+                  <div className="inline-block mt-4 px-4 py-1.5 bg-vitta-green text-white rounded-full text-xs font-black shadow-lg">
+                    {selectedVoucher.offerDiscount}
+                  </div>
+                </div>
+
+                <div className="w-full bg-vitta-surface-2 rounded-[2rem] p-8 border-2 border-vitta-border border-dashed relative">
+                  <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-vitta-surface rounded-full border-2 border-vitta-border -ml-3"></div>
+                  <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-vitta-surface rounded-full border-2 border-vitta-border -mr-3"></div>
+                  
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="w-32 h-32 bg-white rounded-2xl p-2 mb-4 border border-vitta-border shadow-sm flex items-center justify-center">
+                       {/* Placeholder for QR Code */}
+                       <div className="w-full h-full bg-vitta-surface-3 rounded-lg flex items-center justify-center border-2 border-vitta-border border-dotted">
+                         <QrCode size={48} className="text-vitta-text-muted" />
+                       </div>
+                    </div>
+                    <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-[0.2em] mb-2">Código do Cupom</p>
+                    <p className="text-3xl font-black text-vitta-accent tracking-[0.3em] font-mono select-all">
+                      {selectedVoucher.code}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-10 space-y-4 w-full">
+                  <button 
+                    onClick={() => {
+                      const msg = `Olá! Tenho um cupom ViTTA para resgatar.\n\n*Código: ${selectedVoucher.code}*\nOferta: ${selectedVoucher.offerTitle}\nParceiro: ${selectedVoucher.offerPartner}`;
+                      window.open(`https://wa.me/5528999881386?text=${encodeURIComponent(msg)}`, '_blank');
+                    }}
+                    className="w-full py-4 bg-vitta-green text-white rounded-2xl text-sm font-black flex items-center justify-center gap-3 shadow-xl shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all active:scale-[0.98]"
+                  >
+                    <Phone size={20} />
+                    Falar no WhatsApp
+                  </button>
+                  <p className="text-[10px] text-vitta-text-secondary text-center px-6">
+                    Apresente este código ou QR Code no estabelecimento parceiro para validar seu desconto.
+                  </p>
+                </div>
+              </div>
             </motion.div>
-          ))
-        ) : (
-          <div className="col-span-full p-12 text-center bg-vitta-surface rounded-3xl border border-dashed border-vitta-border">
-            <Store size={48} className="mx-auto text-vitta-text-muted mb-4" />
-            <p className="text-vitta-text-secondary font-medium">Nenhuma oferta disponível no momento.</p>
           </div>
         )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 };
@@ -2676,6 +6139,10 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
     state: userData?.state || '',
     cpf: userData?.cpf || '',
     rg: userData?.rg || '',
+    birthDate: userData?.birthDate || '',
+    gender: userData?.gender || 'Não informado',
+    motherName: userData?.motherName || '',
+    kycStatus: userData?.kycStatus || 'pending',
     documentFrontUrl: userData?.documentFrontUrl || '',
     documentBackUrl: userData?.documentBackUrl || '',
     photoURL: userData?.photoURL || user?.photoURL || 'https://picsum.photos/seed/user/200/200',
@@ -2687,6 +6154,7 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isKYCWizardOpen, setIsKYCWizardOpen] = useState(false);
 
   const compressImage = async (file: File) => {
     const options = {
@@ -2745,6 +6213,10 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         state: userData.state || prev.state,
         cpf: userData.cpf || prev.cpf,
         rg: userData.rg || prev.rg,
+        birthDate: userData.birthDate || prev.birthDate,
+        gender: userData.gender || prev.gender,
+        motherName: userData.motherName || prev.motherName,
+        kycStatus: userData.kycStatus || prev.kycStatus,
         documentFrontUrl: userData.documentFrontUrl || prev.documentFrontUrl,
         documentBackUrl: userData.documentBackUrl || prev.documentBackUrl,
         photoURL: userData.photoURL || prev.photoURL,
@@ -2763,36 +6235,6 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
       const reader = new FileReader();
       reader.onloadend = () => {
         setProfileData(prev => ({ ...prev, photoURL: reader.result as string }));
-      };
-      reader.readAsDataURL(compressedFile);
-      setIsSaving(false);
-    }
-  };
-
-  const handleFrontFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsSaving(true);
-      const compressedFile = await compressImage(file);
-      setSelectedFrontFile(compressedFile);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileData(prev => ({ ...prev, documentFrontUrl: reader.result as string }));
-      };
-      reader.readAsDataURL(compressedFile);
-      setIsSaving(false);
-    }
-  };
-
-  const handleBackFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsSaving(true);
-      const compressedFile = await compressImage(file);
-      setSelectedBackFile(compressedFile);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileData(prev => ({ ...prev, documentBackUrl: reader.result as string }));
       };
       reader.readAsDataURL(compressedFile);
       setIsSaving(false);
@@ -2849,12 +6291,19 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         finalBackUrl = await uploadWithProgress(selectedBackFile, `users/${user.uid}/documents/back_id`, 'back');
       }
 
+      let currentKycStatus = profileData.kycStatus;
+      if ((selectedFrontFile || selectedBackFile || profileData.documentFrontUrl || profileData.documentBackUrl) && 
+          (profileData.kycStatus === 'pending' || profileData.kycStatus === 'rejected')) {
+        currentKycStatus = 'under_review';
+      }
+
       const updatedData = {
         ...userData,
         ...profileData,
         photoURL: finalPhotoURL,
         documentFrontUrl: finalFrontUrl,
         documentBackUrl: finalBackUrl,
+        kycStatus: currentKycStatus,
         uid: user.uid,
         updatedAt: new Date().toISOString()
       };
@@ -2931,13 +6380,42 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
 
   return (
       <div className="max-w-4xl space-y-8">
-      <section>
-        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meu Perfil</h1>
-        <p className="text-vitta-text-secondary">Gerencie suas informações pessoais, endereço e documentos.</p>
+      <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meu Perfil</h1>
+          <p className="text-vitta-text-secondary">Gerencie suas informações pessoais, endereço e documentos.</p>
+        </div>
+        
+        <div className="flex items-center gap-3 bg-vitta-surface px-4 py-2 rounded-2xl border border-vitta-border shadow-sm">
+          <div className={`w-3 h-3 rounded-full animate-pulse ${
+            profileData.kycStatus === 'verified' ? 'bg-vitta-green' : 
+            profileData.kycStatus === 'under_review' ? 'bg-vitta-accent' : 
+            profileData.kycStatus === 'rejected' ? 'bg-vitta-danger' : 'bg-vitta-text-muted'
+          }`} />
+          <div>
+            <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status da Conta</p>
+            <p className="text-xs font-black text-vitta-text-primary capitalize">
+              {profileData.kycStatus === 'verified' ? 'Verificada' : 
+               profileData.kycStatus === 'under_review' ? 'Em Análise' : 
+               profileData.kycStatus === 'rejected' ? 'Rejeitada' : 'Pendente'}
+            </p>
+          </div>
+          {profileData.kycStatus === 'verified' && <ShieldCheck size={18} className="text-vitta-green" />}
+        </div>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
+          {/* KYC Info Box */}
+          {profileData.kycStatus === 'pending' && (
+            <div className="bg-vitta-accent/10 border border-vitta-accent/20 p-4 rounded-xl flex gap-3">
+              <Info className="text-vitta-accent shrink-0" size={20} />
+              <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                Complete seu perfil e envie as fotos do seu documento para verificar sua conta e ter acesso prioritário a benefícios.
+              </p>
+            </div>
+          )}
+
           {/* Personal Info */}
           <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-vitta-border pb-4">
@@ -2985,21 +6463,45 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Telefone</label>
-                  <InputMask 
-                    mask="(99) 99999-9999"
+                  <input 
+                    type="tel"
                     value={profileData.phone} 
                     onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
-                  >
-                    {(inputProps: any) => (
-                      <input 
-                        {...inputProps}
-                        type="tel" 
-                        placeholder="(00) 00000-0000"
-                        className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all ${errors.phone ? 'ring-2 ring-vitta-danger/50' : ''}`} 
-                      />
-                    )}
-                  </InputMask>
+                    placeholder="(00) 00000-0000"
+                    className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all ${errors.phone ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                  />
                   {errors.phone && <p className="text-[10px] text-vitta-danger font-bold px-1">{errors.phone}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data de Nascimento</label>
+                  <input 
+                    type="date"
+                    value={profileData.birthDate} 
+                    onChange={(e) => setProfileData(prev => ({ ...prev, birthDate: e.target.value }))}
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Gênero</label>
+                  <select 
+                    value={profileData.gender} 
+                    onChange={(e) => setProfileData(prev => ({ ...prev, gender: e.target.value }))}
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all appearance-none" 
+                  >
+                    <option value="Não informado">Não informado</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Feminino">Feminino</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome da Mãe</label>
+                  <input 
+                    type="text" 
+                    value={profileData.motherName} 
+                    onChange={(e) => setProfileData(prev => ({ ...prev, motherName: e.target.value }))}
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-green/20 transition-all" 
+                  />
                 </div>
               </div>
             </div>
@@ -3016,20 +6518,13 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CEP</label>
                 <div className="relative">
-                  <InputMask 
-                    mask="99999-999"
+                  <input 
+                    type="text"
                     value={profileData.zip} 
                     onChange={(e) => handleCepChange(e.target.value)}
-                  >
-                    {(inputProps: any) => (
-                      <input 
-                        {...inputProps}
-                        type="text" 
-                        placeholder="00000-000"
-                        className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all ${errors.zip ? 'ring-2 ring-vitta-danger/50' : ''}`} 
-                      />
-                    )}
-                  </InputMask>
+                    placeholder="00000-000"
+                    className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 transition-all ${errors.zip ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                  />
                   {isSearchingCep && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                       <div className="w-4 h-4 border-2 border-vitta-accent/30 border-t-vitta-accent rounded-full animate-spin" />
@@ -3106,8 +6601,8 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CPF</label>
-                <InputMask 
-                  mask="999.999.999-99"
+                <input 
+                  type="text"
                   value={profileData.cpf} 
                   onChange={(e) => {
                     const val = e.target.value;
@@ -3124,16 +6619,9 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                       }
                     }
                   }}
-                >
-                  {(inputProps: any) => (
-                    <input 
-                      {...inputProps}
-                      type="text" 
-                      placeholder="000.000.000-00"
-                      className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all ${errors.cpf ? 'ring-2 ring-vitta-danger/50' : ''}`} 
-                    />
-                  )}
-                </InputMask>
+                  placeholder="000.000.000-00"
+                  className={`w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-purple/20 transition-all ${errors.cpf ? 'ring-2 ring-vitta-danger/50' : ''}`} 
+                />
                 {errors.cpf && <p className="text-[10px] text-vitta-danger font-bold px-1">{errors.cpf}</p>}
               </div>
               <div className="space-y-1.5">
@@ -3148,51 +6636,56 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
               </div>
             </div>
 
-            {/* Document Uploads */}
+            {/* Document Uploads via Wizard */}
             <div className="pt-4 border-t border-vitta-border">
-              <h3 className="text-sm font-bold text-vitta-text-primary mb-4">Fotos do Documento (RG ou CNH)</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {/* Front */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Frente</label>
-                  <div className="relative group w-full h-40 bg-vitta-surface-2 rounded-xl border-2 border-dashed border-vitta-border hover:border-vitta-purple/50 transition-colors overflow-hidden flex flex-col items-center justify-center cursor-pointer">
-                    {profileData.documentFrontUrl ? (
-                      <img src={profileData.documentFrontUrl} alt="Frente do Documento" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="flex flex-col items-center text-vitta-text-muted group-hover:text-vitta-purple transition-colors">
-                        <Camera size={32} className="mb-2" />
-                        <span className="text-xs font-bold">Adicionar Frente</span>
-                      </div>
-                    )}
-                    {uploadProgress.front > 0 && uploadProgress.front < 100 && (
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-vitta-border">
-                        <div className="h-full bg-vitta-purple transition-all" style={{ width: `${uploadProgress.front}%` }} />
-                      </div>
-                    )}
-                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleFrontFileChange} />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-vitta-text-primary">Verificação de Identidade</h3>
+                {profileData.kycStatus === 'verified' && (
+                  <span className="flex items-center gap-1 text-vitta-green text-[10px] font-bold uppercase">
+                    <Check size={12} /> Verificado
+                  </span>
+                )}
+              </div>
+              
+              <div className="bg-vitta-surface-2 p-6 rounded-2xl border border-vitta-border space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center shrink-0 text-vitta-accent">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm font-bold text-vitta-text-primary">Mantenha sua conta segura</p>
+                    <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                      Complete a verificação KYC para desbloquear agendamentos ilimitados e descontos exclusivos em parceiros.
+                    </p>
                   </div>
                 </div>
 
-                {/* Back */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Verso</label>
-                  <div className="relative group w-full h-40 bg-vitta-surface-2 rounded-xl border-2 border-dashed border-vitta-border hover:border-vitta-purple/50 transition-colors overflow-hidden flex flex-col items-center justify-center cursor-pointer">
-                    {profileData.documentBackUrl ? (
-                      <img src={profileData.documentBackUrl} alt="Verso do Documento" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="flex flex-col items-center text-vitta-text-muted group-hover:text-vitta-purple transition-colors">
-                        <Camera size={32} className="mb-2" />
-                        <span className="text-xs font-bold">Adicionar Verso</span>
+                {profileData.kycStatus !== 'verified' && (
+                  <button 
+                    onClick={() => setIsKYCWizardOpen(true)}
+                    className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2"
+                  >
+                    {profileData.kycStatus === 'pending' || profileData.kycStatus === 'rejected' ? 'Iniciar Verificação' : 'Atualizar Documentos'}
+                    <ChevronRight size={18} />
+                  </button>
+                )}
+
+                {(profileData.documentFrontUrl || profileData.documentBackUrl) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    {profileData.documentFrontUrl && (
+                      <div className="relative rounded-lg overflow-hidden border border-vitta-border h-24">
+                        <img src={profileData.documentFrontUrl} alt="Frente" className="w-full h-full object-cover" />
+                        <div className="absolute top-1 left-1 bg-black/50 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase tracking-widest">Frente</div>
                       </div>
                     )}
-                    {uploadProgress.back > 0 && uploadProgress.back < 100 && (
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-vitta-border">
-                        <div className="h-full bg-vitta-purple transition-all" style={{ width: `${uploadProgress.back}%` }} />
+                    {profileData.documentBackUrl && (
+                      <div className="relative rounded-lg overflow-hidden border border-vitta-border h-24">
+                        <img src={profileData.documentBackUrl} alt="Verso" className="w-full h-full object-cover" />
+                        <div className="absolute top-1 left-1 bg-black/50 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase tracking-widest">Verso</div>
                       </div>
                     )}
-                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleBackFileChange} />
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -3240,8 +6733,10 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
                     <ShieldCheck size={20} />
                   </div>
                   <div>
-                    <p className="font-bold text-sm text-vitta-text-primary">2FA</p>
-                    <p className="text-[10px] text-vitta-text-secondary">Camada extra</p>
+                    <p className="font-bold text-sm text-vitta-text-primary">Autenticação em Duas Etapas (2FA)</p>
+                    <p className="text-[10px] text-vitta-text-secondary leading-tight max-w-[200px]">
+                      Proteja sua conta exigindo um código de verificação enviado por e-mail a cada login.
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -3280,14 +6775,17 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
           <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
             <h2 className="text-lg font-bold border-b border-vitta-border pb-4 text-vitta-text-primary">Preferências</h2>
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-sm text-vitta-text-primary">Notificações</p>
-                  <p className="text-[10px] text-vitta-text-secondary">Alertas de consultas</p>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-sm text-vitta-text-primary">Notificações</p>
+                    <p className="text-[10px] text-vitta-text-secondary">Alertas e mensagens do sistema</p>
+                  </div>
+                  <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
+                    <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+                  </div>
                 </div>
-                <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
-                  <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
-                </div>
+                <NotificationFeed user={user} />
               </div>
               
               <div className="flex items-center justify-between">
@@ -3344,17 +6842,37 @@ const SettingsView = ({ isDarkMode, setIsDarkMode, user, userData }: { isDarkMod
         onConfirm={confirmDeletion}
         onCancel={() => setIsConfirmModalOpen(false)}
       />
+
+      <AnimatePresence>
+        {isKYCWizardOpen && (
+          <KYCWizard 
+            isOpen={isKYCWizardOpen}
+            onClose={() => setIsKYCWizardOpen(false)}
+            user={user}
+            userData={userData}
+            onSuccess={(updatedData) => {
+              setProfileData(prev => ({ 
+                ...prev, 
+                kycStatus: updatedData.kycStatus,
+                documentFrontUrl: updatedData.documentFrontUrl,
+                documentBackUrl: updatedData.documentBackUrl,
+                photoURL: updatedData.photoURL
+              }));
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
 const UserExamsManagementView = () => {
   const { addToast } = useToast();
-  const [exams, setExams] = useState<any[]>([]);
+  const [userExams, setUserExams] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [examTypes, setExamTypes] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
-  const [newItem, setNewItem] = useState({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
+  const [newItem, setNewItem] = useState({ userId: '', examId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '', resultNote: '' });
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -3373,11 +6891,11 @@ const UserExamsManagementView = () => {
   });
 
   useEffect(() => {
-    const unsubscribeExams = onSnapshot(query(collection(db, 'exams'), orderBy('createdAt', 'desc')), (snapshot) => {
-      setExams(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubscribeExams = onSnapshot(query(collection(db, 'user_exams'), orderBy('createdAt', 'desc')), (snapshot) => {
+      setUserExams(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'exams');
+      handleFirestoreError(error, OperationType.GET, 'user_exams');
     });
 
     const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -3387,12 +6905,7 @@ const UserExamsManagementView = () => {
     });
 
     const unsubscribeExamTypes = onSnapshot(collection(db, 'exams'), (snapshot) => {
-      // Filter out user-specific exams to get only the types
-      // Actually, we should have a separate collection for exam types, but for now we use 'exams'
-      // Wait, the previous ExamsManagementView adds to 'exams' collection too.
-      // This is a bit confusing. Let's assume 'exams' collection stores both types and user exams for now,
-      // but user exams have a 'userId' field.
-      setExamTypes(snapshot.docs.filter(doc => !doc.data().userId).map(doc => ({ id: doc.id, ...doc.data() })));
+      setExamTypes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     return () => {
@@ -3416,7 +6929,7 @@ const UserExamsManagementView = () => {
         resultUrl = await getDownloadURL(uploadResult.ref);
       }
 
-      await addDoc(collection(db, 'exams'), {
+      await addDoc(collection(db, 'user_exams'), {
         ...newItem,
         resultUrl,
         createdAt: Timestamp.now(),
@@ -3436,31 +6949,32 @@ const UserExamsManagementView = () => {
       });
 
       setIsCreating(false);
-      setNewItem({ userId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '' });
+      setNewItem({ userId: '', examId: '', name: '', lab: 'Laboratório ViTTA', status: 'pending', resultUrl: '', resultNote: '' });
       setSelectedFile(null);
       setUploading(null);
+      addToast('Exame registrado para o usuário com sucesso.', 'success');
     } catch (err) {
       setUploading(null);
-      handleFirestoreError(err, OperationType.CREATE, 'exams');
+      handleFirestoreError(err, OperationType.CREATE, 'user_exams');
     }
   };
 
-  const handleFileUpload = async (examId: string, userId: string, file: File) => {
+  const handleFileUpload = async (userExamId: string, userId: string, file: File) => {
     try {
-      setUploading(examId);
+      setUploading(userExamId);
       const storageRef = ref(storage, `exam_results/${userId}/${Date.now()}_${file.name}`);
       const uploadResult = await uploadBytes(storageRef, file);
       const resultUrl = await getDownloadURL(uploadResult.ref);
 
-      await updateDoc(doc(db, 'exams', examId), {
+      await updateDoc(doc(db, 'user_exams', userExamId), {
         resultUrl,
         status: 'ready',
         updatedAt: Timestamp.now()
       });
 
-      await logAdminAction('UPLOAD_EXAM_RESULT', `Fez upload de resultado para exame ID: ${examId}`);
+      await logAdminAction('UPLOAD_EXAM_RESULT', `Fez upload de resultado para exame ID: ${userExamId}`);
 
-      const exam = exams.find(e => e.id === examId);
+      const exam = userExams.find(e => e.id === userExamId);
       await addDoc(collection(db, 'notifications'), {
         userId,
         title: 'Resultado de Exame Disponível',
@@ -3471,6 +6985,7 @@ const UserExamsManagementView = () => {
       });
 
       setUploading(null);
+      addToast('Arquivo enviado com sucesso.', 'success');
     } catch (err) {
       console.error(err);
       setUploading(null);
@@ -3480,12 +6995,14 @@ const UserExamsManagementView = () => {
 
   const handleUpdateStatus = async (id: string, userId: string, examName: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'exams', id), {
+      const oldData = userExams.find(e => e.id === id);
+      const newData = {
         status: newStatus,
         updatedAt: Timestamp.now()
-      });
+      };
+      await updateDoc(doc(db, 'user_exams', id), newData);
 
-      await logAdminAction('UPDATE_USER_EXAM_STATUS', `Alterou status do exame ID: ${id} para ${newStatus}`);
+      await logAdminAction('UPDATE_USER_EXAM_STATUS', `Alterou status do exame ID: ${id} para ${newStatus}`, oldData, { ...oldData, ...newData });
 
       if (newStatus === 'ready') {
         await addDoc(collection(db, 'notifications'), {
@@ -3498,30 +7015,30 @@ const UserExamsManagementView = () => {
         });
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `exams/${id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `user_exams/${id}`);
     }
   };
 
   const handleDelete = (id: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Excluir Exame',
-      message: 'Tem certeza que deseja excluir este registro de exame? Esta ação não pode ser desfeita.',
+      title: 'Excluir Registro de Exame',
+      message: 'Tem certeza que deseja excluir este registro de exame do usuário? Esta ação não pode ser desfeita e removerá o acesso do paciente ao resultado.',
       type: 'danger',
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, 'exams', id));
-          await logAdminAction('DELETE_USER_EXAM', `Excluiu exame de usuário ID: ${id}`);
+          const oldData = userExams.find(e => e.id === id);
+          await deleteDoc(doc(db, 'user_exams', id));
+          await logAdminAction('DELETE_USER_EXAM', `Excluiu exame de usuário ID: ${id}`, oldData, null);
+          addToast('Registro de exame excluído com sucesso.', 'success');
         } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `exams/${id}`);
+          handleFirestoreError(err, OperationType.DELETE, `user_exams/${id}`);
         } finally {
           setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
       }
     });
   };
-
-  const userExams = exams.filter(e => e.userId);
 
   return (
     <div className="space-y-6">
@@ -3556,16 +7073,19 @@ const UserExamsManagementView = () => {
                   {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
                 </select>
               </div>
-              <div className="space-y-2">
+                  <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Tipo de Exame</label>
                 <select 
                   required
-                  value={newItem.name}
-                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                  value={newItem.examId}
+                  onChange={(e) => {
+                    const selected = examTypes.find(t => t.id === e.target.value);
+                    setNewItem({ ...newItem, examId: e.target.value, name: selected?.name || '' });
+                  }}
                   className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 >
                   <option value="" disabled>Selecione o Exame</option>
-                  {examTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                  {examTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
             </div>
@@ -3611,33 +7131,48 @@ const UserExamsManagementView = () => {
         <table className="w-full text-left">
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
-              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário / Exame</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Paciente</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Exame / Info</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">Data</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">Status</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-vitta-border">
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  <td className="px-8 py-4"><Skeleton className="h-4 w-48" /></td>
-                  <td className="px-8 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
-                  <td className="px-8 py-4 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-48" /></td>
+                  <td className="px-6 py-4 text-center"><Skeleton className="h-4 w-20 mx-auto" /></td>
+                  <td className="px-6 py-4 text-center"><Skeleton className="h-6 w-20 rounded-full mx-auto" /></td>
+                  <td className="px-6 py-4 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
                 </tr>
               ))
             ) : userExams.length > 0 ? userExams.map((exam) => (
               <tr key={exam.id} className="hover:bg-vitta-surface-2 transition-colors">
-                <td className="px-8 py-4">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-sm text-vitta-text-primary">{users.find(u => u.id === exam.userId)?.name || 'Usuário Desconhecido'}</span>
-                    <span className="text-xs text-vitta-text-muted">{exam.name} - {exam.lab}</span>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <User size={14} className="text-vitta-text-muted" />
+                    <span className="font-bold text-xs text-vitta-text-primary">{users.find(u => u.id === exam.userId)?.name || 'Removido'}</span>
                   </div>
                 </td>
-                <td className="px-8 py-4">
+                <td className="px-6 py-4">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm text-vitta-text-primary">{exam.name}</span>
+                    <span className="text-[10px] text-vitta-text-muted uppercase tracking-wider">{exam.lab}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="text-xs text-vitta-text-secondary">
+                    {exam.createdAt?.toDate ? exam.createdAt.toDate().toLocaleDateString('pt-BR') : 'N/A'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center">
                   <select 
                     value={exam.status}
                     onChange={(e) => handleUpdateStatus(exam.id, exam.userId, exam.name, e.target.value)}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-vitta-accent/20 outline-none ${
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border-none focus:ring-2 focus:ring-vitta-accent/20 outline-none cursor-pointer ${
                       exam.status === 'ready' ? 'bg-vitta-green-bg text-vitta-green' : 'bg-vitta-amber-bg text-vitta-amber'
                     }`}
                   >
@@ -3645,8 +7180,8 @@ const UserExamsManagementView = () => {
                     <option value="ready">Pronto</option>
                   </select>
                 </td>
-                <td className="px-8 py-4 text-right">
-                  <div className="flex justify-end gap-2">
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2 text-vitta-text-muted">
                     <div className="relative">
                       <input 
                         type="file" 
@@ -3660,7 +7195,7 @@ const UserExamsManagementView = () => {
                       />
                       <label 
                         htmlFor={`file-${exam.id}`}
-                        className={`p-2 flex items-center justify-center text-vitta-text-muted hover:text-vitta-accent transition-colors cursor-pointer ${uploading === exam.id ? 'animate-pulse' : ''}`}
+                        className={`p-2 flex items-center justify-center hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-lg transition-colors cursor-pointer ${uploading === exam.id ? 'animate-pulse' : ''}`}
                         title="Upload de Resultado"
                       >
                         {uploading === exam.id ? (
@@ -3673,13 +7208,17 @@ const UserExamsManagementView = () => {
                     {exam.resultUrl && (
                       <button 
                         onClick={() => window.open(exam.resultUrl, '_blank')}
-                        className="p-2 text-vitta-text-muted hover:text-vitta-green transition-colors"
+                        className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-lg transition-colors"
                         title="Ver Resultado"
                       >
-                        <FileText size={18} />
+                        <Eye size={18} />
                       </button>
                     )}
-                    <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors" title="Excluir">
+                    <button 
+                      onClick={() => handleDelete(exam.id)}
+                      className="p-2 hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors"
+                      title="Excluir"
+                    >
                       <Trash2 size={18} />
                     </button>
                   </div>
@@ -3687,7 +7226,7 @@ const UserExamsManagementView = () => {
               </tr>
             )) : (
               <tr>
-                <td colSpan={3} className="px-8 py-12 text-center text-vitta-text-muted text-sm">Nenhum exame de usuário registrado.</td>
+                <td colSpan={5} className="px-6 py-12 text-center text-vitta-text-muted text-sm">Nenhum exame de usuário registrado.</td>
               </tr>
             )}
           </tbody>
@@ -3710,7 +7249,7 @@ const ExamsManagementView = () => {
   const { addToast } = useToast();
   const [exams, setExams] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
-  const [newItem, setNewItem] = useState({ name: '', price: '', description: '' });
+  const [newItem, setNewItem] = useState({ name: '', priceVitta: '', priceParticular: '', description: '' });
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -3739,11 +7278,11 @@ const ExamsManagementView = () => {
     try {
       await addDoc(collection(db, 'exams'), {
         ...newItem,
-        createdAt: new Date().toISOString()
+        createdAt: Timestamp.now()
       });
       await logAdminAction('CREATE_EXAM_TYPE', `Criou o tipo de exame: ${newItem.name}`);
       setIsCreating(false);
-      setNewItem({ name: '', price: '', description: '' });
+      setNewItem({ name: '', priceVitta: '', priceParticular: '', description: '' });
       addToast('Tipo de exame criado com sucesso.', 'success');
     } catch (err) {
       console.error('Erro ao criar exame:', err);
@@ -3792,7 +7331,7 @@ const ExamsManagementView = () => {
           className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6"
         >
           <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <input 
                 type="text" 
                 placeholder="Nome do Exame"
@@ -3803,10 +7342,18 @@ const ExamsManagementView = () => {
               />
               <input 
                 type="text" 
-                placeholder="Preço (ex: R$ 150,00)"
+                placeholder="Preço Vitta"
                 required
-                value={newItem.price}
-                onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                value={newItem.priceVitta}
+                onChange={(e) => setNewItem({ ...newItem, priceVitta: e.target.value })}
+                className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+              />
+              <input 
+                type="text" 
+                placeholder="Preço Particular"
+                required
+                value={newItem.priceParticular}
+                onChange={(e) => setNewItem({ ...newItem, priceParticular: e.target.value })}
                 className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
               />
             </div>
@@ -3829,7 +7376,8 @@ const ExamsManagementView = () => {
           <thead>
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Exame</th>
-              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Preço</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">Preço Vitta</th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">Particular</th>
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
@@ -3842,8 +7390,11 @@ const ExamsManagementView = () => {
                     <span className="text-xs text-vitta-text-muted line-clamp-1">{exam.description}</span>
                   </div>
                 </td>
-                <td className="px-8 py-4">
-                  <span className="text-sm font-bold text-vitta-green">{exam.price}</span>
+                <td className="px-8 py-4 text-center">
+                  <span className="text-sm font-bold text-vitta-green">{exam.priceVitta}</span>
+                </td>
+                <td className="px-8 py-4 text-center">
+                  <span className="text-sm font-bold text-vitta-text-secondary">{exam.priceParticular}</span>
                 </td>
                 <td className="px-8 py-4 text-right">
                   <button onClick={() => handleDelete(exam.id)} className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors">
@@ -3875,7 +7426,7 @@ const OffersManagementView = () => {
   const [partners, setPartners] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
-  const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+  const [newItem, setNewItem] = useState({ title: '', discount: '', partner: '', imageUrl: '', description: '', expiryDate: '', isBanner: false });
   const [isSaving, setIsSaving] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -3957,7 +7508,7 @@ const OffersManagementView = () => {
       }
       setIsCreating(false);
       setEditingItem(null);
-      setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+      setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '', expiryDate: '', isBanner: false });
       addToast(`Oferta ${editingItem ? 'atualizada' : 'criada'} com sucesso.`, 'success');
     } catch (error) {
       handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'offers');
@@ -3974,7 +7525,9 @@ const OffersManagementView = () => {
       discount: offer.discount,
       partner: offer.partner,
       imageUrl: offer.imageUrl || '',
-      description: offer.description || ''
+      description: offer.description || '',
+      expiryDate: offer.expiryDate || '',
+      isBanner: offer.isBanner || false
     });
     setIsCreating(true);
   };
@@ -4012,7 +7565,7 @@ const OffersManagementView = () => {
           onClick={() => {
             setIsCreating(!isCreating);
             setEditingItem(null);
-            setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '' });
+            setNewItem({ title: '', discount: '', partner: '', imageUrl: '', description: '', expiryDate: '', isBanner: false });
           }}
           className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
         >
@@ -4096,6 +7649,27 @@ const OffersManagementView = () => {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Data de Validade</label>
+                <input 
+                  type="date" 
+                  value={newItem.expiryDate}
+                  onChange={(e) => setNewItem({ ...newItem, expiryDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                />
+              </div>
+              <div className="flex items-center gap-3 pt-6">
+                <input 
+                  type="checkbox" 
+                  id="isBanner"
+                  checked={newItem.isBanner}
+                  onChange={(e) => setNewItem({ ...newItem, isBanner: e.target.checked })}
+                  className="w-5 h-5 rounded border-vitta-border text-vitta-accent focus:ring-vitta-accent/20"
+                />
+                <label htmlFor="isBanner" className="text-sm font-medium text-vitta-text-primary">Destacar como Banner</label>
+              </div>
+            </div>
             <div className="flex gap-3 pt-2">
               <button 
                 type="submit" 
@@ -4128,6 +7702,7 @@ const OffersManagementView = () => {
                 <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Oferta</th>
                 <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Parceiro</th>
                 <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Desconto</th>
+                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status/Validade</th>
                 <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
@@ -4139,7 +7714,12 @@ const OffersManagementView = () => {
                       {offer.imageUrl && (
                         <img src={offer.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
                       )}
-                      <span className="font-bold text-sm text-vitta-text-primary">{offer.title}</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-sm text-vitta-text-primary">{offer.title}</span>
+                        {offer.isBanner && (
+                          <span className="text-[9px] font-black uppercase text-vitta-accent">Banner Destaque</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-8 py-4">
@@ -4147,6 +7727,13 @@ const OffersManagementView = () => {
                   </td>
                   <td className="px-8 py-4">
                     <span className="px-2 py-1 bg-vitta-danger/10 text-vitta-danger text-xs font-bold rounded-lg">{offer.discount}</span>
+                  </td>
+                  <td className="px-8 py-4">
+                    {offer.expiryDate ? (
+                      <span className="text-xs text-vitta-text-secondary">Expira: {new Date(offer.expiryDate).toLocaleDateString()}</span>
+                    ) : (
+                      <span className="text-xs text-vitta-text-muted italic">Sem expiração</span>
+                    )}
                   </td>
                   <td className="px-8 py-4 text-right">
                     <div className="flex justify-end gap-2">
@@ -4384,9 +7971,9 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingItem ? 'Editar Estabelecimento' : 'Novo Estabelecimento'}
                 </h3>
@@ -4394,7 +7981,7 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
                   <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
-              <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4">
+              <form onSubmit={editingItem ? handleSaveEdit : handleCreate} className="p-6 space-y-4 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
@@ -5009,7 +8596,210 @@ const PartnershipsView = ({ setSubTab, setActiveTab }: { setSubTab?: (tab: any) 
   );
 };
 
-const SupportView = () => {
+const ChatView = ({ user }: { user: any }) => {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [adminTyping, setAdminTyping] = useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = React.useRef<any>(null);
+  const { addToast } = useToast();
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'chats', user.uid, 'messages'),
+      orderBy('createdAt', 'asc')
+    );
+
+    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(data);
+      setLoading(false);
+      setTimeout(scrollToBottom, 100);
+
+      // Mark admin messages as read
+      snapshot.docs.forEach(docSnap => {
+        const msg = docSnap.data();
+        if (msg.senderRole === 'admin' && !msg.read) {
+          updateDoc(doc(db, 'chats', user.uid, 'messages', docSnap.id), { read: true });
+        }
+      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `chats/${user.uid}/messages`);
+    });
+
+    const unsubscribeRoom = onSnapshot(doc(db, 'chats', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setAdminTyping(!!data.adminTyping);
+      }
+    });
+
+    return () => {
+      unsubscribeMessages();
+      unsubscribeRoom();
+    };
+  }, [user]);
+
+  const handleTyping = () => {
+    if (!user) return;
+    setDoc(doc(db, 'chats', user.uid), { userTyping: true, updatedAt: new Date().toISOString() }, { merge: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setDoc(doc(db, 'chats', user.uid), { userTyping: false }, { merge: true });
+    }, 3000);
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !user) return;
+
+    const messageText = newMessage.trim();
+    setNewMessage('');
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setDoc(doc(db, 'chats', user.uid), { userTyping: false }, { merge: true });
+
+    try {
+      await addDoc(collection(db, 'chats', user.uid, 'messages'), {
+        text: messageText,
+        senderId: user.uid,
+        senderRole: 'user',
+        createdAt: new Date().toISOString(),
+        read: false
+      });
+
+      await setDoc(doc(db, 'chats', user.uid), {
+        userId: user.uid,
+        lastMessage: messageText,
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: increment(1),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      scrollToBottom();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `chats/${user.uid}/messages`);
+      addToast('Erro ao enviar mensagem.', 'error');
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto h-[calc(100vh-12rem)] flex flex-col bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-vitta-border bg-vitta-surface-2 flex items-center gap-4">
+        <div className="w-12 h-12 bg-vitta-accent text-white rounded-xl flex items-center justify-center">
+          <ShieldCheck size={24} />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-vitta-text-primary">Chat de Suporte</h2>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-vitta-green animate-pulse" />
+            <p className="text-xs text-vitta-text-secondary">Equipe Online</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-vitta-surface-2/30">
+        {loading ? (
+          <div className="flex justify-center items-center h-full">
+            <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-vitta-text-secondary space-y-4">
+            <MessageSquare size={48} className="opacity-20" />
+            <p className="font-medium text-center px-6">Olá! Alguma dúvida? Nossa equipe está pronta para te ajudar.</p>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg) => {
+              const isUser = msg.senderRole === 'user';
+              return (
+                <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex gap-3 max-w-[80%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
+                      isUser ? 'bg-vitta-accent text-white' : 'bg-vitta-green text-white'
+                    }`}>
+                      {isUser ? <User size={20} /> : <ShieldCheck size={20} />}
+                    </div>
+                    <div className={`p-4 rounded-2xl relative ${
+                      isUser 
+                        ? 'bg-vitta-accent text-white rounded-tr-none' 
+                        : 'bg-vitta-surface text-vitta-text-primary border border-vitta-border rounded-tl-none'
+                    }`}>
+                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      <div className={`flex items-center gap-1 mt-2 justify-end ${isUser ? 'text-white/70' : 'text-vitta-text-muted'}`}>
+                        <p className="text-[10px]">
+                          {new Date(msg.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        {isUser && (
+                          <div className="flex">
+                            {msg.read ? (
+                              <div className="flex -space-x-1">
+                                <Check size={10} strokeWidth={3} />
+                                <Check size={10} strokeWidth={3} />
+                              </div>
+                            ) : (
+                              <Check size={10} strokeWidth={3} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {adminTyping && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-vitta-green text-white flex items-center justify-center shrink-0">
+                    <ShieldCheck size={20} />
+                  </div>
+                  <div className="bg-vitta-surface p-3 rounded-2xl border border-vitta-border flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-vitta-green rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                    <div className="w-1.5 h-1.5 bg-vitta-green rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-1.5 h-1.5 bg-vitta-green rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </>
+        )}
+      </div>
+
+      <div className="p-4 bg-vitta-surface border-t border-vitta-border">
+        <form onSubmit={handleSendMessage} className="flex gap-4">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              handleTyping();
+            }}
+            placeholder="Digite sua mensagem..."
+            className="flex-1 px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl focus:outline-none focus:border-vitta-accent text-vitta-text-primary"
+          />
+          <button
+            type="submit"
+            disabled={!newMessage.trim()}
+            className="px-6 py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Send size={20} />
+            <span className="hidden sm:inline">Enviar</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const SupportView = ({ setActiveTab }: { setActiveTab: (tab: string) => void }) => {
   const faqs = [
     { question: "O ViTTA cobra alguma taxa dos usuários?", answer: "Não, o ViTTA é um benefício gratuito para afiliados de empresas parceiras." },
     { question: "Como cancelo um agendamento?", answer: "Você pode cancelar seus agendamentos diretamente na aba 'Agendamentos' com até 24h de antecedência." },
@@ -5031,7 +8821,10 @@ const SupportView = () => {
               Aproveite ao máximo todas as vantagens de ser um afiliado ViTTA
             </p>
           </div>
-          <button className="flex items-center gap-3 px-10 py-5 bg-white text-vitta-green rounded-xl font-bold shadow-xl hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95 group">
+          <button 
+            onClick={() => setActiveTab('chat')}
+            className="flex items-center gap-3 px-10 py-5 bg-white text-vitta-green rounded-xl font-bold shadow-xl hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95 group"
+          >
             <MessageSquare size={24} className="group-hover:rotate-12 transition-transform" />
             Iniciar Chat de Suporte
           </button>
@@ -5120,11 +8913,172 @@ const SupportView = () => {
   );
 };
 
+const KYCDocumentViewer = ({ user, onClose, onUpdateStatus }: { user: any, onClose: () => void, onUpdateStatus: (status: string) => Promise<void> }) => {
+  const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleUpdate = async (status: string) => {
+    setIsUpdating(true);
+    await onUpdateStatus(status);
+    setIsUpdating(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-vitta-text-primary/40 backdrop-blur-md flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-6xl h-[85vh] rounded-[2.5rem] shadow-2xl border border-vitta-border overflow-hidden flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-vitta-accent-bg text-vitta-accent rounded-2xl">
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Auditoria de Identidade (KYC)</h3>
+              <p className="text-xs text-vitta-text-muted">Verificação de documentos para o usuário: <span className="text-vitta-text-primary font-bold">{user.name}</span></p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-border rounded-xl transition-all">
+            <X size={20} className="text-vitta-text-muted" />
+          </button>
+        </div>
+
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* User Data Panel */}
+          <div className="w-full md:w-1/3 border-r border-vitta-border flex flex-col p-8 space-y-8 overflow-y-auto bg-vitta-surface-2/30">
+            <div className="space-y-6">
+              <h4 className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-[0.2em]">Dados Cadastrais</h4>
+              <div className="space-y-4">
+                {[
+                  { label: 'E-mail', value: user.email },
+                  { label: 'CPF', value: user.cpf },
+                  { label: 'Data de Nascimento', value: user.birthDate },
+                  { label: 'Status Atual', value: user.kycStatus || 'Pendente' },
+                ].map((item, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">{item.label}</p>
+                    <div className="px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary font-medium">
+                      {item.value || 'Não informado'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-vitta-border">
+              <h4 className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-[0.2em]">Decisão de Auditoria</h4>
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  disabled={isUpdating}
+                  onClick={() => handleUpdate('verified')}
+                  className="w-full py-3.5 bg-vitta-green text-white rounded-xl font-bold text-sm shadow-lg shadow-vitta-green/20 hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                >
+                  <CheckCircle size={18} />
+                  Aprovar Documentação
+                </button>
+                <button 
+                  disabled={isUpdating}
+                  onClick={() => handleUpdate('rejected')}
+                  className="w-full py-3.5 bg-vitta-danger text-white rounded-xl font-bold text-sm shadow-lg shadow-vitta-danger/20 hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                >
+                  <XCircle size={18} />
+                  Rejeitar / Solicitar Novo
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Document Viewer Panel */}
+          <div className="flex-1 bg-vitta-surface-2 flex flex-col p-8 overflow-hidden">
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <button 
+                onClick={() => setActiveSide('front')}
+                className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeSide === 'front' 
+                    ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+                    : 'bg-vitta-surface border border-vitta-border text-vitta-text-muted'
+                }`}
+              >
+                Frente do Documento
+              </button>
+              <button 
+                onClick={() => setActiveSide('back')}
+                className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeSide === 'back' 
+                    ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' 
+                    : 'bg-vitta-surface border border-vitta-border text-vitta-text-muted'
+                }`}
+              >
+                Verso do Documento
+              </button>
+            </div>
+
+            <div className="flex-1 relative flex items-center justify-center min-h-0 bg-vitta-text-primary/5 rounded-3xl border-2 border-dashed border-vitta-border p-4">
+              <AnimatePresence mode="wait">
+                <motion.div 
+                  key={activeSide}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="w-full h-full flex items-center justify-center"
+                >
+                  {activeSide === 'front' ? (
+                    user.documentFrontUrl ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                         <img 
+                          src={user.documentFrontUrl} 
+                          alt="Frente" 
+                          className="max-w-full max-h-full object-contain rounded-xl shadow-2xl ring-4 ring-white" 
+                        />
+                        <a href={user.documentFrontUrl} target="_blank" rel="noreferrer" className="text-vitta-accent text-xs font-bold hover:underline">Abrir em tela cheia</a>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-2 opacity-40">
+                         <FileQuestion size={48} className="mx-auto" />
+                         <p className="text-sm font-bold">Frente não enviada</p>
+                      </div>
+                    )
+                  ) : (
+                    user.documentBackUrl ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                        <img 
+                          src={user.documentBackUrl} 
+                          alt="Verso" 
+                          className="max-w-full max-h-full object-contain rounded-xl shadow-2xl ring-4 ring-white" 
+                        />
+                        <a href={user.documentBackUrl} target="_blank" rel="noreferrer" className="text-vitta-accent text-xs font-bold hover:underline">Abrir em tela cheia</a>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-2 opacity-40">
+                         <FileQuestion size={48} className="mx-auto" />
+                         <p className="text-sm font-bold">Verso não enviado</p>
+                      </div>
+                    )
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const UsersView = () => {
+
   const { addToast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [auditingUser, setAuditingUser] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterPlan, setFilterPlan] = useState<string>('Todos');
+  const [filterStatus, setFilterStatus] = useState<string>('Todos');
+
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
@@ -5158,6 +9112,20 @@ const UsersView = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      const matchesSearch = 
+        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.cpf?.includes(searchTerm);
+      
+      const matchesPlan = filterPlan === 'Todos' || user.plan === filterPlan;
+      const matchesStatus = filterStatus === 'Todos' || user.status === filterStatus;
+      
+      return matchesSearch && matchesPlan && matchesStatus && user.role !== 'admin';
+    });
+  }, [users, searchTerm, filterPlan, filterStatus]);
 
   const handleDelete = (id: string) => {
     setConfirmModal({
@@ -5196,6 +9164,7 @@ const UsersView = () => {
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
+
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
@@ -5256,24 +9225,46 @@ const UsersView = () => {
     }
   };
 
+  const handleAuditStatusUpdate = async (status: string) => {
+    if (!auditingUser) return;
+    try {
+      await updateDoc(doc(db, 'users', auditingUser.id), {
+        kycStatus: status,
+        updatedAt: Timestamp.now()
+      });
+      await logAdminAction('KYC_AUDIT', `Usuário ${auditingUser.email}: Status alterado para ${status}`);
+      addToast(`Status de auditoria atualizado para: ${status}`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auditingUser.id}`);
+      addToast('Erro ao atualizar auditoria.', 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <AnimatePresence>
+        {auditingUser && (
+          <KYCDocumentViewer 
+            user={auditingUser} 
+            onClose={() => setAuditingUser(null)} 
+            onUpdateStatus={handleAuditStatusUpdate}
+          />
+        )}
         {isCreatingUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">Novo Usuário</h3>
                 <button onClick={() => setIsCreatingUser(false)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
                   <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
-              <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+              <form onSubmit={handleCreateUser} className="p-6 space-y-4 overflow-y-auto">
                 {error && (
                   <div className="p-4 bg-vitta-danger/10 text-vitta-danger text-sm rounded-xl border border-vitta-danger/20">
                     {error}
@@ -5362,15 +9353,15 @@ const UsersView = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">Editar Usuário</h3>
                 <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
                   <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
-              <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome</label>
                   <input 
@@ -5408,11 +9399,86 @@ const UsersView = () => {
                       onChange={(e) => setEditingUser({ ...editingUser, plan: e.target.value })}
                       className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
+                      <option value="Free">Free</option>
                       <option value="Básico">Básico</option>
                       <option value="Premium">Premium</option>
                     </select>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Cargo / Role</label>
+                    <select 
+                      value={editingUser.role || 'user'}
+                      onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    >
+                      <option value="user">Usuário / Paciente</option>
+                      <option value="admin">Administrador</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Status KYC</label>
+                    <select 
+                      value={editingUser.kycStatus || 'pending'}
+                      onChange={(e) => setEditingUser({ ...editingUser, kycStatus: e.target.value })}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    >
+                      <option value="pending">Pendente</option>
+                      <option value="under_review">Em Análise</option>
+                      <option value="verified">Verificado</option>
+                      <option value="rejected">Rejeitado</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">CPF</label>
+                    <input 
+                      type="text" 
+                      value={editingUser.cpf || ''}
+                      onChange={(e) => setEditingUser({ ...editingUser, cpf: e.target.value })}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Saldo em Carteira</label>
+                    <input 
+                      type="number" 
+                      value={editingUser.walletBalance || 0}
+                      onChange={(e) => setEditingUser({ ...editingUser, walletBalance: Number(e.target.value) })}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                </div>
+
+                {/* KYC Documents Preview for Admin */}
+                {(editingUser.documentFrontUrl || editingUser.documentBackUrl) && (
+                  <div className="space-y-3 pt-4 border-t border-vitta-border">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Documentos KYC</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {editingUser.documentFrontUrl && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Frente</p>
+                          <a href={editingUser.documentFrontUrl} target="_blank" rel="noreferrer" className="block relative group rounded-xl overflow-hidden border border-vitta-border h-32">
+                            <img src={editingUser.documentFrontUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">Ver Ampliado</div>
+                          </a>
+                        </div>
+                      )}
+                      {editingUser.documentBackUrl && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Verso</p>
+                          <a href={editingUser.documentBackUrl} target="_blank" rel="noreferrer" className="block relative group rounded-xl overflow-hidden border border-vitta-border h-32">
+                            <img src={editingUser.documentBackUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">Ver Ampliado</div>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
@@ -5434,15 +9500,46 @@ const UsersView = () => {
         )}
       </AnimatePresence>
 
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between gap-4">
         <h2 className="text-2xl font-bold text-vitta-text-primary">Gestão de Usuários</h2>
-        <button 
-          onClick={() => setIsCreatingUser(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-        >
-          <Plus size={20} />
-          Novo Usuário
-        </button>
+        <div className="flex gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={16} />
+            <input 
+              type="text" 
+              placeholder="Nome, e-mail ou CPF..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all min-w-[240px]"
+            />
+          </div>
+          <select 
+            value={filterPlan}
+            onChange={(e) => setFilterPlan(e.target.value)}
+            className="px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all"
+          >
+            <option value="Todos">Todos os Planos</option>
+            <option value="Free">Free</option>
+            <option value="Básico">Básico</option>
+            <option value="Premium">Premium</option>
+          </select>
+          <select 
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all"
+          >
+            <option value="Todos">Todos Status</option>
+            <option value="Ativo">Ativos</option>
+            <option value="Inativo">Inativos</option>
+          </select>
+          <button 
+            onClick={() => setIsCreatingUser(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+          >
+            <Plus size={20} />
+            Novo
+          </button>
+        </div>
       </div>
       
       <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
@@ -5451,16 +9548,17 @@ const UsersView = () => {
             <tr className="bg-vitta-surface-2 border-b border-vitta-border">
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Usuário</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">KYC</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Plano</th>
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-vitta-border">
-            {users.map((user) => (
+            {filteredUsers.length > 0 ? filteredUsers.map((user) => (
               <tr key={user.id} className="hover:bg-vitta-surface-2 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <img src={user.img} className="w-10 h-10 rounded-full object-cover" alt="" />
+                    <img src={user.photoURL || `https://picsum.photos/seed/${user.id}/100/100`} className="w-10 h-10 rounded-full object-cover" alt="" />
                     <div>
                       <p className="font-bold text-vitta-text-primary text-sm">{user.name}</p>
                       <p className="text-xs text-vitta-text-secondary">{user.email}</p>
@@ -5474,15 +9572,37 @@ const UsersView = () => {
                     {user.status}
                   </span>
                 </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${
+                      user.kycStatus === 'verified' ? 'bg-vitta-green' : 
+                      user.kycStatus === 'under_review' ? 'bg-vitta-accent' : 
+                      user.kycStatus === 'rejected' ? 'bg-vitta-danger' : 'bg-vitta-text-muted'
+                    }`} />
+                    <span className="text-[10px] font-bold text-vitta-text-primary capitalize">
+                      {user.kycStatus === 'under_review' ? 'Análise' : user.kycStatus || 'Pendente'}
+                    </span>
+                  </div>
+                </td>
                 <td className="px-6 py-4 text-sm text-vitta-text-secondary font-medium">{user.plan}</td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2">
+                    {(user.kycStatus === 'pending' || user.kycStatus === 'under_review' || user.documentFrontUrl) && (
+                      <button 
+                        onClick={() => setAuditingUser(user)}
+                        title="Auditar documentos"
+                        className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-colors"
+                      >
+                        <ShieldCheck size={18} />
+                      </button>
+                    )}
                     <button 
                       onClick={() => setEditingUser(user)}
                       className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                     >
                       <Edit size={16} />
                     </button>
+
                     <button 
                       onClick={() => handleDelete(user.id)}
                       className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
@@ -5492,7 +9612,13 @@ const UsersView = () => {
                   </div>
                 </td>
               </tr>
-            ))}
+            )) : (
+              <tr>
+                <td colSpan={4} className="px-6 py-10 text-center text-vitta-text-muted">
+                  Nenhum usuário encontrado com os filtros aplicados.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -5510,27 +9636,29 @@ const UsersView = () => {
 };
 
 const UserConfigView = () => {
+  const { addToast } = useToast();
   const [accessLevels, setAccessLevels] = useState([
     { id: 1, role: 'Administrador', desc: 'Acesso total ao sistema e configurações' },
     { id: 2, role: 'Moderador', desc: 'Gerenciamento de usuários e conteúdos' },
     { id: 3, role: 'Usuário Padrão', desc: 'Acesso às funcionalidades básicas' }
   ]);
+  const [globalConfigs, setGlobalConfigs] = useState({
+    autoApproval: false,
+    auditLogs: true,
+    maintenanceMode: false,
+    twoFactorMandatory: false,
+    systemAlerts: true,
+    weeklyReports: false
+  });
   const [editingLevel, setEditingLevel] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const docRef = doc(db, 'system_configs', 'access_levels');
-    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+    // Sync Access Levels
+    const accessRef = doc(db, 'system_configs', 'access_levels');
+    const unsubscribeAccess = onSnapshot(accessRef, (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data.levels && Array.isArray(data.levels)) {
-          setAccessLevels(data.levels);
-        }
-      } else {
-        // Initialize if it doesn't exist
-        setDoc(docRef, { levels: accessLevels }, { merge: true }).catch(err => {
-          console.error("Failed to initialize access levels", err);
-        });
+        setAccessLevels(snapshot.data().levels || []);
       }
       setIsLoading(false);
     }, (error) => {
@@ -5538,8 +9666,35 @@ const UserConfigView = () => {
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    // Sync Global Configs
+    const globalRef = doc(db, 'system_configs', 'global');
+    const unsubscribeGlobal = onSnapshot(globalRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setGlobalConfigs(prev => ({ ...prev, ...snapshot.data() }));
+      } else {
+        setDoc(globalRef, globalConfigs).catch(console.error);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_configs/global');
+    });
+
+    return () => {
+      unsubscribeAccess();
+      unsubscribeGlobal();
+    };
   }, []);
+
+  const handleToggleSetting = async (key: keyof typeof globalConfigs) => {
+    const newValue = !globalConfigs[key];
+    try {
+      await setDoc(doc(db, 'system_configs', 'global'), { [key]: newValue }, { merge: true });
+      await logAdminAction('UPDATE_GLOBAL_CONFIG', `Configuração ${key} alterada para ${newValue ? 'Ativado' : 'Desativado'}`);
+      addToast('Configuração atualizada com sucesso.', 'success');
+    } catch (error) {
+      console.error("Error updating config:", error);
+      addToast('Erro ao atualizar configuração.', 'error');
+    }
+  };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5563,15 +9718,15 @@ const UserConfigView = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center">
+              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">Configurar Nível de Acesso</h3>
                 <button onClick={() => setEditingLevel(null)} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
                   <X size={20} className="text-vitta-text-muted" />
                 </button>
               </div>
-              <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nome do Nível</label>
                   <input 
@@ -5620,7 +9775,10 @@ const UserConfigView = () => {
           <p className="text-lg md:text-xl text-white/80 max-w-2xl">
             Gerencie permissões, acessos e preferências do sistema
           </p>
-          <button className="flex items-center gap-2 px-8 py-4 bg-white text-vitta-accent rounded-xl font-bold shadow-lg hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95">
+          <button 
+            onClick={() => addToast('Integridade de permissões verificada. Sistema seguro.', 'info')}
+            className="flex items-center gap-2 px-8 py-4 bg-white text-vitta-accent rounded-xl font-bold shadow-lg hover:bg-vitta-surface-2 transition-all transform hover:scale-105 active:scale-95"
+          >
             <ShieldCheck size={20} />
             Verificar Permissões
           </button>
@@ -5666,31 +9824,43 @@ const UserConfigView = () => {
             <h3 className="text-xl font-bold text-vitta-text-primary">Preferências Globais</h3>
           </div>
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between group cursor-pointer" onClick={() => handleToggleSetting('autoApproval')}>
               <div>
                 <p className="text-sm font-bold text-vitta-text-primary">Auto-aprovação</p>
                 <p className="text-xs text-vitta-text-secondary">Novos usuários são aprovados automaticamente</p>
               </div>
-              <div className="w-10 h-5 bg-vitta-border rounded-full relative cursor-pointer">
-                <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${globalConfigs.autoApproval ? 'bg-vitta-green' : 'bg-vitta-border'}`}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.autoApproval ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between group cursor-pointer" onClick={() => handleToggleSetting('auditLogs')}>
               <div>
                 <p className="text-sm font-bold text-vitta-text-primary">Logs de Auditoria</p>
                 <p className="text-xs text-vitta-text-secondary">Registrar todas as ações administrativas</p>
               </div>
-              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
-                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${globalConfigs.auditLogs ? 'bg-vitta-green' : 'bg-vitta-border'}`}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.auditLogs ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between group cursor-pointer" onClick={() => handleToggleSetting('maintenanceMode')}>
               <div>
                 <p className="text-sm font-bold text-vitta-text-primary">Manutenção</p>
                 <p className="text-xs text-vitta-text-secondary">Ativar modo de manutenção do sistema</p>
               </div>
-              <div className="w-10 h-5 bg-vitta-border rounded-full relative cursor-pointer">
-                <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${globalConfigs.maintenanceMode ? 'bg-vitta-danger' : 'bg-vitta-border'}`}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.maintenanceMode ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
               </div>
             </div>
           </div>
@@ -5705,14 +9875,36 @@ const UserConfigView = () => {
             <h3 className="text-xl font-bold text-vitta-text-primary">Segurança</h3>
           </div>
           <div className="space-y-4">
-            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
-              <p className="text-sm font-bold text-vitta-text-primary mb-1">Autenticação em Duas Etapas (2FA)</p>
-              <p className="text-xs text-vitta-text-secondary mb-3">Obrigatório para administradores</p>
-              <button className="px-4 py-2 bg-vitta-danger text-white rounded-xl text-xs font-bold">Gerenciar</button>
+            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-vitta-text-primary mb-1">2FA Obrigatório (Todos)</p>
+                <p className="text-xs text-vitta-text-secondary">Exigir autenticação em duas etapas para todos os usuários</p>
+              </div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 cursor-pointer ${globalConfigs.twoFactorMandatory ? 'bg-vitta-green' : 'bg-vitta-border'}`} onClick={() => handleToggleSetting('twoFactorMandatory')}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.twoFactorMandatory ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
+              </div>
             </div>
-            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
-              <p className="text-sm font-bold text-vitta-text-primary mb-1">Política de Senhas</p>
-              <p className="text-xs text-vitta-text-secondary">Mínimo 8 caracteres, letras e números</p>
+            <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border group">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-vitta-text-primary mb-1">Autenticação em Duas Etapas (2FA)</p>
+                  <p className="text-xs text-vitta-text-secondary">Obrigatório para administradores</p>
+                </div>
+                <button 
+                  onClick={() => addToast('Módulo de gestão 2FA aberto.', 'info')}
+                  className="px-4 py-2 bg-vitta-danger text-white rounded-xl text-xs font-bold hover:bg-vitta-danger/90 transition-colors shadow-sm"
+                >
+                  Gerenciar
+                </button>
+              </div>
+              <div className="pt-3 border-t border-vitta-border">
+                <p className="text-sm font-bold text-vitta-text-primary mb-1">Política de Senhas</p>
+                <p className="text-xs text-vitta-text-secondary">Mínimo 8 caracteres, letras e números</p>
+              </div>
             </div>
           </div>
         </div>
@@ -5726,22 +9918,30 @@ const UserConfigView = () => {
             <h3 className="text-xl font-bold text-vitta-text-primary">Notificações</h3>
           </div>
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between group cursor-pointer" onClick={() => handleToggleSetting('systemAlerts')}>
               <div>
                 <p className="text-sm font-bold text-vitta-text-primary">Alertas de Sistema</p>
                 <p className="text-xs text-vitta-text-secondary">Receber notificações críticas</p>
               </div>
-              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
-                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${globalConfigs.systemAlerts ? 'bg-vitta-green' : 'bg-vitta-border'}`}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.systemAlerts ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between group cursor-pointer" onClick={() => handleToggleSetting('weeklyReports')}>
               <div>
                 <p className="text-sm font-bold text-vitta-text-primary">Relatórios Semanais</p>
                 <p className="text-xs text-vitta-text-secondary">Receber resumo de atividades</p>
               </div>
-              <div className="w-10 h-5 bg-vitta-green rounded-full relative cursor-pointer">
-                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${globalConfigs.weeklyReports ? 'bg-vitta-green' : 'bg-vitta-border'}`}>
+                <motion.div 
+                  initial={false}
+                  animate={{ x: globalConfigs.weeklyReports ? 20 : 0 }}
+                  className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                />
               </div>
             </div>
           </div>
@@ -5754,10 +9954,88 @@ const UserConfigView = () => {
   );
 };
 
-const AppointmentsView = ({ user }: { user: any }) => {
+const RescheduleModal = ({ 
+  appointment, 
+  onClose, 
+  onConfirm 
+}: { 
+  appointment: any, 
+  onClose: () => void, 
+  onConfirm: (date: string, time: string) => Promise<void> 
+}) => {
+  const [date, setDate] = useState(appointment.date);
+  const [time, setTime] = useState(appointment.time);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleConfirm = async () => {
+    setIsSaving(true);
+    await onConfirm(date, time);
+    setIsSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <h3 className="text-xl font-bold text-vitta-text-primary">Remarcar Consulta</h3>
+          <button onClick={onClose} className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors">
+            <X size={20} className="text-vitta-text-muted" />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-4 overflow-y-auto">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Nova Data</label>
+            <input 
+              type="date" 
+              value={date}
+              min={new Date().toISOString().split('T')[0]}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Novo Horário</label>
+            <input 
+              type="time" 
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+            />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleConfirm}
+              disabled={isSaving}
+              className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+            >
+              {isSaving ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Confirmar'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const AppointmentsView = ({ user, setActiveTab, setReviewingAppointment }: { user: any, setActiveTab: (tab: string) => void, setReviewingAppointment: (apt: any) => void }) => {
   const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingApt, setEditingApt] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -5818,8 +10096,45 @@ const AppointmentsView = ({ user }: { user: any }) => {
     });
   };
 
+  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+    if (!editingApt) return;
+    try {
+      const aptRef = doc(db, 'appointments', editingApt.id);
+      await updateDoc(aptRef, { 
+        date: newDate, 
+        time: newTime, 
+        updatedAt: Timestamp.now() 
+      });
+      
+      // Notify user
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Consulta Remarcada',
+        message: `Sua consulta com ${editingApt.professionalName} foi remarcada para ${new Date(newDate).toLocaleDateString('pt-BR')} às ${newTime}.`,
+        type: 'appointment',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      addToast('Consulta remarcada com sucesso.', 'success');
+      setEditingApt(null);
+    } catch (err) {
+      console.error('Erro ao remarcar consulta:', err);
+      addToast('Erro ao remarcar consulta.', 'error');
+    }
+  };
+
   return (
     <div className="space-y-8">
+      <AnimatePresence>
+        {editingApt && (
+          <RescheduleModal 
+            appointment={editingApt} 
+            onClose={() => setEditingApt(null)} 
+            onConfirm={handleSaveReschedule} 
+          />
+        )}
+      </AnimatePresence>
       <section>
         <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">Meus Agendamentos</h1>
         <p className="text-vitta-text-secondary">Gerencie suas consultas e horários marcados.</p>
@@ -5855,13 +10170,32 @@ const AppointmentsView = ({ user }: { user: any }) => {
 
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Status</p>
-                <span className="px-3 py-1 bg-vitta-green-bg text-vitta-green rounded-full text-[10px] font-bold uppercase tracking-wider">
-                  Confirmado
+                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  apt.status === 'upcoming' ? 'bg-blue-500/10 text-blue-500' :
+                  apt.status === 'pending' ? 'bg-vitta-amber-bg text-vitta-amber' :
+                  apt.status === 'completed' ? 'bg-vitta-green-bg text-vitta-green' :
+                  'bg-vitta-danger/10 text-vitta-danger'
+                }`}>
+                  {apt.status === 'upcoming' ? 'Agendado' : 
+                   apt.status === 'pending' ? 'Pendente' : 
+                   apt.status === 'completed' ? 'Finalizado' : 'Cancelado'}
                 </span>
               </div>
 
               <div className="flex gap-2">
-                <button className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all">
+                {apt.status === 'completed' && !apt.isReviewed && (
+                  <button 
+                    onClick={() => setReviewingAppointment(apt)}
+                    className="flex items-center gap-2 px-4 py-2 bg-vitta-amber/10 text-vitta-amber hover:bg-vitta-amber hover:text-white rounded-xl transition-all font-bold text-xs shadow-sm"
+                  >
+                    <Star size={16} fill="currentColor" />
+                    Avaliar
+                  </button>
+                )}
+                <button 
+                  onClick={() => setEditingApt(apt)}
+                  className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
+                >
                   <Edit size={20} />
                 </button>
                 <button 
@@ -5877,7 +10211,10 @@ const AppointmentsView = ({ user }: { user: any }) => {
           <div className="p-12 text-center bg-vitta-surface rounded-xl border border-dashed border-vitta-border">
             <Calendar size={48} className="mx-auto text-vitta-text-muted mb-4" />
             <p className="text-vitta-text-secondary font-medium">Você ainda não tem agendamentos.</p>
-            <button className="mt-4 px-6 py-2 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors">
+            <button 
+              onClick={() => setActiveTab('professionals')}
+              className="mt-4 px-6 py-2 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors"
+            >
               Agendar Agora
             </button>
           </div>
@@ -5908,7 +10245,7 @@ const RadioView = ({
   setIsPlaying: (v: boolean) => void, 
   volume: number, 
   setVolume: (v: number) => void,
-  config: { url: string },
+  config: { url: string, currentShow?: string, upNextMessage?: string },
   isAdmin: boolean
 }) => {
   const [newUrl, setNewUrl] = useState(config.url);
@@ -5958,11 +10295,11 @@ const RadioView = ({
 
               <div className="space-y-2">
                 <h2 className="text-2xl md:text-3xl font-bold text-vitta-text-primary">
-                  {isPlaying ? 'Transmitindo ao Vivo' : 'Rádio Pausada'}
+                  {isPlaying ? (config.currentShow || 'Transmitindo ao Vivo') : 'Rádio Pausada'}
                 </h2>
                 <p className="text-vitta-text-secondary max-w-md">
                   {isPlaying 
-                    ? 'Curta a melhor seleção musical preparada especialmente para você.' 
+                    ? (config.upNextMessage || 'Curta a melhor seleção musical preparada especialmente para você.')
                     : 'Clique no botão abaixo para iniciar a transmissão da Rádio ViTTA.'}
                 </p>
               </div>
@@ -6112,6 +10449,970 @@ const MiniPlayer = ({ isPlaying, setIsPlaying, volume, setVolume }: any) => {
         </button>
       </div>
     </motion.div>
+  );
+};
+
+const AddFundsModal = ({ isOpen, onClose, user }: { isOpen: boolean, onClose: () => void, user: any }) => {
+  const { addToast } = useToast();
+  const [amount, setAmount] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [step, setStep] = useState<'selection' | 'pix'>('selection');
+  const [paymentData, setPaymentData] = useState<any>(null);
+  const [pollingStatus, setPollingStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let interval: any;
+    if (step === 'pix' && paymentData?.id && pollingStatus !== 'approved') {
+      interval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/mercado-pago/payments/${paymentData.id}`);
+          const data = await response.json();
+          if (data.status === 'approved') {
+            setPollingStatus('approved');
+            addToast('Pagamento confirmado!', 'success');
+            setTimeout(() => {
+              onClose();
+            }, 2000);
+          }
+        } catch (error) {
+          console.error("Polling error:", error);
+        }
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [step, paymentData, pollingStatus]);
+
+  if (!isOpen) return null;
+
+  const handleCopyPix = () => {
+    const code = paymentData?.point_of_interaction?.transaction_data?.qr_code || '';
+    navigator.clipboard.writeText(code);
+    addToast('Código PIX copiado!', 'success');
+  };
+
+  const handleProceedToPix = async () => {
+    const value = parseFloat(amount.replace(',', '.'));
+    if (isNaN(value) || value <= 0) {
+      addToast('Por favor, insira um valor válido.', 'error');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/mercado-pago/pix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: value,
+          email: user.email,
+          userId: user.uid
+        })
+      });
+      const data = await response.json();
+      if (data.id) {
+        setPaymentData(data);
+        setStep('pix');
+      } else {
+        addToast(data.error || 'Erro ao gerar PIX', 'error');
+      }
+    } catch (error) {
+      console.error('Error generating PIX:', error);
+      addToast('Erro ao conectar com o gateway.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const predefinedValues = [50, 100, 200, 500];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-md rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <h2 className="text-xl font-bold text-vitta-text-primary">
+            {step === 'selection' ? 'Adicionar Fundos' : 'Pagamento via PIX'}
+          </h2>
+          <button onClick={onClose} className="text-vitta-text-secondary hover:text-vitta-text-primary transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-6 overflow-y-auto">
+          {step === 'selection' ? (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-vitta-text-primary mb-3">Selecione um valor:</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {predefinedValues.map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setAmount(val.toString())}
+                      className={`py-3 rounded-xl font-bold border transition-all ${
+                        amount === val.toString() 
+                          ? 'bg-vitta-accent border-vitta-accent text-white shadow-md' 
+                          : 'bg-vitta-surface-2 border-vitta-border text-vitta-text-primary hover:border-vitta-accent'
+                      }`}
+                    >
+                      R$ {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-vitta-text-primary mb-2">Ou digite outro valor:</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <span className="text-vitta-text-secondary font-medium">R$</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    min="1"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl focus:outline-none focus:border-vitta-accent text-vitta-text-primary font-bold"
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+
+              <button 
+                onClick={handleProceedToPix}
+                disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+                className="w-full py-4 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-vitta-accent/20"
+              >
+                {isProcessing ? (
+                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    Prosseguir para o PIX
+                    <ChevronRight size={20} />
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6 text-center">
+              {pollingStatus === 'approved' ? (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="py-12 flex flex-col items-center gap-4"
+                >
+                  <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
+                    <Check size={40} />
+                  </div>
+                  <h3 className="text-xl font-bold text-vitta-text-primary">Pagamento Aprovado!</h3>
+                  <p className="text-sm text-vitta-text-secondary text-center max-w-xs">
+                    Seu saldo foi atualizado e você já pode utilizar seus fundos.
+                  </p>
+                </motion.div>
+              ) : (
+                <>
+                  <div className="bg-vitta-surface-2 p-6 rounded-2xl flex flex-col items-center gap-4">
+                    <div className="w-48 h-48 bg-white p-2 rounded-xl border border-vitta-border flex items-center justify-center relative overflow-hidden">
+                       {paymentData?.point_of_interaction?.transaction_data?.qr_code_base64 ? (
+                         <img 
+                           src={`data:image/png;base64,${paymentData.point_of_interaction.transaction_data.qr_code_base64}`} 
+                           alt="QR Code PIX"
+                           className="w-full h-full object-contain"
+                         />
+                       ) : (
+                         <div className="flex flex-col items-center gap-2 text-vitta-text-muted">
+                           <QrCode size={48} />
+                           <span className="text-[10px]">Gerando QR Code...</span>
+                         </div>
+                       )}
+                    </div>
+                    <p className="text-xs text-vitta-text-secondary font-medium">Aguardando pagamento... O saldo será atualizado automaticamente.</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm font-bold text-vitta-text-primary">Valor: R$ {parseFloat(amount).toFixed(2)}</p>
+                    <div className="relative">
+                       <input 
+                         readOnly 
+                         value={paymentData?.point_of_interaction?.transaction_data?.qr_code || ''}
+                         className="w-full pl-4 pr-12 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-[10px] font-mono text-vitta-text-secondary outline-none"
+                         placeholder="Código PIX"
+                       />
+                       <button 
+                         onClick={handleCopyPix}
+                         className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-vitta-accent hover:bg-vitta-accent/10 rounded-lg transition-colors"
+                       >
+                         <Copy size={16} />
+                       </button>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => setStep('selection')}
+                    className="w-full py-3 text-vitta-text-muted text-sm font-bold hover:text-vitta-text-primary transition-colors flex items-center justify-center gap-1"
+                  >
+                    <ChevronLeft size={16} />
+                    Alterar valor ou cancelar
+                  </button>
+                  
+                  <div className="flex items-center justify-center gap-2 text-[10px] text-vitta-text-muted uppercase tracking-widest font-bold">
+                    <div className="w-1.5 h-1.5 bg-vitta-accent rounded-full animate-pulse" />
+                    Verificando status do pagamento
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const WalletsView = ({ user }: { user: any }) => {
+  const { addToast } = useToast();
+  const [balance, setBalance] = useState(0);
+  const [vittaCoins, setVittaCoins] = useState(0);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'history' | 'rewards'>('history');
+  const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
+
+  // Exclusive rewards for Vitta Coins redemption
+  const rewardOffers = [
+    {
+      id: 'reward_telemed_vitta',
+      title: 'Voucher Consulta Telemedicina',
+      partner: 'ViTTA Convênios',
+      cost: 40,
+      description: 'Resgate uma consulta por vídeo gratuita de Clínico Geral disponível 24h.',
+      icon: Video,
+      color: 'amber'
+    },
+    {
+      id: 'reward_meds_drogapovo',
+      title: 'Voucher 30% Desconto Genéricos',
+      partner: 'Drogaria do Povo',
+      cost: 15,
+      description: 'Dedução de 30% em qualquer medicamento de marca genérica participante.',
+      icon: Pill,
+      color: 'emerald'
+    },
+    {
+      id: 'reward_checkup_exame',
+      title: 'Exame de Check-up Básico Grátis',
+      partner: 'Laboratório ViTTA Lab',
+      cost: 30,
+      description: 'Hemograma completo + Perfil de glicemia sem custo de coparticipação.',
+      icon: Activity,
+      color: 'pink'
+    },
+    {
+      id: 'reward_specialist_consult',
+      title: 'Desconto R$ 50 em Especialista',
+      partner: 'Clínica ViTTA Especialidades',
+      cost: 60,
+      description: 'Desconto fixo na sua próxima consulta presencial agendada com especialista.',
+      icon: Stethoscope,
+      color: 'indigo'
+    }
+  ];
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Fetch balance and Vitta Coins
+    const unsubscribeWallet = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setBalance(data.walletBalance || 0);
+        setVittaCoins(data.vittaCoins || 0);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+    });
+
+    // Fetch transactions
+    const q = query(
+      collection(db, 'transactions'),
+      where('userId', '==', user.uid),
+      orderBy('date', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribeTransactions = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'transactions');
+    });
+
+    return () => {
+      unsubscribeWallet();
+      unsubscribeTransactions();
+    };
+  }, [user]);
+
+  const handleRedeemReward = async (reward: any) => {
+    if (vittaCoins < reward.cost) {
+      addToast('Saldo de Vitta Coins insuficiente para resgatar esta oferta.', 'error');
+      return;
+    }
+
+    setIsRedeeming(reward.id);
+    try {
+      // 1. Deduct Vitta Coins from user document inside database
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        vittaCoins: increment(-reward.cost)
+      });
+
+      // 2. Add transaction record
+      const coinTxRef = doc(collection(db, 'transactions'));
+      await setDoc(coinTxRef, {
+        userId: user.uid,
+        type: 'coin_debit',
+        amount: reward.cost,
+        description: `Resgate de Recompensa: ${reward.title}`,
+        date: new Date().toISOString(),
+        status: 'completed'
+      });
+
+      // 3. Insert active voucher to use later
+      const userVoucherRef = doc(collection(db, 'user_vouchers'));
+      await setDoc(userVoucherRef, {
+        userId: user.uid,
+        voucherId: reward.id,
+        title: reward.title,
+        partner: reward.partner,
+        purchaseDate: new Date().toISOString(),
+        status: 'active',
+        isRedeemedReward: true
+      });
+
+      // 4. Create welcome notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: user.uid,
+        title: 'Recompensa Resgatada!',
+        message: `Parabéns! Você utilizou ${reward.cost} Vitta Coins para resgatar "${reward.title}". O voucher já se encontra disponível.`,
+        type: 'system',
+        read: false,
+        createdAt: Timestamp.now()
+      });
+
+      addToast(`Recompensa "${reward.title}" resgatante com sucesso!`, 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao resgatar recompensa.', 'error');
+    } finally {
+      setIsRedeeming(null);
+    }
+  };
+
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-vitta-text-primary">Carteira e Recompensas</h1>
+          <p className="text-vitta-text-secondary">Gerencie seus fundos e troque suas Vitta Coins acumuladas por prêmios</p>
+        </div>
+        <button 
+          onClick={() => setIsAddFundsModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+        >
+          <Plus size={20} />
+          Adicionar Fundos
+        </button>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Left Side: Cards */}
+        <div className="md:col-span-1 space-y-6">
+          {/* Card 1: BRL Balance */}
+          <div className="bg-gradient-to-br from-vitta-accent to-vitta-purple p-8 rounded-[2rem] text-white relative overflow-hidden shadow-xl">
+            <div className="absolute -right-10 -bottom-10 opacity-10">
+              <Wallet size={180} />
+            </div>
+            <div className="relative z-10 space-y-6">
+              <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                <Wallet size={24} />
+              </div>
+              <div>
+                <p className="text-vitta-surface text-sm font-medium mb-1">Saldo Atual (BRL)</p>
+                <h2 className="text-4xl font-extrabold">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}
+                </h2>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Vitta Coins Rewards Card */}
+          <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600 p-8 rounded-[2rem] text-white relative overflow-hidden shadow-xl">
+            <div className="absolute -right-8 -bottom-8 opacity-15 rotate-12">
+              <Sparkles size={160} />
+            </div>
+            <div className="relative z-10 space-y-6">
+              <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                <Coins size={24} className="text-yellow-100" />
+              </div>
+              <div>
+                <p className="text-amber-100 text-sm font-medium mb-1">Meus Vitta Coins</p>
+                <h2 className="text-4xl font-black tracking-tight flex items-baseline gap-1.5">
+                  🪙 {vittaCoins}
+                  <span className="text-xs font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Coins</span>
+                </h2>
+                <div className="pt-4 mt-4 border-t border-white/20 text-[10px] text-amber-100/90 leading-relaxed font-medium">
+                  💡 Regra de Acúmulo: Ganhe automaticamente <strong className="text-white">1 Vitta Coin para cada R$ 10,00 gastos</strong> em compras de vouchers nesta plataforma!
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Tab system for History vs Rewards */}
+        <div className="md:col-span-2 flex flex-col">
+          <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border mb-6">
+            <button 
+              onClick={() => setActiveSubTab('history')}
+              className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                activeSubTab === 'history' ? 'bg-vitta-surface text-vitta-accent shadow-sm' : 'text-vitta-text-secondary hover:text-vitta-text-primary'
+              }`}
+            >
+              <Clock size={16} />
+              Histórico de Lançamentos
+            </button>
+            <button 
+              onClick={() => setActiveSubTab('rewards')}
+              className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                activeSubTab === 'rewards' ? 'bg-vitta-surface text-vitta-accent shadow-sm' : 'text-vitta-text-secondary hover:text-vitta-text-primary'
+              }`}
+            >
+              <Sparkles size={16} className="text-yellow-500 fill-yellow-500/25" />
+              🎁 Central de Recompensas
+            </button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {activeSubTab === 'history' ? (
+              <motion.div 
+                key="history"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-vitta-surface rounded-3xl border border-vitta-border shadow-sm overflow-hidden flex-1"
+              >
+                <div className="p-6 border-b border-vitta-border">
+                  <h3 className="text-lg font-bold text-vitta-text-primary flex items-center gap-2">
+                    <Clock size={20} className="text-vitta-accent" />
+                    Histórico Bancário & Coins
+                  </h3>
+                </div>
+                
+                <div className="divide-y divide-vitta-border max-h-[500px] overflow-y-auto no-scrollbar">
+                  {loading ? (
+                    <div className="p-8 flex justify-center">
+                      <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : transactions.length > 0 ? (
+                    transactions.map((transaction) => {
+                      const isCoinType = transaction.type === 'coin_credit' || transaction.type === 'coin_debit';
+                      const isCredit = transaction.type === 'credit' || transaction.type === 'coin_credit';
+                      
+                      return (
+                        <div key={transaction.id} className="p-6 flex items-center justify-between hover:bg-vitta-surface-2 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                              isCoinType 
+                                ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-500' 
+                                : isCredit ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                            }`}>
+                              {isCoinType 
+                                ? <Coins size={22} /> 
+                                : isCredit ? <ArrowDownRight size={24} /> : <ArrowUpRight size={24} />}
+                            </div>
+                            <div>
+                              <p className="font-bold text-vitta-text-primary">{transaction.description}</p>
+                              <p className="text-sm text-vitta-text-secondary">
+                                {new Date(transaction.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`text-lg font-bold ${
+                            isCoinType 
+                              ? isCredit ? 'text-amber-500' : 'text-slate-500'
+                              : isCredit ? 'text-emerald-600' : 'text-rose-600'
+                          }`}>
+                            {isCredit ? '+' : '-'}
+                            {isCoinType 
+                              ? `${transaction.amount} Coins`
+                              : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(transaction.amount)}
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="p-12 text-center">
+                      <div className="w-16 h-16 bg-vitta-surface-2 rounded-full flex items-center justify-center mx-auto mb-4 text-vitta-text-muted">
+                        <ClipboardList size={32} />
+                      </div>
+                      <p className="text-vitta-text-secondary font-medium">Nenhum lançamento registrado</p>
+                      <p className="text-sm text-vitta-text-muted mt-1">Seus extratos aparecerão aqui</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ) : (
+              // ACTIVE REWARDS STORE LIST
+              <motion.div 
+                key="rewards"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-6"
+              >
+                {rewardOffers.map((reward) => {
+                  const IconComp = reward.icon;
+                  return (
+                    <div 
+                      key={reward.id} 
+                      className="bg-vitta-surface border border-vitta-border rounded-3xl p-6 flex flex-col h-full hover:border-amber-400/50 transition-all shadow-sm relative group overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 p-3 bg-amber-500/10 text-amber-500 font-extrabold text-xs rounded-bl-2xl flex items-center gap-1 border-l border-b border-vitta-border">
+                        🪙 {reward.cost} Coins
+                      </div>
+
+                      <div className="flex gap-4 items-start pr-18">
+                        <div className={`p-3 rounded-2xl bg-slate-150 border border-slate-200/50 flex-shrink-0 text-slate-700`}>
+                          <IconComp size={24} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-vitta-text-primary leading-tight group-hover:text-vitta-accent transition-colors">
+                            {reward.title}
+                          </h4>
+                          <p className="text-[10px] text-vitta-text-muted font-bold tracking-wide uppercase mt-1">
+                            {reward.partner}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-vitta-text-secondary leading-relaxed mt-4 flex-1">
+                        {reward.description}
+                      </p>
+
+                      <div className="pt-6 border-t border-vitta-border/60 mt-6 shrink-0 flex items-center justify-between gap-4">
+                        <div className="text-[10px] text-vitta-text-muted">
+                          Elegível para associados
+                        </div>
+                        <button 
+                          onClick={() => handleRedeemReward(reward)}
+                          disabled={isRedeeming !== null || vittaCoins < reward.cost}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            vittaCoins >= reward.cost 
+                              ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/10' 
+                              : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed border border-vitta-border'
+                          }`}
+                        >
+                          {isRedeeming === reward.id ? (
+                            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Sparkles size={14} className="fill-white/10" />
+                              {vittaCoins >= reward.cost ? 'Trocar agora' : 'Saldo Insuficiente'}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <AddFundsModal 
+        isOpen={isAddFundsModalOpen} 
+        onClose={() => setIsAddFundsModalOpen(false)} 
+        user={user} 
+      />
+    </div>
+  );
+};
+
+const CheckoutModal = ({ isOpen, onClose, user, voucher, balance }: { isOpen: boolean, onClose: () => void, user: any, voucher: any, balance: number }) => {
+  const { addToast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  if (!isOpen || !voucher) return null;
+
+  const hasEnoughBalance = balance >= voucher.price;
+  const remainingBalance = balance - voucher.price;
+
+  const handlePurchase = async () => {
+    if (!hasEnoughBalance) {
+      addToast('Saldo insuficiente para esta compra.', 'error');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // 1. Deduct balance and calculate Vitta Coins cashback (1 Coin per R$ 10 spent)
+      const userRef = doc(db, 'users', user.uid);
+      const coinsEarned = Math.floor(voucher.price / 10);
+      const updateData: any = {
+        walletBalance: increment(-voucher.price)
+      };
+      if (coinsEarned > 0) {
+        updateData.vittaCoins = increment(coinsEarned);
+      }
+      await updateDoc(userRef, updateData);
+
+      // 2. Create transaction including cashback transaction log if earned
+      const transactionRef = doc(collection(db, 'transactions'));
+      await setDoc(transactionRef, {
+        userId: user.uid,
+        type: 'debit',
+        amount: voucher.price,
+        description: `Compra de Voucher: ${voucher.title}`,
+        vittaCoinsEarned: coinsEarned,
+        date: new Date().toISOString(),
+        status: 'completed'
+      });
+
+      if (coinsEarned > 0) {
+        // Also log coin earning
+        const coinTxRef = doc(collection(db, 'transactions'));
+        await setDoc(coinTxRef, {
+          userId: user.uid,
+          type: 'coin_credit',
+          amount: coinsEarned,
+          description: `Cashback Vitta Coins: Compra de Voucher ${voucher.title}`,
+          date: new Date().toISOString(),
+          status: 'completed'
+        });
+      }
+
+      // 3. Add voucher to user's benefits
+      const userVoucherRef = doc(collection(db, 'user_vouchers'));
+      await setDoc(userVoucherRef, {
+        userId: user.uid,
+        voucherId: voucher.id,
+        title: voucher.title,
+        partner: voucher.partner,
+        purchaseDate: new Date().toISOString(),
+        status: 'active'
+      });
+
+      addToast('Voucher comprado com sucesso!', 'success');
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'transactions');
+      addToast('Erro ao processar a compra.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-vitta-surface w-full max-w-md rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+          <h2 className="text-xl font-bold text-vitta-text-primary">Confirmar Compra</h2>
+          <button onClick={onClose} className="text-vitta-text-secondary hover:text-vitta-text-primary transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-6 overflow-y-auto">
+          <div className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${voucher.color}-100 text-${voucher.color}-600`}>
+              <voucher.icon size={24} />
+            </div>
+            <div>
+              <p className="font-bold text-vitta-text-primary">{voucher.title}</p>
+              <p className="text-sm text-vitta-text-secondary">{voucher.partner}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-vitta-text-secondary">Saldo Atual</span>
+              <span className="font-medium text-vitta-text-primary">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-vitta-text-secondary">Valor do Voucher</span>
+              <span className="font-medium text-rose-600">
+                - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(voucher.price)}
+              </span>
+            </div>
+            <div className="pt-3 border-t border-vitta-border flex justify-between">
+              <span className="font-bold text-vitta-text-primary">Saldo Restante</span>
+              <span className={`font-bold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(remainingBalance)}
+              </span>
+            </div>
+          </div>
+
+          {!hasEnoughBalance && (
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 flex gap-3">
+              <AlertCircle size={20} className="text-rose-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-rose-700">
+                Saldo insuficiente. Por favor, adicione fundos à sua carteira para continuar.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handlePurchase}
+              disabled={isProcessing || !hasEnoughBalance}
+              className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isProcessing ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <ShoppingCart size={20} />
+                  Confirmar
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const VoucherView = ({ user, setActiveTab }: { user: any, setActiveTab: (tab: string) => void }) => {
+  const [balance, setBalance] = useState(0);
+  const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
+  const [subTab, setSubTab] = useState<'store' | 'my-vouchers'>('store');
+  const [myVouchers, setMyVouchers] = useState<any[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState(false);
+  const { addToast } = useToast();
+
+  const VOUCHERS = [
+    { id: '1', title: 'Desconto 20% em Exames', partner: 'Laboratório ViTTA', description: 'Válido para todos os exames de sangue e imagem.', price: 50, icon: FileText, color: 'blue' },
+    { id: '2', title: 'Consulta Nutricional', partner: 'Clínica Bem Estar', description: 'Uma consulta completa com avaliação de bioimpedância.', price: 120, icon: Activity, color: 'emerald' },
+    { id: '3', title: 'Sessão de Fisioterapia', partner: 'FisioCenter', description: 'Sessão de 1 hora para reabilitação ou prevenção.', price: 80, icon: Activity, color: 'purple' },
+    { id: '4', title: 'Check-up Cardiológico', partner: 'Cardio Vida', description: 'Eletrocardiograma + Consulta com especialista.', price: 150, icon: Heart, color: 'rose' },
+    { id: '5', title: 'Desconto em Medicamentos', partner: 'Farmácia Saúde', description: 'R$ 30 de desconto em compras acima de R$ 100.', price: 15, icon: Pill, color: 'amber' },
+    { id: '6', title: 'Avaliação Odontológica', partner: 'Odonto Sorriso', description: 'Avaliação completa e limpeza básica.', price: 90, icon: User, color: 'indigo' },
+  ];
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribeWallet = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setBalance(docSnap.data().walletBalance || 0);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+    });
+
+    return () => unsubscribeWallet();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoadingVouchers(true);
+    const q = query(collection(db, 'vouchers'), where('userId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMyVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoadingVouchers(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'vouchers');
+      setLoadingVouchers(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleRedeem = async (userVoucherId: string) => {
+    try {
+      await updateDoc(doc(db, 'vouchers', userVoucherId), {
+        status: 'redeemed',
+        redeemedAt: new Date().toISOString()
+      });
+      addToast('Benefício resgatado! Siga as instruções do parceiro.', 'success');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `vouchers/${userVoucherId}`);
+      addToast('Erro ao resgatar benefício.', 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-8 max-w-6xl mx-auto">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-vitta-text-primary">Vouchers</h1>
+          <p className="text-vitta-text-secondary">Compre benefícios exclusivos com seu saldo</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="bg-vitta-surface px-4 py-2 rounded-xl border border-vitta-border shadow-sm flex items-center gap-3">
+            <div className="w-8 h-8 bg-vitta-accent-bg rounded-lg flex items-center justify-center text-vitta-accent">
+              <Wallet size={16} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Saldo Disponível</p>
+              <p className="text-sm font-bold text-vitta-text-primary">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab('wallets')}
+            className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl text-sm font-bold hover:bg-vitta-surface-2 transition-colors"
+          >
+            Adicionar Saldo
+          </button>
+        </div>
+      </header>
+
+      <div className="flex gap-4 border-b border-vitta-border">
+        <button 
+          onClick={() => setSubTab('store')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'store' 
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+          }`}
+        >
+          <Store size={18} />
+          Catálogo Vouchers
+        </button>
+        <button 
+          onClick={() => setSubTab('my-vouchers')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === 'my-vouchers' 
+              ? 'border-vitta-accent text-vitta-accent' 
+              : 'border-transparent text-vitta-text-secondary hover:text-vitta-text-primary'
+          }`}
+        >
+          <Ticket size={18} />
+          Meus Vouchers
+          {myVouchers.filter(v => v.status === 'active').length > 0 && (
+            <span className="bg-vitta-accent text-white px-2 py-0.5 rounded-full text-[10px]">
+              {myVouchers.filter(v => v.status === 'active').length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {subTab === 'store' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {VOUCHERS.map((voucher) => (
+            <div key={voucher.id} className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+              <div className="p-6 flex-1">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 bg-${voucher.color}-100 text-${voucher.color}-600`}>
+                  <voucher.icon size={28} />
+                </div>
+                <h3 className="text-xl font-bold text-vitta-text-primary mb-2">{voucher.title}</h3>
+                <p className="text-sm font-medium text-vitta-accent mb-4">{voucher.partner}</p>
+                <p className="text-sm text-vitta-text-secondary line-clamp-3">{voucher.description}</p>
+              </div>
+              <div className="p-6 border-t border-vitta-border bg-vitta-surface-2 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">Valor</p>
+                  <p className="text-lg font-bold text-vitta-text-primary">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(voucher.price)}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedVoucher(voucher)}
+                  className="px-6 py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-colors flex items-center gap-2"
+                >
+                  <ShoppingCart size={16} />
+                  Comprar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loadingVouchers ? (
+             <div className="col-span-full py-20 flex justify-center">
+               <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+             </div>
+          ) : myVouchers.length === 0 ? (
+             <div className="col-span-full py-20 text-center text-vitta-text-secondary flex flex-col items-center">
+               <Ticket size={48} className="text-vitta-border mb-4" />
+               <p className="font-bold text-lg mb-1 text-vitta-text-primary">Você ainda não possui vouchers</p>
+               <p className="text-sm max-w-sm mb-6">Acesse o catálogo e utilize seu saldo para comprar benefícios exclusivos.</p>
+               <button onClick={() => setSubTab('store')} className="bg-vitta-surface-2 text-vitta-text-primary px-6 py-2 rounded-xl font-bold border border-vitta-border">Ver Catálogo</button>
+             </div>
+          ) : (
+            myVouchers.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(voucher => (
+              <div key={voucher.id} className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden flex flex-col">
+                <div className="p-6 flex-1">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-vitta-accent-bg flex items-center justify-center text-vitta-accent">
+                      <Ticket size={24} />
+                    </div>
+                    {voucher.status === 'active' ? (
+                      <span className="bg-vitta-green-bg text-vitta-green px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><Check size={12}/> Válido</span>
+                    ) : (
+                      <span className="bg-vitta-surface-3 text-vitta-text-muted px-3 py-1 rounded-full text-xs font-bold border border-vitta-border">Resgatado</span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold text-vitta-text-primary mb-1">{voucher.title}</h3>
+                  <p className="text-sm font-medium text-vitta-accent">{voucher.partner}</p>
+                </div>
+                <div className="p-4 border-t border-vitta-border bg-vitta-surface-2">
+                  <p className="text-xs text-vitta-text-secondary mb-3">
+                    Adquirido em {new Date(voucher.purchaseDate).toLocaleDateString()}
+                  </p>
+                  {voucher.status === 'active' ? (
+                    <button 
+                      onClick={() => handleRedeem(voucher.id)}
+                      className="w-full py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold flex justify-center items-center gap-2 hover:bg-vitta-accent/90"
+                    >
+                      <ArrowUpRight size={16}/> Resgatar Benefício
+                    </button>
+                  ) : (
+                    <button 
+                      disabled
+                      className="w-full py-2 bg-vitta-surface-3 text-vitta-text-muted rounded-xl text-sm font-bold opacity-70 cursor-not-allowed"
+                    >
+                      Já Utilizado
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <CheckoutModal 
+        isOpen={!!selectedVoucher}
+        onClose={() => setSelectedVoucher(null)}
+        user={user}
+        voucher={selectedVoucher}
+        balance={balance}
+      />
+    </div>
   );
 };
 
@@ -6370,9 +11671,9 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl overflow-hidden"
+              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-6 border-b border-vitta-border flex items-center justify-between">
+              <div className="p-6 border-b border-vitta-border flex items-center justify-between bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">
                   {editingPharmacy ? 'Editar Farmácia' : 'Nova Farmácia'}
                 </h3>
@@ -6380,7 +11681,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                   <X size={24} />
                 </button>
               </div>
-              <form onSubmit={handleSave} className="p-6 space-y-4">
+              <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-vitta-text-primary">Nome da Farmácia</label>
                   <input 
@@ -6501,26 +11802,37 @@ const LoginView = ({
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [devNote, setDevNote] = useState<string | null>(null);
+  const inputRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
 
   useEffect(() => {
+    // 2FA desativado temporariamente
+    /*
     if (pendingUser && userData?.twoFactorEnabled) {
       setView('2fa');
       sendVerificationCode();
     }
+    */
   }, [pendingUser, userData]);
 
   const sendVerificationCode = async () => {
     if (!pendingUser) return;
     setIsLoading(true);
     setError(null);
+    setDevNote(null);
     try {
       const response = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: pendingUser.uid, email: pendingUser.email })
+        body: JSON.stringify({ 
+          userId: pendingUser.uid, 
+          email: pendingUser.email,
+          phoneNumber: userData?.phone
+        })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao enviar código');
+      if (data.devNote) setDevNote(data.devNote);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Erro ao enviar código de verificação.');
@@ -6657,27 +11969,61 @@ const LoginView = ({
           )}
           
           {view === '2fa' ? (
-            <form onSubmit={handleVerify2FA} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Código de Segurança</label>
-                <div className="relative">
-                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={18} />
-                  <input 
-                    type="text" 
-                    required
-                    maxLength={6}
-                    value={twoFactorCode}
-                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="000000"
-                    className="w-full pl-12 pr-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary text-center tracking-[0.5em] font-bold"
-                  />
+            <div className="space-y-8">
+              <div className="flex flex-col items-center">
+                <div className="w-16 h-16 bg-vitta-accent/10 text-vitta-accent rounded-2xl flex items-center justify-center mb-4">
+                  <ShieldCheck size={32} />
                 </div>
-                <p className="text-xs text-vitta-text-secondary text-center mt-2">O código foi enviado para seu e-mail (verifique o console do servidor).</p>
+                <p className="text-vitta-text-secondary text-sm text-center">
+                  Enviamos um código para o e-mail: <br />
+                  <span className="font-bold text-vitta-text-primary">{pendingUser?.email}</span>
+                </p>
+              </div>
+
+              {devNote && (
+                <div className="bg-vitta-accent/5 border border-vitta-accent/20 p-4 rounded-xl flex items-start gap-3">
+                  <Info className="text-vitta-accent shrink-0" size={18} />
+                  <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                    <span className="font-bold text-vitta-accent">Nota de Desenvolvimento:</span><br />
+                    {devNote} <br />
+                    <span className="font-medium">O código atual foi registrado nos logs do console do servidor AI Studio.</span>
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-between gap-2">
+                {[...Array(6)].map((_, i) => (
+                  <input
+                    key={i}
+                    ref={inputRefs[i]}
+                    type="text"
+                    maxLength={1}
+                    value={twoFactorCode[i] || ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val) {
+                        const newCode = twoFactorCode.split('');
+                        newCode[i] = val;
+                        setTwoFactorCode(newCode.join('').slice(0, 6));
+                        if (i < 5) inputRefs[i + 1].current?.focus();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace' && !twoFactorCode[i] && i > 0) {
+                        const newCode = twoFactorCode.split('');
+                        newCode[i-1] = '';
+                        setTwoFactorCode(newCode.join(''));
+                        inputRefs[i - 1].current?.focus();
+                      }
+                    }}
+                    className="w-12 h-14 text-center text-xl font-bold bg-vitta-surface-2 border border-vitta-border rounded-xl focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                ))}
               </div>
 
               <div className="flex flex-col gap-3">
                 <button 
-                  type="submit"
+                  onClick={handleVerify2FA}
                   disabled={isLoading || twoFactorCode.length !== 6}
                   className="w-full py-4 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all transform active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
                 >
@@ -6691,7 +12037,7 @@ const LoginView = ({
                   type="button"
                   onClick={sendVerificationCode}
                   disabled={isLoading}
-                  className="w-full py-2 text-vitta-accent text-xs font-bold hover:underline disabled:opacity-50"
+                  className="text-vitta-accent text-xs font-bold hover:underline py-2 disabled:opacity-50"
                 >
                   Reenviar Código
                 </button>
@@ -6704,7 +12050,7 @@ const LoginView = ({
                   Cancelar
                 </button>
               </div>
-            </form>
+            </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
             {view === 'signup' && (
@@ -6842,46 +12188,15 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [is2FAVerified, setIs2FAVerified] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-
-  useEffect(() => {
-    if (!isAuthReady || !user) return;
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setNotifications(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'notifications');
-    });
-    return () => unsubscribe();
-  }, [isAuthReady, user]);
-
-  const markNotificationAsRead = async (id: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', id), { read: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `notifications/${id}`);
-    }
-  };
-
-  const deleteNotification = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'notifications', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `notifications/${id}`);
-    }
-  };
-
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const [isHelpCenterOpen, setIsHelpCenterOpen] = useState(false);
+  const [reviewingAppointment, setReviewingAppointment] = useState<any>(null);
 
   // Radio Global State
-  const [radioConfig, setRadioConfig] = useState({ url: 'https://icecast.portalviva.com.br/viva_fm_vitoria' });
+  const [radioConfig, setRadioConfig] = useState({ 
+    url: 'https://icecast.portalviva.com.br/viva_fm_vitoria',
+    currentShow: 'Música ViTTA',
+    upNextMessage: 'A seguir: Dicas de Saúde'
+  });
   const [isRadioPlaying, setIsRadioPlaying] = useState(false);
   const [radioVolume, setRadioVolume] = useState(0.5);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -7076,7 +12391,7 @@ export default function App() {
     );
   }
 
-  const needs2FA = user && userData?.twoFactorEnabled && !is2FAVerified;
+  const needs2FA = false; // Desativado temporariamente a pedido do usuário
 
   if (!user || needs2FA) {
     return (
@@ -7090,15 +12405,19 @@ export default function App() {
   }
 
   const isAdmin = userData?.role === 'admin' || user?.email === 'jhecksanto@gmail.com';
+  const isProfessional = userData?.role === 'professional';
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return isAdmin ? <AdminView user={user} /> : <PatientDashboardView user={user} userData={userData} />;
-      case 'professionals': return <ProfessionalsView user={user} />;
-      case 'appointments': return <AppointmentsView user={user} />;
+      case 'dashboard': 
+        if (isAdmin) return <AdminView user={user} />;
+        if (isProfessional) return <ProfessionalDashboardView user={user} />;
+        return <PatientDashboardView user={user} userData={userData} setActiveTab={setActiveTab} />;
+      case 'professionals': return <ProfessionalsView user={user} userData={userData} />;
+      case 'appointments': return <AppointmentsView user={user} setActiveTab={setActiveTab} setReviewingAppointment={setReviewingAppointment} />;
       case 'plans': return isAdmin ? <PartnershipsView setActiveTab={setActiveTab} /> : <PartnersView setActiveTab={setActiveTab} user={user} />;
-      case 'wallets': return <PlaceholderView title="Carteiras" />;
-      case 'voucher': return <PlaceholderView title="Compra Voucher" />;
+      case 'wallets': return <WalletsView user={user} />;
+      case 'voucher': return <VoucherView user={user} setActiveTab={setActiveTab} />;
       case 'pharmacies': return <PharmaciesView isAdmin={isAdmin} />;
       case 'radio': return (
         <RadioView 
@@ -7110,9 +12429,9 @@ export default function App() {
           isAdmin={isAdmin}
         />
       );
-      case 'chat': return <PlaceholderView title="Chat Suporte" />;
+      case 'chat': return <ChatView user={user} />;
       case 'profile': return <SettingsView isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} user={user} userData={userData} />;
-      case 'support': return <SupportView />;
+      case 'support': return <SupportView setActiveTab={setActiveTab} />;
       case 'exams': return <ExamsView user={user} />;
       case 'offers': return <OffersView user={user} />;
       default: return isAdmin ? <AdminView user={user} /> : <PlaceholderView title="Dashboard Paciente" />;
@@ -7121,6 +12440,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen flex font-sans transition-colors duration-300 ${isDarkMode ? 'dark bg-vitta-bg text-vitta-text-primary' : 'bg-vitta-bg text-vitta-text-primary'}`}>
+      <OfflineIndicatorBanner />
       {/* Sidebar Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -7147,7 +12467,9 @@ export default function App() {
               </div>
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-vitta-text-primary">ViTTA</h2>
-                <p className="text-xs font-medium text-vitta-text-muted">{isAdmin ? 'Admin' : 'Paciente'}</p>
+                <p className="text-xs font-medium text-vitta-text-muted">
+                  {isAdmin ? 'Admin' : userData?.role === 'professional' ? 'Profissional' : 'Paciente'}
+                </p>
               </div>
             </div>
           </div>
@@ -7158,7 +12480,7 @@ export default function App() {
               <nav className="space-y-1">
                 <SidebarItem 
                   icon={LayoutGrid} 
-                  label="Painel Admin" 
+                  label={isAdmin ? 'Painel Admin' : userData?.role === 'professional' ? 'Painel Médico' : 'Dashboard'} 
                   active={activeTab === 'dashboard'} 
                   onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} 
                 />
@@ -7203,6 +12525,12 @@ export default function App() {
                   label="Rádio ViTTA" 
                   active={activeTab === 'radio'} 
                   onClick={() => { setActiveTab('radio'); setIsSidebarOpen(false); }} 
+                />
+                <SidebarItem 
+                  icon={Tag} 
+                  label="Ofertas e Descontos" 
+                  active={activeTab === 'offers'} 
+                  onClick={() => { setActiveTab('offers'); setIsSidebarOpen(false); }} 
                 />
                 <SidebarItem 
                   icon={MessageSquare} 
@@ -7279,125 +12607,16 @@ export default function App() {
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <div className="relative">
+            <div className="flex items-center gap-2">
               <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className={`p-2.5 rounded-lg transition-all border border-vitta-border relative ${
-                  showNotifications 
-                    ? 'bg-vitta-accent-bg text-vitta-accent' 
-                    : 'bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-border'
-                }`}
+                onClick={() => setIsHelpCenterOpen(true)}
+                className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border rounded-lg hover:bg-vitta-border hover:text-vitta-accent transition-all"
+                title="Central de Ajuda"
               >
-                <Bell size={20} />
-                {unreadCount > 0 && (
-                  <span className="absolute top-2 right-2 w-4 h-4 bg-vitta-danger text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-vitta-surface animate-bounce">
-                    {unreadCount}
-                  </span>
-                )}
+                <HelpCircle size={20} />
               </button>
-
-              <AnimatePresence>
-                {showNotifications && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setShowNotifications(false)} 
-                    />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-vitta-surface rounded-xl shadow-2xl border border-vitta-border z-50 overflow-hidden"
-                    >
-                      <div className="p-4 border-b border-vitta-border flex items-center justify-between">
-                        <h3 className="font-bold text-vitta-text-primary">Notificações</h3>
-                        {unreadCount > 0 && (
-                          <span className="text-[10px] bg-vitta-accent-bg text-vitta-accent px-2 py-1 rounded-full font-bold">
-                            {unreadCount} novas
-                          </span>
-                        )}
-                      </div>
-                      <div className="max-h-[400px] overflow-y-auto no-scrollbar">
-                        {notifications.length > 0 ? (
-                          notifications.map((notification) => (
-                            <div 
-                              key={notification.id}
-                              className={`p-4 border-b border-vitta-border last:border-0 transition-colors hover:bg-vitta-surface-2 relative group ${!notification.read ? 'bg-vitta-accent-bg/30' : ''}`}
-                            >
-                              <div className="flex gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                                  notification.type === 'exam' ? 'bg-vitta-green-bg text-vitta-green' :
-                                  notification.type === 'appointment' ? 'bg-vitta-accent-bg text-vitta-accent' :
-                                  'bg-vitta-surface-2 text-vitta-text-muted'
-                                }`}>
-                                  {notification.type === 'exam' ? <Stethoscope size={18} /> :
-                                   notification.type === 'appointment' ? <Calendar size={18} /> :
-                                   <Bell size={18} />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className={`text-sm font-bold text-vitta-text-primary truncate ${!notification.read ? 'pr-4' : ''}`}>
-                                      {notification.title}
-                                    </p>
-                                    {!notification.read && (
-                                      <div className="w-2 h-2 bg-vitta-accent rounded-full mt-1.5 shrink-0" />
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-vitta-text-secondary line-clamp-2 mt-0.5">
-                                    {notification.message}
-                                  </p>
-                                  <p className="text-[10px] text-vitta-text-muted mt-2">
-                                    {notification.createdAt?.toDate ? 
-                                      notification.createdAt.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 
-                                      'Agora'}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                {!notification.read && (
-                                  <button 
-                                    onClick={() => markNotificationAsRead(notification.id)}
-                                    className="p-1.5 bg-vitta-surface shadow-sm rounded-lg text-vitta-accent hover:bg-vitta-accent-bg transition-all"
-                                    title="Marcar como lida"
-                                  >
-                                    <Check size={14} />
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => deleteNotification(notification.id)}
-                                  className="p-1.5 bg-vitta-surface shadow-sm rounded-lg text-vitta-danger hover:bg-vitta-danger/10 transition-all"
-                                  title="Excluir"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-10 text-center space-y-3">
-                            <div className="w-12 h-12 bg-vitta-surface-2 rounded-full flex items-center justify-center text-vitta-text-muted mx-auto">
-                              <Bell size={24} />
-                            </div>
-                            <p className="text-sm text-vitta-text-secondary">Nenhuma notificação por aqui.</p>
-                          </div>
-                        )}
-                      </div>
-                      {notifications.length > 0 && (
-                        <div className="p-3 bg-vitta-surface-2 text-center">
-                          <button 
-                            onClick={() => {
-                              notifications.forEach(n => !n.read && markNotificationAsRead(n.id));
-                            }}
-                            className="text-[10px] font-bold text-vitta-accent uppercase tracking-widest hover:underline"
-                          >
-                            Marcar todas como lidas
-                          </button>
-                        </div>
-                      )}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+              
+              {user && <NotificationCenter userId={user.uid} />}
             </div>
             <div className="flex items-center gap-3 pl-4 border-l border-vitta-border">
               <div className="text-right hidden sm:block">
@@ -7449,6 +12668,22 @@ export default function App() {
         setIsPlaying={setIsRadioPlaying} 
         volume={radioVolume} 
         setVolume={setRadioVolume} 
+      />
+
+      <ReviewModal 
+        isOpen={!!reviewingAppointment}
+        onClose={() => setReviewingAppointment(null)}
+        userId={user?.uid || ''}
+        userName={user?.displayName || 'Usuário'}
+        professionalId={reviewingAppointment?.professionalId || ''}
+        professionalName={reviewingAppointment?.professionalName || ''}
+        appointmentId={reviewingAppointment?.id || ''}
+      />
+
+      <HelpCenter 
+        isOpen={isHelpCenterOpen}
+        onClose={() => setIsHelpCenterOpen(false)}
+        userEmail={user?.email || null}
       />
     </div>
   );

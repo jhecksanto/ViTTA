@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { translateError } from '../lib/errorTranslators';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -26,9 +27,12 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addToast = useCallback((message: string, type: ToastType, duration = 5000) => {
     const id = Math.random().toString(36).substring(2, 9);
     
+    // Auto-translate error messages if it looks like a Firebase/SDK error
+    const finalMessage = type === 'error' ? translateError(message) : message;
+
     const toast = {
       id,
-      message,
+      message: finalMessage,
       type,
       duration,
     };

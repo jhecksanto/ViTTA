@@ -63,3 +63,26 @@ export interface Professional {
   imageUrl: string;
   availability: string[];
 }
+
+export interface Medication {
+  id: string;
+  userId: string;
+  name: string;
+  dosage: string;
+  times: string[];
+  isActive: boolean;
+  startDate: string;
+  endDate?: string;
+  category?: string;
+}
+
+export interface HealthGoal {
+  id: string;
+  userId: string;
+  type: 'steps' | 'weight' | 'water' | 'sleep';
+  targetValue: number;
+  currentValue: number;
+  unit: string;
+  deadline: string;
+  status: 'active' | 'completed' | 'failed';
+}

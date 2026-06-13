@@ -8,7 +8,7 @@
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "name": { "type": "string" },
         "email": { "type": "string", "format": "email" },
-        "role": { "type": "string", "enum": ["admin", "user"] },
+        "role": { "type": "string", "enum": ["admin", "user", "professional"] },
         "status": { "type": "string", "enum": ["Ativo", "Pendente", "Inativo"] },
         "plan": { "type": "string", "enum": ["Premium", "Básico", "Free"] },
         "phone": { "type": "string" },
@@ -21,6 +21,10 @@
         "state": { "type": "string" },
         "cpf": { "type": "string" },
         "rg": { "type": "string" },
+        "birthDate": { "type": "string", "format": "date" },
+        "gender": { "type": "string", "enum": ["Masculino", "Feminino", "Outro", "Não informado"] },
+        "motherName": { "type": "string" },
+        "kycStatus": { "type": "string", "enum": ["pending", "under_review", "verified", "rejected"] },
         "documentFrontUrl": { "type": "string" },
         "documentBackUrl": { "type": "string" },
         "photoURL": { "type": "string" },
@@ -38,12 +42,28 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
-        "professionalId": { "type": "number" },
+        "patientName": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "professionalId": { "type": "string" },
         "professionalName": { "type": "string" },
         "specialty": { "type": "string" },
         "date": { "type": "string" },
         "time": { "type": "string" },
-        "status": { "type": "string", "enum": ["Confirmado", "Pendente", "Cancelado"] }
+        "status": { "type": "string", "enum": ["pending", "upcoming", "completed", "cancelled", "in_progress"] },
+        "clinicalNotes": { "type": "string" },
+        "prescriptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "medicine": { "type": "string" },
+              "dosage": { "type": "string" },
+              "instructions": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "professionalId", "date", "time"]
     },
@@ -52,11 +72,30 @@
       "description": "Healthcare professional",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "description": "Link to User UID" },
         "name": { "type": "string" },
         "specialty": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "price": { "type": "string" },
+        "vittaHealthDiscount": { "type": "string" },
+        "city": { "type": "string" },
         "rating": { "type": "number" },
         "reviews": { "type": "number" },
-        "imageUrl": { "type": "string" }
+        "imageUrl": { "type": "string" },
+        "schedule": {
+          "type": "object",
+          "properties": {
+            "weekly": {
+              "type": "object",
+              "description": "Day of week (monday-sunday) to array of {start: 'HH:mm', end: 'HH:mm'}"
+            },
+            "blockedDates": {
+              "type": "array",
+              "items": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "specialty"]
     },
@@ -78,15 +117,33 @@
     },
     "Exam": {
       "title": "Exam",
-      "description": "Medical exam definition",
+      "description": "Medical exam template definition",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "price": { "type": "string" },
+        "priceVitta": { "type": "string" },
+        "priceParticular": { "type": "string" },
         "description": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "price"]
+      "required": ["name", "priceVitta", "priceParticular"]
+    },
+    "UserExam": {
+      "title": "UserExam",
+      "description": "An exam instance assigned to a specific user with results",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "examId": { "type": "string", "description": "Reference to the Exam template" },
+        "name": { "type": "string", "description": "Name of the exam at the time of assignment" },
+        "lab": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "resultUrl": { "type": "string" },
+        "resultNote": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "status"]
     },
     "Offer": {
       "title": "Offer",
@@ -98,9 +155,28 @@
         "partner": { "type": "string" },
         "imageUrl": { "type": "string" },
         "description": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "isBanner": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "discount"]
+    },
+    "Voucher": {
+      "title": "Voucher",
+      "description": "Redeemed offer voucher",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "offerId": { "type": "string" },
+        "offerTitle": { "type": "string" },
+        "offerPartner": { "type": "string" },
+        "offerDiscount": { "type": "string" },
+        "code": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "used", "expired"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "usedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "offerId", "code", "status", "createdAt"]
     },
     "Category": {
       "title": "Category",
@@ -121,6 +197,34 @@
         "url": { "type": "string", "description": "Streaming URL" }
       },
       "required": ["url"]
+    },
+    "ChatRoom": {
+      "title": "ChatRoom",
+      "description": "A metadata document for a chat between a user and support",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "unreadCount": { "type": "number" },
+        "userTyping": { "type": "boolean" },
+        "adminTyping": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A single message in a support chat",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["user", "admin"] },
+        "text": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderRole", "text", "createdAt"]
     },
     "HealthMetric": {
       "title": "HealthMetric",
@@ -154,6 +258,46 @@
       },
       "required": ["userId", "title", "message", "type", "read"]
     },
+    "Review": {
+      "title": "Review",
+      "description": "Professional review and rating",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "professionalId": { "type": "string" },
+        "appointmentId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "professionalId", "rating"]
+    },
+    "FAQ": {
+      "title": "FAQ",
+      "description": "Frequently Asked Question",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "category": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["question", "answer", "category"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and administrative audit log entry",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "adminName": { "type": "string" },
+        "action": { "type": "string" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminId", "adminName", "action", "description", "timestamp"]
+    },
     "VerificationCode": {
       "title": "VerificationCode",
       "description": "Temporary 2FA verification code",
@@ -185,6 +329,36 @@
         }
       },
       "required": ["levels"]
+    },
+    "SubscriptionPlan": {
+      "title": "SubscriptionPlan",
+      "description": "Subscription plan template from Mercado Pago",
+      "type": "object",
+      "properties": {
+        "mpPlanId": { "type": "string", "description": "Mercado Pago Pre-approval Plan ID" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "frequency": { "type": "number" },
+        "frequencyType": { "type": "string", "enum": ["days", "months"] },
+        "status": { "type": "string", "enum": ["active", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["mpPlanId", "name", "price", "frequency", "frequencyType", "status"]
+    },
+    "UserSubscription": {
+      "title": "UserSubscription",
+      "description": "User's active subscription details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "mpSubscriptionId": { "type": "string", "description": "Mercado Pago Pre-approval ID" },
+        "planId": { "type": "string" },
+        "status": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "nextBillingDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "mpSubscriptionId", "planId", "status"]
     }
   },
   "firestore": {
@@ -216,6 +390,10 @@
       "schema": "Exam",
       "description": "List of available exams"
     },
+    "/user_exams/{userExamId}": {
+      "schema": "UserExam",
+      "description": "Exams assigned to users with results"
+    },
     "/offers/{offerId}": {
       "schema": "Offer",
       "description": "List of special offers"
@@ -228,13 +406,45 @@
       "schema": "Notification",
       "description": "User notifications"
     },
+    "/vouchers/{voucherId}": {
+      "schema": "Voucher",
+      "description": "Redeemed vouchers"
+    },
     "/verification_codes/{codeId}": {
       "schema": "VerificationCode",
       "description": "Temporary 2FA codes"
     },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Professional reviews and ratings"
+    },
+    "/faqs/{faqId}": {
+      "schema": "FAQ",
+      "description": "System FAQs"
+    },
     "/config/radio": {
       "schema": "RadioConfig",
       "description": "Radio stream configuration"
+    },
+    "/chats/{userId}": {
+      "schema": "ChatRoom",
+      "description": "Chat room metadata and status"
+    },
+    "/chats/{userId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a chat room"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Administrative actions audit trail"
+    },
+    "/subscription_plans/{planId}": {
+      "schema": "SubscriptionPlan",
+      "description": "Available subscription plans"
+    },
+    "/user_subscriptions/{subId}": {
+      "schema": "UserSubscription",
+      "description": "Individual user subscriptions"
     }
   }
 }
