@@ -41,9 +41,19 @@ service cloud.firestore {
     }
 
     match /appointments/{appointmentId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        (resource.data.professionalUserId == request.auth.uid) ||
+        (get(/databases/$(database)/documents/professionals/$(resource.data.professionalId)).data.userId == request.auth.uid) ||
+        isAdmin()
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        (resource.data.professionalUserId == request.auth.uid) ||
+        (get(/databases/$(database)/documents/professionals/$(resource.data.professionalId)).data.userId == request.auth.uid) ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
 

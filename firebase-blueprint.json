@@ -47,6 +47,7 @@
         "professionalId": { "type": "string" },
         "professionalName": { "type": "string" },
         "specialty": { "type": "string" },
+        "professionalUserId": { "type": "string" },
         "date": { "type": "string" },
         "time": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "upcoming", "completed", "cancelled", "in_progress"] },

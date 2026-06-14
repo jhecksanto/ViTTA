@@ -131,6 +131,12 @@ import {
 } from "recharts";
 import { auth, db, storage, googleProvider } from "./firebase";
 import { useToast } from "./contexts/ToastContext.tsx";
+import { GoogleAuthProvider } from "firebase/auth";
+import {
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+} from "./utils/googleCalendar";
 import { validateCPF, validateEmail, fetchAddressByCep } from "./lib/utils";
 import ConfirmationModal from "./components/ConfirmationModal";
 import OfflineIndicatorBanner from "./components/OfflineIndicatorBanner";
@@ -714,12 +720,14 @@ const BookingModal = ({
   professional,
   user,
   userData,
+  googleToken,
 }: {
   isOpen: boolean;
   onClose: () => void;
   professional: any;
   user: any;
   userData?: any;
+  googleToken?: string | null;
 }) => {
   const [modalTab, setModalTab] = useState<"profile" | "booking">("profile");
   const [isBooking, setIsBooking] = useState(false);
@@ -837,12 +845,13 @@ const BookingModal = ({
     setIsBooking(true);
     try {
       // 1. Save to Firestore
-      await addDoc(collection(db, "appointments"), {
+      const aptRef = await addDoc(collection(db, "appointments"), {
         userId: user.uid,
         patientName: userData?.name || user.displayName || user.email,
         professionalId: professional.id,
         professionalName: professional.name,
         specialty: professional.specialty,
+        professionalUserId: professional.userId || "",
         imageUrl:
           professional.imageUrl || "https://picsum.photos/seed/prof/400/300",
         date: selectedDate,
@@ -852,6 +861,21 @@ const BookingModal = ({
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
+
+      // Auto-Sync to Google Calendar
+      if (googleToken && userData?.googleCalendarSyncEnabled !== false) {
+        const eventId = await createGoogleCalendarEvent({
+          professionalName: professional.name,
+          specialty: professional.specialty,
+          date: selectedDate,
+          time: selectedTime,
+        }, googleToken);
+        if (eventId) {
+          await updateDoc(doc(db, "appointments", aptRef.id), {
+            googleCalendarEventId: eventId,
+          });
+        }
+      }
 
       // 1.1 Create Notification
       await addDoc(collection(db, "notifications"), {
@@ -4303,10 +4327,12 @@ const ProfessionalManualBookingModal = ({
   isOpen,
   onClose,
   professional,
+  user,
 }: {
   isOpen: boolean;
   onClose: () => void;
   professional: any;
+  user: any;
 }) => {
   const [patients, setPatients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -4485,6 +4511,7 @@ const ProfessionalManualBookingModal = ({
         professionalId: professional.id,
         professionalName: professional.name,
         specialty: professional.specialty,
+        professionalUserId: professional.userId || user?.uid || "",
         imageUrl:
           professional.imageUrl || "https://picsum.photos/seed/prof/400/300",
         date: selectedDate,
@@ -5646,6 +5673,7 @@ const ProfessionalDashboardView = ({
             isOpen={isManualBookingModalOpen}
             professional={professionalProfile}
             onClose={() => setIsManualBookingModalOpen(false)}
+            user={user}
           />
         )}
       </AnimatePresence>
@@ -9504,9 +9532,11 @@ const ProfessionalsManagementView = () => {
 const ProfessionalsView = ({
   user,
   userData,
+  googleToken,
 }: {
   user: any;
   userData?: any;
+  googleToken?: string | null;
 }) => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -9705,6 +9735,7 @@ const ProfessionalsView = ({
         professional={bookingProfessional}
         user={user}
         userData={userData}
+        googleToken={googleToken}
       />
     </div>
   );
@@ -10497,11 +10528,15 @@ const SettingsView = ({
   setIsDarkMode,
   user,
   userData,
+  googleToken,
+  setGoogleToken,
 }: {
   isDarkMode: boolean;
   setIsDarkMode: (v: boolean) => void;
   user: FirebaseUser | null;
   userData: any;
+  googleToken: string | null;
+  setGoogleToken: (token: string | null) => void;
 }) => {
   const { addToast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
@@ -11423,6 +11458,154 @@ const SettingsView = ({
                   />
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Google Calendar Sync */}
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary flex items-center gap-2">
+                <Calendar className="text-vitta-green" size={20} />
+                Google Calendar
+              </h2>
+              {googleToken ? (
+                <span className="flex items-center gap-1.5 text-vitta-green text-xs font-bold uppercase tracking-wider">
+                  <span className="w-2.5 h-2.5 rounded-full bg-vitta-green animate-pulse inline-block" /> Conectado
+                </span>
+              ) : (
+                <span className="text-vitta-text-muted text-xs uppercase font-extrabold tracking-wider">Desconectado</span>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                Ao ativar a sincronização automatizada, todas as suas consultas agendadas, remarcadas ou confirmadas serão atualizadas em tempo real no seu calendário do Google com lembretes integrados para você nunca se atrasar.
+              </p>
+
+              {googleToken ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-vitta-surface-2 rounded-xl">
+                    <div className="pr-4">
+                      <p className="font-bold text-sm text-vitta-text-primary">
+                        Sincronização Ativa
+                      </p>
+                      <p className="text-[10px] text-vitta-text-secondary leading-tight mt-0.5">
+                        Permitir que o aplicativo gerencie eventos de consulta no Google Calendar
+                      </p>
+                    </div>
+                    <div
+                      onClick={async () => {
+                        const nextVal = !userData?.googleCalendarSyncEnabled;
+                        try {
+                          await setDoc(doc(db, "users", user!.uid), {
+                            googleCalendarSyncEnabled: nextVal,
+                          }, { merge: true });
+                          addToast(
+                            nextVal ? "Sincronização com o Google Calendar ativada!" : "Sincronização desativada.",
+                            "success"
+                          );
+                        } catch (err) {
+                          console.error(err);
+                          addToast("Erro ao atualizar preferência de sincronização.", "error");
+                        }
+                      }}
+                      className={`w-10 h-5 rounded-full relative cursor-pointer shrink-0 transition-colors ${userData?.googleCalendarSyncEnabled !== false ? "bg-vitta-green" : "bg-vitta-border"}`}
+                    >
+                      <motion.div
+                        animate={{ x: userData?.googleCalendarSyncEnabled !== false ? 20 : 4 }}
+                        className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const q = query(
+                            collection(db, "appointments"),
+                            where("userId", "==", user!.uid)
+                          );
+                          const querySnapshot = await getDocs(q);
+                          let count = 0;
+                          for (const appointmentDoc of querySnapshot.docs) {
+                            const aptData = appointmentDoc.data();
+                            if (aptData.status !== "cancelado" && !aptData.googleCalendarEventId) {
+                              const eventId = await createGoogleCalendarEvent({
+                                professionalName: aptData.professionalName,
+                                specialty: aptData.specialty,
+                                date: aptData.date,
+                                time: aptData.time,
+                              }, googleToken);
+                              if (eventId) {
+                                await updateDoc(doc(db, "appointments", appointmentDoc.id), {
+                                  googleCalendarEventId: eventId,
+                                });
+                                count++;
+                              }
+                            }
+                          }
+                          addToast(
+                            count > 0 
+                              ? `${count} novas consultas foram sincronizadas no seu Google Calendar!` 
+                              : "Todas as suas consultas já estão sincronizadas no Google Calendar.",
+                            "success"
+                          );
+                        } catch (err) {
+                          console.error(err);
+                          addToast("Erro ao sincronizar consultas.", "error");
+                        }
+                      }}
+                      className="flex-1 py-3 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-vitta-accent/15"
+                    >
+                      Sincronizar Consultas Existentes
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGoogleToken(null);
+                        addToast("Google Calendar desconectado localmente.", "info");
+                      }}
+                      className="py-3 bg-vitta-surface-2 border border-vitta-border text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all px-4"
+                    >
+                      Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const calendarProvider = new GoogleAuthProvider();
+                      calendarProvider.addScope("https://www.googleapis.com/auth/calendar");
+                      const result = await signInWithPopup(auth, calendarProvider);
+                      const credential = GoogleAuthProvider.credentialFromResult(result);
+                      if (credential?.accessToken) {
+                        setGoogleToken(credential.accessToken);
+                        // Default to enabled in user doc
+                        await setDoc(doc(db, "users", user!.uid), {
+                          googleCalendarSyncEnabled: true,
+                        }, { merge: true });
+                        addToast("Google Calendar sincronizado com sucesso!", "success");
+                      } else {
+                        addToast("Não foi possível adquirir credencial do Google.", "error");
+                      }
+                    } catch (err: any) {
+                      console.error("Calendar auth error:", err);
+                      addToast("Falha de autenticação com o Google Calendar.", "error");
+                    }
+                  }}
+                  className="w-full py-3.5 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Conectar Google Calendar
+                </button>
+              )}
             </div>
           </div>
 
@@ -16044,11 +16227,13 @@ const AppointmentsView = ({
   setActiveTab,
   setReviewingAppointment,
   setActiveTelemedicineApt,
+  googleToken,
 }: {
   user: any;
   setActiveTab: (tab: string) => void;
   setReviewingAppointment: (apt: any) => void;
   setActiveTelemedicineApt: (apt: any) => void;
+  googleToken: string | null;
 }) => {
   const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -16105,6 +16290,12 @@ const AppointmentsView = ({
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, "appointments", apt.id));
+
+          // Auto-Sync to Google Calendar
+          if (googleToken && apt.googleCalendarEventId) {
+            await deleteGoogleCalendarEvent(apt.googleCalendarEventId, googleToken);
+          }
+
           await addDoc(collection(db, "notifications"), {
             userId: user.uid,
             title: "Consulta Cancelada",
@@ -16133,6 +16324,16 @@ const AppointmentsView = ({
         time: newTime,
         updatedAt: Timestamp.now(),
       });
+
+      // Auto-Sync to Google Calendar
+      if (googleToken && editingApt.googleCalendarEventId) {
+        await updateGoogleCalendarEvent(editingApt.googleCalendarEventId, {
+          professionalName: editingApt.professionalName,
+          specialty: editingApt.specialty,
+          date: newDate,
+          time: newTime,
+        }, googleToken);
+      }
 
       // Notify user
       await addDoc(collection(db, "notifications"), {
@@ -18843,6 +19044,7 @@ const LoginView = ({
 export default function App() {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("home");
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -19321,6 +19523,7 @@ export default function App() {
     try {
       await signOut(auth);
       setIs2FAVerified(false);
+      setGoogleToken(null);
     } catch (err) {
       console.error("Erro ao sair:", err);
     }
@@ -19389,7 +19592,7 @@ export default function App() {
           />
         );
       case "professionals":
-        return <ProfessionalsView user={user} userData={userData} />;
+        return <ProfessionalsView user={user} userData={userData} googleToken={googleToken} />;
       case "appointments":
         return (
           <AppointmentsView
@@ -19397,6 +19600,7 @@ export default function App() {
             setActiveTab={setActiveTab}
             setReviewingAppointment={setReviewingAppointment}
             setActiveTelemedicineApt={setActiveTelemedicineApt}
+            googleToken={googleToken}
           />
         );
       case "plans":
@@ -19431,6 +19635,8 @@ export default function App() {
             setIsDarkMode={setIsDarkMode}
             user={user}
             userData={userData}
+            googleToken={googleToken}
+            setGoogleToken={setGoogleToken}
           />
         );
       case "support":
