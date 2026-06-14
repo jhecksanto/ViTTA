@@ -3827,23 +3827,50 @@ const ProfessionalDashboardView = ({
                             });
                             await addDoc(collection(db, 'notifications'), {
                               userId: apt.userId,
-                              title: 'Consulta Recusada',
-                              message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi recusada pelo profissional.`,
+                              title: 'Consulta Rejeitada',
+                              message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi rejeitada pelo profissional.`,
                               type: 'appointment',
                               read: false,
                               createdAt: Timestamp.now()
                             });
-                            addToast('Agendamento recusado/ignorado.', 'info');
+                            addToast('Agendamento rejeitado com sucesso.', 'info');
                           } catch (err) {
                             console.error(err);
                             addToast('Erro ao atualizar agendamento.', 'error');
                           }
                         }}
                         className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-                        title="Recusar Reserva"
+                        title="Rejeitar Solicitação"
                       >
                         <X size={14} />
                         Rejeitar
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'appointments', apt.id), { 
+                              status: 'cancelled', 
+                              updatedAt: Timestamp.now() 
+                            });
+                            await addDoc(collection(db, 'notifications'), {
+                              userId: apt.userId,
+                              title: 'Consulta Cancelada',
+                              message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString('pt-BR')} às ${apt.time} foi cancelada pelo profissional.`,
+                              type: 'appointment',
+                              read: false,
+                              createdAt: Timestamp.now()
+                            });
+                            addToast('Agendamento cancelado com sucesso.', 'info');
+                          } catch (err) {
+                            console.error(err);
+                            addToast('Erro ao cancelar agendamento.', 'error');
+                          }
+                        }}
+                        className="px-4 py-2 border border-vitta-danger/30 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                        title="Cancelar Solicitação"
+                      >
+                        <X size={14} />
+                        Cancelar
                       </button>
                     </div>
                   </div>
