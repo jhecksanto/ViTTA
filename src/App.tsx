@@ -3604,6 +3604,7 @@ const ProfessionalDashboardView = ({
       await updateDoc(doc(db, 'appointments', editingApt.id), {
         date: newDate,
         time: newTime,
+        status: 'upcoming',
         updatedAt: Timestamp.now()
       });
 
