@@ -257,6 +257,28 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
+const formatDateForDisplay = (
+  dateStr: string,
+  options?: Intl.DateTimeFormatOptions,
+) => {
+  if (!dateStr) return "";
+  let d: Date;
+  if (dateStr.includes("T")) {
+    d = new Date(dateStr);
+  } else {
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // 0-indexed month
+      const day = parseInt(parts[2], 10);
+      d = new Date(year, month, day);
+    } else {
+      d = new Date(dateStr);
+    }
+  }
+  return d.toLocaleDateString("pt-BR", options);
+};
+
 const logAdminAction = async (
   action: string,
   description: string,
@@ -835,7 +857,7 @@ const BookingModal = ({
       await addDoc(collection(db, "notifications"), {
         userId: user.uid,
         title: "Solicitação de Consulta Enviada",
-        message: `Sua solicitação de consulta com ${professional.name} para o dia ${new Date(selectedDate).toLocaleDateString("pt-BR")} às ${selectedTime} foi enviada. Aguardando confirmação do profissional.`,
+        message: `Sua solicitação de consulta com ${professional.name} para o dia ${formatDateForDisplay(selectedDate)} às ${selectedTime} foi enviada. Aguardando confirmação do profissional.`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
@@ -845,7 +867,7 @@ const BookingModal = ({
       const phoneNumber = professional.whatsapp
         ? professional.whatsapp.replace(/\D/g, "")
         : "5528999881386";
-      const formattedDate = new Date(selectedDate).toLocaleDateString("pt-BR");
+      const formattedDate = formatDateForDisplay(selectedDate);
       const message = `Olá! Gostaria de agendar um atendimento.\n\n*Meus dados:*\nNome: ${user.displayName || "Usuário"}\nEmail: ${user.email}\n\n*Profissional selecionado:*\nNome: ${professional.name}\nEspecialidade: ${professional.specialty}\n\n*Data e Hora:*\n${formattedDate} às ${selectedTime}`;
 
       const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
@@ -2081,7 +2103,7 @@ const PatientDashboardView = ({
                       </div>
                       <div className="text-right">
                         <p className="text-xs font-bold text-vitta-accent">
-                          {new Date(apt.date).toLocaleDateString("pt-BR", {
+                          {formatDateForDisplay(apt.date, {
                             day: "2-digit",
                             month: "short",
                           })}
@@ -4480,7 +4502,7 @@ const ProfessionalManualBookingModal = ({
         await addDoc(collection(db, "notifications"), {
           userId: finalUserId,
           title: "Nova Consulta Agendada",
-          message: `O Dr(a). ${professional.name} agendou uma consulta com você para o dia ${new Date(selectedDate).toLocaleDateString("pt-BR")} às ${selectedTime} (${modality === "telemedicine" ? "Telemedicina" : "Presencial"}).`,
+          message: `O Dr(a). ${professional.name} agendou uma consulta com você para o dia ${formatDateForDisplay(selectedDate)} às ${selectedTime} (${modality === "telemedicine" ? "Telemedicina" : "Presencial"}).`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now(),
@@ -5538,7 +5560,7 @@ const ProfessionalDashboardView = ({
       await addDoc(collection(db, "notifications"), {
         userId: editingApt.userId,
         title: "Consulta Remarcada",
-        message: `Sua consulta com ${professionalProfile.name} foi remarcada para o dia ${new Date(newDate).toLocaleDateString("pt-BR")} às ${newTime}.`,
+        message: `Sua consulta com ${professionalProfile.name} foi remarcada para o dia ${formatDateForDisplay(newDate)} às ${newTime}.`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
@@ -5768,7 +5790,7 @@ const ProfessionalDashboardView = ({
                                 size={12}
                                 className="text-vitta-green"
                               />
-                              {new Date(apt.date).toLocaleDateString("pt-BR")}{" "}
+                              {formatDateForDisplay(apt.date)}{" "}
                               às {apt.time}
                             </span>
                             <span>•</span>
@@ -5812,7 +5834,7 @@ const ProfessionalDashboardView = ({
                               await addDoc(collection(db, "notifications"), {
                                 userId: apt.userId,
                                 title: "Consulta Confirmada",
-                                message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString("pt-BR")} às ${apt.time} foi confirmada com sucesso!`,
+                                message: `Sua consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi confirmada com sucesso!`,
                                 type: "appointment",
                                 read: false,
                                 createdAt: Timestamp.now(),
@@ -5853,7 +5875,7 @@ const ProfessionalDashboardView = ({
                               await addDoc(collection(db, "notifications"), {
                                 userId: apt.userId,
                                 title: "Consulta Rejeitada",
-                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString("pt-BR")} às ${apt.time} foi rejeitada pelo profissional.`,
+                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi rejeitada pelo profissional.`,
                                 type: "appointment",
                                 read: false,
                                 createdAt: Timestamp.now(),
@@ -5886,7 +5908,7 @@ const ProfessionalDashboardView = ({
                               await addDoc(collection(db, "notifications"), {
                                 userId: apt.userId,
                                 title: "Consulta Cancelada",
-                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString("pt-BR")} às ${apt.time} foi cancelada pelo profissional.`,
+                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
                                 type: "appointment",
                                 read: false,
                                 createdAt: Timestamp.now(),
@@ -6063,7 +6085,7 @@ const ProfessionalDashboardView = ({
                                       {
                                         userId: apt.userId,
                                         title: "Consulta Cancelada",
-                                        message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString("pt-BR")} às ${apt.time} foi cancelada pelo profissional.`,
+                                        message: `Sua consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
                                         type: "appointment",
                                         read: false,
                                         createdAt: Timestamp.now(),
@@ -6170,7 +6192,7 @@ const ProfessionalDashboardView = ({
                                 size={12}
                                 className="text-vitta-green"
                               />
-                              {new Date(apt.date).toLocaleDateString("pt-BR")}{" "}
+                              {formatDateForDisplay(apt.date)}{" "}
                               às {apt.time}
                             </span>
                             <span>•</span>
@@ -6224,7 +6246,7 @@ const ProfessionalDashboardView = ({
                               await addDoc(collection(db, "notifications"), {
                                 userId: apt.userId,
                                 title: "Consulta Cancelada",
-                                message: `Sua consulta com ${professionalProfile.name} para o dia ${new Date(apt.date).toLocaleDateString("pt-BR")} às ${apt.time} foi cancelada pelo profissional.`,
+                                message: `Sua consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
                                 type: "appointment",
                                 read: false,
                                 createdAt: Timestamp.now(),
@@ -6941,7 +6963,7 @@ const AdminView = ({ user }: { user: any }) => {
         await addDoc(collection(db, "notifications"), {
           userId: editingApt.userId,
           title: "Consulta Remarcada",
-          message: `Sua consulta com ${editingApt.professionalName} foi remarcada pelo administrador para ${new Date(newDate).toLocaleDateString("pt-BR")} às ${newTime}.`,
+          message: `Sua consulta com ${editingApt.professionalName} foi remarcada pelo administrador para ${formatDateForDisplay(newDate)} às ${newTime}.`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now(),
@@ -7271,7 +7293,7 @@ const AdminView = ({ user }: { user: any }) => {
                         <div className="text-right">
                           <div className="flex items-center gap-1.5 text-vitta-text-primary font-medium text-sm mb-1">
                             <Calendar size={14} className="text-vitta-green" />
-                            {new Date(apt.date).toLocaleDateString("pt-BR", {
+                            {formatDateForDisplay(apt.date, {
                               day: "2-digit",
                               month: "short",
                             })}
@@ -7609,7 +7631,7 @@ const AdminAppointmentsView = () => {
       await addDoc(collection(db, "notifications"), {
         userId: editingApt.userId,
         title: "Consulta Reagendada pelo Admin",
-        message: `Sua consulta com ${editingApt.professionalName} foi alterada para o dia ${new Date(newDate).toLocaleDateString("pt-BR")} às ${newTime}.`,
+        message: `Sua consulta com ${editingApt.professionalName} foi alterada para o dia ${formatDateForDisplay(newDate)} às ${newTime}.`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
@@ -7816,9 +7838,7 @@ const AdminAppointmentsView = () => {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-vitta-text-primary">
-                          {new Date(apt.date).toLocaleDateString("pt-BR", {
-                            timeZone: "UTC",
-                          })}
+                          {formatDateForDisplay(apt.date)}
                         </span>
                         <span className="text-xs text-vitta-text-secondary">
                           {apt.time}
@@ -16118,7 +16138,7 @@ const AppointmentsView = ({
       await addDoc(collection(db, "notifications"), {
         userId: user.uid,
         title: "Consulta Remarcada",
-        message: `Sua consulta com ${editingApt.professionalName} foi remarcada para ${new Date(newDate).toLocaleDateString("pt-BR")} às ${newTime}.`,
+        message: `Sua consulta com ${editingApt.professionalName} foi remarcada para ${formatDateForDisplay(newDate)} às ${newTime}.`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
@@ -16211,7 +16231,7 @@ const AppointmentsView = ({
                   </p>
                   <div className="flex items-center gap-2 text-sm font-bold text-vitta-text-primary">
                     <Calendar size={16} className="text-vitta-green" />
-                    {new Date(apt.date).toLocaleDateString("pt-BR")} às{" "}
+                    {formatDateForDisplay(apt.date)} às{" "}
                     {apt.time}
                   </div>
                 </div>
@@ -18148,9 +18168,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                       <div className="flex items-center gap-3 text-vitta-text-secondary">
                         <Calendar size={16} className="text-vitta-accent" />
                         <span className="text-sm">
-                          {new Date(
-                            pharmacy.onCallDate + "T12:00:00",
-                          ).toLocaleDateString("pt-BR")}
+                          {formatDateForDisplay(pharmacy.onCallDate)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-vitta-text-secondary">
