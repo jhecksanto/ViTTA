@@ -5397,9 +5397,11 @@ const ProfessionalAgendaSettingsView = ({ professional }: { professional: any })
 const ProfessionalDashboardView = ({
   user,
   setActiveTelemedicineApt,
+  overrideProfessionalId,
 }: {
   user: any;
   setActiveTelemedicineApt: (apt: any) => void;
+  overrideProfessionalId?: string;
 }) => {
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -5413,30 +5415,50 @@ const ProfessionalDashboardView = ({
   const { addToast } = useToast();
 
   useEffect(() => {
-    const q = query(
-      collection(db, "professionals"),
-      where("userId", "==", user.uid),
-    );
-    const unsubPro = onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          setProfessionalProfile({
-            id: snapshot.docs[0].id,
-            ...snapshot.docs[0].data(),
-          });
-        } else {
+    if (overrideProfessionalId) {
+      const unsubPro = onSnapshot(
+        doc(db, "professionals", overrideProfessionalId),
+        (snapshot) => {
+          if (snapshot.exists()) {
+            setProfessionalProfile({
+              id: snapshot.id,
+              ...snapshot.data(),
+            });
+          } else {
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error(error);
           setLoading(false);
-        }
-      },
-      (error) => {
-        console.error(error);
-        setLoading(false);
-      },
-    );
-
-    return () => unsubPro();
-  }, [user.uid]);
+        },
+      );
+      return () => unsubPro();
+    } else {
+      const q = query(
+        collection(db, "professionals"),
+        where("userId", "==", user.uid),
+      );
+      const unsubPro = onSnapshot(
+        q,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            setProfessionalProfile({
+              id: snapshot.docs[0].id,
+              ...snapshot.docs[0].data(),
+            });
+          } else {
+            setLoading(false);
+          }
+        },
+        (error) => {
+          console.error(error);
+          setLoading(false);
+        },
+      );
+      return () => unsubPro();
+    }
+  }, [user.uid, overrideProfessionalId]);
 
   useEffect(() => {
     if (!professionalProfile) return;
@@ -6770,11 +6792,33 @@ const AdminView = ({ user }: { user: any }) => {
     | "audit-logs"
     | "subscriptions"
     | "content"
+    | "medical-panel"
   >("overview");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [usersCount, setUsersCount] = useState(0);
+  const [allProfessionalsForAdmin, setAllProfessionalsForAdmin] = useState<any[]>([]);
+  const [selectedAdminProfId, setSelectedAdminProfId] = useState<string>("");
+
+  useEffect(() => {
+    const q = query(collection(db, "professionals"), orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setAllProfessionalsForAdmin(list);
+        if (list.length > 0 && !selectedAdminProfId) {
+          setSelectedAdminProfId(list[0].id);
+        }
+      },
+      (error) => {
+        console.error("Erro ao carregar todos os profissionais:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, [selectedAdminProfId]);
+
   const [editingApt, setEditingApt] = useState<any>(null);
   const [bookingProfessional, setBookingProfessional] = useState<any>(null);
   const [confirmModal, setConfirmModal] = useState<{
@@ -6981,6 +7025,17 @@ const AdminView = ({ user }: { user: any }) => {
         >
           <Calendar size={18} />
           Agendamentos
+        </button>
+        <button
+          onClick={() => setSubTab("medical-panel")}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === "medical-panel"
+              ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20"
+              : "bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border"
+          }`}
+        >
+          <Stethoscope size={18} />
+          Painel Médico
         </button>
         <button
           onClick={() => setSubTab("users")}
@@ -7386,6 +7441,55 @@ const AdminView = ({ user }: { user: any }) => {
           )}
           {subTab === "analytics" && <AdminAnalytics />}
           {subTab === "users" && <UsersView />}
+          {subTab === "medical-panel" && (
+            <div className="space-y-6">
+              <div className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-vitta-text-primary flex items-center gap-2">
+                    🩺 Visualização do Painel Médico
+                  </h3>
+                  <p className="text-xs text-vitta-text-secondary mt-1">
+                    Como Admin Master, você pode selecionar e gerenciar o perfil, a agenda, os turnos de atendimento e as finanças de qualquer profissional de saúde cadastrado na ViTTA.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <span className="text-xs font-bold text-vitta-text-secondary whitespace-nowrap font-sans">
+                    Selecionar Profissional:
+                  </span>
+                  <select
+                    value={selectedAdminProfId}
+                    onChange={(e) => setSelectedAdminProfId(e.target.value)}
+                    className="px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary min-w-[220px]"
+                  >
+                    <option value="">Selecione...</option>
+                    {allProfessionalsForAdmin.map((prof) => (
+                      <option key={prof.id} value={prof.id}>
+                        {prof.name} ({prof.specialty})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {selectedAdminProfId ? (
+                <div className="border border-vitta-border rounded-3xl p-1 bg-vitta-surface-2">
+                  <ProfessionalDashboardView
+                    user={user}
+                    setActiveTelemedicineApt={() => {}}
+                    overrideProfessionalId={selectedAdminProfId}
+                  />
+                </div>
+              ) : (
+                <div className="p-10 text-center bg-vitta-surface border border-dashed border-vitta-border/60 rounded-2xl space-y-3">
+                  <Stethoscope className="mx-auto text-vitta-text-muted animate-pulse" size={40} />
+                  <h4 className="font-bold text-vitta-text-primary">Nenhum Profissional Selecionado</h4>
+                  <p className="text-xs text-vitta-text-secondary max-w-sm mx-auto">
+                    Por favor, selecione um profissional do menu para visualizar ou alterar suas agendas.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {subTab === "deletion-requests" && <AdminDeletionRequestsView />}
           {subTab === "partnerships" && (
             <PartnershipsView setSubTab={setSubTab} />
@@ -15670,8 +15774,115 @@ const RescheduleModal = ({
   const [date, setDate] = useState(appointment.date);
   const [time, setTime] = useState(appointment.time);
   const [isSaving, setIsSaving] = useState(false);
+  const [professional, setProfessional] = useState<any>(null);
+  const [isLoadingProf, setIsLoadingProf] = useState(true);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+
+  useEffect(() => {
+    if (!appointment.professionalId) {
+      setIsLoadingProf(false);
+      return;
+    }
+    const fetchProf = async () => {
+      try {
+        const snap = await getDoc(doc(db, "professionals", appointment.professionalId));
+        if (snap.exists()) {
+          setProfessional({ id: snap.id, ...snap.data() });
+        }
+      } catch (err) {
+        console.error("Error fetching professional for rescheduling:", err);
+      } finally {
+        setIsLoadingProf(false);
+      }
+    };
+    fetchProf();
+  }, [appointment.professionalId]);
+
+  useEffect(() => {
+    if (!professional || !date) return;
+
+    const fetchBooked = async () => {
+      setIsLoadingSlots(true);
+      try {
+        const q = query(
+          collection(db, "appointments"),
+          where("professionalId", "==", professional.id),
+          where("date", "==", date),
+        );
+        const snapshot = await getDocs(q);
+        const booked = snapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter(
+            (data: any) =>
+              data.status !== "cancelled" && data.id !== appointment.id
+          )
+          .map((data: any) => data.time);
+        setBookedSlots(booked);
+      } catch (err) {
+        console.error("Error fetching booked slots for reschedule:", err);
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+
+    fetchBooked();
+  }, [date, professional, appointment.id]);
+
+  useEffect(() => {
+    if (!date || !professional) return;
+
+    let slots: string[] = [];
+
+    if (professional.schedule?.weekly) {
+      const dateObj = new Date(date + "T00:00:00");
+      const dayNames = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+      ];
+      const dayName = dayNames[dateObj.getDay()];
+      const daySchedule = professional.schedule.weekly[dayName] || [];
+
+      daySchedule.forEach((period: { start: string; end: string }) => {
+        let current = new Date(`2000-01-01T${period.start}:00`);
+        const stop = new Date(`2000-01-01T${period.end}:00`);
+        while (current < stop) {
+          slots.push(current.toTimeString().substring(0, 5));
+          current = new Date(current.getTime() + 30 * 60000);
+        }
+      });
+    } else {
+      slots = [
+        "08:00",
+        "08:30",
+        "09:00",
+        "09:30",
+        "10:00",
+        "10:30",
+        "11:00",
+        "11:30",
+        "13:00",
+        "13:30",
+        "14:00",
+        "14:30",
+        "15:00",
+        "15:30",
+        "16:00",
+        "16:30",
+      ];
+    }
+
+    setAvailableSlots(slots);
+  }, [date, professional]);
 
   const handleConfirm = async () => {
+    if (!time) return;
     setIsSaving(true);
     await onConfirm(date, time);
     setIsSaving(false);
@@ -15686,9 +15897,14 @@ const RescheduleModal = ({
         className="bg-vitta-surface w-full max-w-md rounded-3xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
       >
         <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
-          <h3 className="text-xl font-bold text-vitta-text-primary">
-            Remarcar Consulta
-          </h3>
+          <div>
+            <h3 className="text-xl font-bold text-vitta-text-primary">
+              Remarcar Consulta
+            </h3>
+            <p className="text-[11px] text-vitta-text-secondary mt-0.5">
+              Escolha uma nova data e horário disponível.
+            </p>
+          </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors"
@@ -15697,48 +15913,103 @@ const RescheduleModal = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4 overflow-y-auto">
+        <div className="p-6 space-y-4 overflow-y-auto no-scrollbar">
+          {/* Resumo Profissional */}
+          <div className="p-3.5 bg-vitta-surface-2 border border-vitta-border rounded-2xl flex items-center gap-3">
+            <img
+              src={appointment.imageUrl || "https://picsum.photos/seed/prof/100/100"}
+              alt={appointment.professionalName}
+              className="w-10 h-10 rounded-xl object-cover"
+            />
+            <div className="text-left">
+              <p className="text-xs font-bold text-vitta-text-primary">
+                {appointment.professionalName}
+              </p>
+              <p className="text-[10px] text-vitta-text-secondary mt-0.5">
+                {appointment.specialty}
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-              Nova Data
+              Data Desejada
             </label>
             <input
               type="date"
               value={date}
               min={new Date().toISOString().split("T")[0]}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+              onChange={(e) => {
+                setDate(e.target.value);
+                setTime("");
+              }}
+              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs focus:ring-1 focus:ring-vitta-accent/30 outline-none text-vitta-text-primary transition-all font-sans font-medium"
             />
           </div>
+
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-              Novo Horário
+              Sessões Disponíveis
             </label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
-            />
+            {isLoadingSlots ? (
+              <div className="grid grid-cols-4 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div
+                    key={i}
+                    className="h-10 bg-vitta-surface-2 rounded-lg animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : availableSlots.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1 no-scrollbar pt-1">
+                {availableSlots.map((slot) => {
+                  const isBooked = bookedSlots.includes(slot);
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      disabled={isBooked}
+                      onClick={() => setTime(slot)}
+                      className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
+                        time === slot
+                          ? "bg-vitta-accent border-vitta-accent text-white shadow-md shadow-vitta-accent/20 scale-[1.02]"
+                          : isBooked
+                            ? "bg-vitta-surface-2 border-vitta-border text-vitta-text-muted cursor-not-allowed opacity-40"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-primary hover:border-vitta-accent/40"
+                      }`}
+                    >
+                      {slot}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 bg-vitta-danger/5 rounded-xl border border-dashed border-vitta-danger/20 text-center">
+                <p className="text-[10px] font-bold text-vitta-danger uppercase tracking-wider">
+                  Nenhum turno disponível para esta data
+                </p>
+              </div>
+            )}
           </div>
-          <div className="flex gap-3 pt-4">
+
+          <div className="flex gap-3 pt-4 border-t border-vitta-border">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all disabled:opacity-50"
+              className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold text-xs hover:bg-vitta-border transition-all disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               onClick={handleConfirm}
-              disabled={isSaving}
-              className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
+              disabled={isSaving || !time}
+              className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold text-xs shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex justify-center items-center gap-2 disabled:opacity-50"
             >
               {isSaving ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                "Confirmar"
+                "Remarcar Consulta"
               )}
             </button>
           </div>
