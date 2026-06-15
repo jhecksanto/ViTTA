@@ -5477,6 +5477,95 @@ const ProfessionalDashboardView = ({
     useState(false);
   const { addToast } = useToast();
 
+  const [availableUnlinkedProfs, setAvailableUnlinkedProfs] = useState<any[]>([]);
+  const [loadingUnlinked, setLoadingUnlinked] = useState(false);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+
+  // New profile form states
+  const [newProfName, setNewProfName] = useState("Dr(a). " + (user?.displayName || ""));
+  const [newProfSpecialty, setNewProfSpecialty] = useState("Clínico Geral");
+  const [newProfCRM, setNewProfCRM] = useState("");
+  const [newProfPrice, setNewProfPrice] = useState("150");
+  const [newProfPhone, setNewProfPhone] = useState("");
+  const [isLinkingInProcess, setIsLinkingInProcess] = useState(false);
+
+  useEffect(() => {
+    if (professionalProfile || overrideProfessionalId) return;
+    const fetchUnlinked = async () => {
+      setLoadingUnlinked(true);
+      try {
+        const snap = await getDocs(collection(db, "professionals"));
+        const list = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() as any }))
+          .filter((p) => !p.userId); // only profiles not yet claimed
+        setAvailableUnlinkedProfs(list);
+      } catch (err) {
+        console.error("Error fetching unlinked professionals:", err);
+      } finally {
+        setLoadingUnlinked(false);
+      }
+    };
+    fetchUnlinked();
+  }, [professionalProfile, user.uid, overrideProfessionalId]);
+
+  const handleLinkProfile = async (profId: string) => {
+    setIsLinkingInProcess(true);
+    try {
+      await updateDoc(doc(db, "professionals", profId), {
+        userId: user.uid,
+        email: user.email,
+        updatedAt: Timestamp.now(),
+      });
+      addToast("Perfil vinculado com sucesso!", "success");
+    } catch (err) {
+      console.error("Error linking profile:", err);
+      addToast("Erro ao vincular perfil.", "error");
+    } finally {
+      setIsLinkingInProcess(false);
+    }
+  };
+
+  const handleCreateAndLinkProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProfName.trim() || !newProfCRM.trim() || !newProfSpecialty.trim()) {
+      addToast("Por favor, preencha todos os campos obrigatórios.", "error");
+      return;
+    }
+    setIsLinkingInProcess(true);
+    try {
+      await addDoc(collection(db, "professionals"), {
+        name: newProfName,
+        specialty: newProfSpecialty,
+        registrationNumber: newProfCRM,
+        price: parseFloat(newProfPrice) || 150,
+        whatsapp: newProfPhone || "5528999881386",
+        email: user.email,
+        userId: user.uid,
+        vittaHealthDiscount: "20%",
+        availableDays: "Seg, Ter, Qua, Qui, Sex",
+        rating: 5.0,
+        reviews: 0,
+        imageUrl: `https://picsum.photos/seed/${newProfCRM || user.uid}/400/300`,
+        schedule: {
+          weekly: {
+            monday: [{ start: "08:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+            tuesday: [{ start: "08:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+            wednesday: [{ start: "08:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+            thursday: [{ start: "08:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+            friday: [{ start: "08:00", end: "12:00" }, { start: "14:00", end: "18:00" }],
+          }
+        },
+        createdAt: new Date().toISOString(),
+      });
+      addToast("Perfil profissional criado e vinculado com sucesso!", "success");
+    } catch (err) {
+      console.error("Error creating and linking profile:", err);
+      addToast("Erro ao criar perfil profissional.", "error");
+    } finally {
+      setIsLinkingInProcess(false);
+    }
+  };
+
   useEffect(() => {
     if (overrideProfessionalId) {
       const unsubPro = onSnapshot(
@@ -5630,16 +5719,213 @@ const ProfessionalDashboardView = ({
 
   if (!professionalProfile) {
     return (
-      <div className="flex-1 p-10 flex flex-col items-center justify-center text-center space-y-4">
-        <AlertCircle size={48} className="text-vitta-amber" />
-        <h2 className="text-2xl font-bold text-vitta-text-primary">
-          Perfil não vinculado
-        </h2>
-        <p className="max-w-md text-vitta-text-secondary">
-          Sua conta está marcada como profissional, mas não há um perfil de
-          médico vinculado ao seu ID ({user.uid}). Contate um administrador para
-          realizar o vínculo.
-        </p>
+      <div className="flex-1 p-4 md:p-10 flex flex-col items-center justify-center font-sans">
+        <div className="max-w-3xl w-full bg-vitta-surface border border-vitta-border rounded-3xl p-6 md:p-10 space-y-8 shadow-xl">
+          <div className="text-center space-y-4">
+            <div className="inline-flex p-4 bg-vitta-amber/10 text-vitta-amber rounded-full shadow-lg shadow-vitta-amber/5">
+              <AlertCircle size={36} className="animate-bounce" />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-vitta-text-primary">
+              Seja bem-vindo(a) à ViTTA Medical!
+            </h2>
+            <p className="text-sm text-vitta-text-secondary leading-relaxed max-w-lg mx-auto">
+              Sua conta está identificada como <span className="font-bold text-vitta-accent">Profissional de Saúde</span>, mas seu usuário ainda não possui um perfil clínico de atendimento vinculado.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            {/* Left Box: Claim / Link to an existing profile */}
+            <div className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-6 flex flex-col justify-between space-y-4 text-left">
+              <div className="space-y-3">
+                <div className="w-10 h-10 bg-vitta-accent/10 rounded-xl flex items-center justify-center text-vitta-accent font-bold">
+                  <User size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-vitta-text-primary">
+                  Vincular Perfil Existente
+                </h3>
+                <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                  Se um administrador já cadastrou seu nome, selecione seu perfil abaixo para associá-lo definitivamente ao seu usuário.
+                </p>
+              </div>
+
+              {loadingUnlinked ? (
+                <div className="py-4 text-center text-xs text-vitta-text-secondary">
+                  Carregando perfis livres...
+                </div>
+              ) : availableUnlinkedProfs.length > 0 ? (
+                <div className="space-y-2 mt-4 max-h-[220px] overflow-y-auto pr-1">
+                  {availableUnlinkedProfs.map((prof) => (
+                    <div
+                      key={prof.id}
+                      className="p-3 bg-vitta-surface border border-vitta-border rounded-xl flex items-center justify-between gap-3 group hover:border-vitta-accent transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-vitta-text-primary truncate">
+                          {prof.name}
+                        </p>
+                        <p className="text-[10px] text-vitta-text-secondary">
+                          {prof.specialty} • {prof.registrationNumber || "Sem CRM"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleLinkProfile(prof.id)}
+                        disabled={isLinkingInProcess}
+                        className="px-2.5 py-1.5 bg-vitta-accent text-white text-[10px] font-bold rounded-lg hover:bg-vitta-accent/90 transition-all shadow-md shadow-vitta-accent/10 whitespace-nowrap disabled:opacity-55"
+                      >
+                        Vincular
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 bg-vitta-surface-3 border border-vitta-border rounded-xl text-center text-[11px] text-vitta-text-muted italic">
+                  Nenhum cadastro sem vínculo encontrado.
+                </div>
+              )}
+            </div>
+
+            {/* Right Box: Create New Profile */}
+            <div className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-6 flex flex-col justify-between space-y-4 text-left">
+              <div className="space-y-3">
+                <div className="w-10 h-10 bg-vitta-green/10 text-vitta-green rounded-xl flex items-center justify-center font-bold">
+                  <Plus size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-vitta-text-primary">
+                  Criar Novo Perfil Médico
+                </h3>
+                <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                  Não possui um perfil na plataforma? Crie agora mesmo de forma autônoma para habilitar e liberar todo o seu Painel de Consulta.
+                </p>
+              </div>
+
+              {!isCreatingProfile ? (
+                <button
+                  onClick={() => setIsCreatingProfile(true)}
+                  className="w-full mt-4 py-3 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl font-bold text-xs tracking-wide transition-all shadow-md shadow-vitta-green/10 text-center"
+                >
+                  Configurar Meu Perfil Agora
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsCreatingProfile(false)}
+                  className="w-full mt-4 py-2 bg-vitta-border text-vitta-text-primary hover:bg-vitta-border-2 rounded-xl font-bold text-xs transition-all text-center"
+                >
+                  Voltar
+                </button>
+              )}
+            </div>
+          </div>
+
+          {isCreatingProfile && (
+            <motion.form
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              onSubmit={handleCreateAndLinkProfile}
+              className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-6 md:p-8 text-left space-y-5"
+            >
+              <h4 className="font-bold text-base text-vitta-text-primary border-b border-vitta-border pb-2 flex items-center gap-2">
+                <Stethoscope size={18} className="text-vitta-accent" />
+                DADOS CLÍNICOS DO SEU PERFIL
+              </h4>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    Nome Completo (Profissional) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newProfName}
+                    onChange={(e) => setNewProfName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary"
+                    placeholder="Ex: Dr. Lucas Medeiros"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    Especialidade Clínica *
+                  </label>
+                  <select
+                    required
+                    value={newProfSpecialty}
+                    onChange={(e) => setNewProfSpecialty(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary h-[38px]"
+                  >
+                    <option value="Clínico Geral">Clínico Geral</option>
+                    <option value="Cardiologia">Cardiologia</option>
+                    <option value="Dermatologia">Dermatologia</option>
+                    <option value="Ginecologia">Ginecologia</option>
+                    <option value="Nutrição">Nutrição</option>
+                    <option value="Psicologia">Psicologia</option>
+                    <option value="Pediatria">Pediatria</option>
+                    <option value="Ortopedia">Ortopedia</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    CRM / Registro Profissional *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newProfCRM}
+                    onChange={(e) => setNewProfCRM(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary"
+                    placeholder="Ex: CRM/UF 123456"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    Preço da Consulta (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={newProfPrice}
+                    onChange={(e) => setNewProfPrice(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary"
+                    placeholder="150"
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    WhatsApp para Recebimento de Alertas
+                  </label>
+                  <input
+                    type="tel"
+                    value={newProfPhone}
+                    onChange={(e) => setNewProfPhone(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary"
+                    placeholder="Ex: 5528999999999"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-vitta-border/50">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProfile(false)}
+                  className="px-5 py-2.5 border border-vitta-border hover:bg-vitta-surface-3 text-vitta-text-primary rounded-xl text-xs font-bold transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLinkingInProcess}
+                  className="px-6 py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-vitta-accent/10 disabled:opacity-55"
+                >
+                  {isLinkingInProcess ? "Criando e Vinculando..." : "Criar Meu Perfil Clínico"}
+                </button>
+              </div>
+            </motion.form>
+          )}
+        </div>
       </div>
     );
   }
