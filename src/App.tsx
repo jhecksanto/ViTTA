@@ -5677,57 +5677,57 @@ const ProfessionalDashboardView = ({
           />
         )}
       </AnimatePresence>
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-vitta-text-primary">
+      <header className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 w-full pb-4 border-b border-vitta-border/50">
+        <div className="w-full xl:w-auto">
+          <h1 className="text-2xl md:text-3xl font-bold text-vitta-text-primary break-words w-full leading-tight">
             Olá, Dr(a). {professionalProfile.name}
           </h1>
-          <p className="text-vitta-text-secondary">
+          <p className="text-vitta-text-secondary mt-1 break-words w-full text-sm md:text-base">
             Gerencie seus atendimentos de hoje,{" "}
             {new Date().toLocaleDateString("pt-BR")}.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-vitta-surface-2 p-1 rounded-xl shadow-inner overflow-x-auto no-scrollbar">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 w-full xl:w-auto flex-wrap">
+          <div className="flex flex-wrap bg-vitta-surface-2 p-1 rounded-xl shadow-inner w-full md:w-auto gap-1">
             <button
               onClick={() => setSubTab("agenda")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === "agenda" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "agenda" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
             >
-              📋 Agenda do Dia
+              📋 Agenda-Dia
             </button>
             <button
               onClick={() => setSubTab("profile")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === "profile" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "profile" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
             >
-              👤 Meu Perfil Público
+              👤 Perfil
             </button>
             <button
               onClick={() => setSubTab("finance")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === "finance" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "finance" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
             >
               💰 Financeiro
             </button>
             <button
               onClick={() => setSubTab("settings")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${subTab === "settings" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "settings" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
             >
-              ⚙️ Configurações da Agenda
+              ⚙️ Grade
             </button>
           </div>
           {subTab === "agenda" && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap bg-vitta-surface-2 p-1 rounded-xl shadow-inner gap-2 w-full md:w-auto">
               <button
                 onClick={() => setIsScheduleModalOpen(true)}
-                className="px-4 py-2 bg-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-border-2 transition-all flex items-center gap-2 whitespace-nowrap"
+                className="flex-1 md:flex-none px-4 py-2.5 bg-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-border-2 transition-all flex items-center justify-center gap-2 whitespace-nowrap text-xs md:text-sm"
               >
-                <Calendar size={18} />
+                <Calendar size={16} />
                 Gerenciar Grade
               </button>
               <button
                 onClick={() => setIsManualBookingModalOpen(true)}
-                className="px-4 py-2 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/95 transition-all flex items-center gap-2 whitespace-nowrap shadow-md shadow-vitta-accent/10"
+                className="flex-1 md:flex-none px-4 py-2.5 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/95 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-md shadow-vitta-accent/10 text-xs md:text-sm"
               >
-                <Plus size={18} />
+                <Plus size={16} />
                 Inserir Agendamento
               </button>
             </div>
@@ -5839,7 +5839,7 @@ const ProfessionalDashboardView = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-4 md:mt-0">
                         <button
                           onClick={() =>
                             setSelectedPatient({
@@ -6023,7 +6023,7 @@ const ProfessionalDashboardView = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-4 md:mt-0">
                           <button
                             onClick={() =>
                               setSelectedPatient({
@@ -6241,7 +6241,7 @@ const ProfessionalDashboardView = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-4 md:mt-0">
                         <button
                           onClick={() =>
                             setSelectedPatient({
@@ -6356,24 +6356,25 @@ const ProfessionalDashboardView = ({
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Visual Weekly Schedule Panel */}
-            <div className="w-full bg-vitta-surface border border-vitta-border rounded-xl p-6 space-y-4 col-span-full">
-              <div className="flex justify-between items-center border-b border-vitta-border pb-3">
-                <div className="flex items-center gap-2">
-                  <Clock className="text-vitta-accent" size={20} />
-                  <h3 className="font-bold text-base text-vitta-text-primary">
-                    Definições da Grade de Atendimento Semanal
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setIsScheduleModalOpen(true)}
-                  className="px-3 py-1.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5"
-                >
-                  <Calendar size={14} />
-                  Configurar Turnos
-                </button>
+          {/* Visual Weekly Schedule Panel */}
+          <div className="w-full bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-vitta-border pb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="text-vitta-accent" size={20} />
+                <h3 className="font-bold text-base text-vitta-text-primary">
+                  Definições da Grade de Atendimento Semanal
+                </h3>
               </div>
+              <button
+                onClick={() => setIsScheduleModalOpen(true)}
+                className="px-3 py-1.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5 self-start sm:self-auto"
+              >
+                <Calendar size={14} />
+                Configurar Turnos
+              </button>
+            </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                 {Object.entries({
@@ -6419,7 +6420,6 @@ const ProfessionalDashboardView = ({
                 })}
               </div>
             </div>
-          </div>
         </section>
       )}
 
@@ -8670,7 +8670,7 @@ const ProfessionalsManagementView = () => {
       const { id, type, ...data } = editingItem;
       const collectionName =
         type === "professional" ? "professionals" : "categories";
-      await updateDoc(doc(db, collectionName, id), data);
+      await setDoc(doc(db, collectionName, id), data, { merge: true });
       await logAdminAction(
         `UPDATE_${type.toUpperCase()}`,
         `Editou o ${type === "professional" ? "profissional" : "categoria"}: ${editingItem.name}`,
@@ -12524,10 +12524,10 @@ const OffersManagementView = () => {
     setIsSaving(true);
     try {
       if (editingItem) {
-        await updateDoc(doc(db, "offers", editingItem.id), {
+        await setDoc(doc(db, "offers", editingItem.id), {
           ...newItem,
           updatedAt: Timestamp.now(),
-        });
+        }, { merge: true });
         await logAdminAction(
           "UPDATE_OFFER",
           `Editou a oferta: ${newItem.title}`,
@@ -12944,6 +12944,72 @@ const PartnershipsView = ({
   setActiveTab?: (tab: string) => void;
 }) => {
   const { addToast } = useToast();
+
+  const handleLogoUpload = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      addToast("Por favor, selecione um arquivo de imagem válido.", "error");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      addToast("A imagem deve ser menor que 10MB.", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.8);
+
+            if (editingItem) {
+              setEditingItem((prev: any) => ({
+                ...prev,
+                imageUrl: compressedBase64,
+              }));
+            } else {
+              setNewItem((prev: any) => ({
+                ...prev,
+                imageUrl: compressedBase64,
+              }));
+            }
+            addToast("Logomarca carregada e otimizada com sucesso!", "success");
+          } else {
+            addToast("Erro ao processar imagem.", "error");
+          }
+        };
+        img.onerror = () => {
+          addToast("Erro ao carregar a imagem.", "error");
+        };
+        img.src = event.target.result as string;
+      }
+    };
+    reader.onerror = () => {
+      addToast("Erro ao ler o arquivo.", "error");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const [activeSubTab, setActiveSubTab] = useState<
     "establishments" | "categories" | "offers" | "vitta-health"
   >("establishments");
@@ -13109,7 +13175,7 @@ const PartnershipsView = ({
     try {
       const { id, type, ...data } = editingItem;
       const collectionName = type === "partner" ? "partners" : "categories";
-      await updateDoc(doc(db, collectionName, id), data);
+      await setDoc(doc(db, collectionName, id), data, { merge: true });
       await logAdminAction(
         `UPDATE_${type.toUpperCase()}`,
         `Editou o ${type === "partner" ? "parceiro" : "categoria"}: ${editingItem.name}`,
@@ -13361,8 +13427,47 @@ const PartnershipsView = ({
                           })
                         : setNewItem({ ...newItem, imageUrl: e.target.value })
                     }
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary mb-2"
                   />
+                  <div className="flex gap-2 items-center">
+                    <label className="cursor-pointer shrink-0 flex items-center justify-center px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl transition-all gap-2 text-xs font-bold shadow-md shadow-vitta-accent/10">
+                      <Upload size={14} />
+                      <span>Fazer Upload da Imagem</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleLogoUpload(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {(editingItem ? editingItem.imageUrl : newItem.imageUrl) && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-vitta-surface-2 border border-vitta-border rounded-xl">
+                        <img
+                          src={editingItem ? editingItem.imageUrl : newItem.imageUrl}
+                          alt="Preview"
+                          className="w-6 h-6 rounded-md object-cover bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingItem) {
+                              setEditingItem({ ...editingItem, imageUrl: "" });
+                            } else {
+                              setNewItem({ ...newItem, imageUrl: "" });
+                            }
+                          }}
+                          className="text-[10px] font-bold text-vitta-danger hover:underline"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button
