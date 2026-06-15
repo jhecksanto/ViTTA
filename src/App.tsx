@@ -862,6 +862,13 @@ const BookingModal = ({
         updatedAt: Timestamp.now(),
       });
 
+      if (modality === "telemedicine") {
+        await updateDoc(doc(db, "appointments", aptRef.id), {
+          telemedicineRoomId: aptRef.id,
+          telemedicineUrl: `${window.location.origin}/?room=${aptRef.id}`,
+        });
+      }
+
       // Auto-Sync to Google Calendar
       if (googleToken && userData?.googleCalendarSyncEnabled !== false) {
         const eventId = await createGoogleCalendarEvent({
@@ -4503,7 +4510,7 @@ const ProfessionalManualBookingModal = ({
 
     setIsBooking(true);
     try {
-      await addDoc(collection(db, "appointments"), {
+      const aptRef = await addDoc(collection(db, "appointments"), {
         userId: finalUserId,
         patientName: finalPatientName,
         patientEmail: finalPatientEmail,
@@ -4523,6 +4530,13 @@ const ProfessionalManualBookingModal = ({
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
+
+      if (modality === "telemedicine") {
+        await updateDoc(doc(db, "appointments", aptRef.id), {
+          telemedicineRoomId: aptRef.id,
+          telemedicineUrl: `${window.location.origin}/?room=${aptRef.id}`,
+        });
+      }
 
       // Send notification to patient if registered
       if (finalUserId !== "external") {
@@ -6061,22 +6075,36 @@ const ProfessionalDashboardView = ({
                             (apt.modality === "telemedicine" ||
                               apt.modality === "online" ||
                               !apt.modality) && (
-                              <button
-                                onClick={async () => {
-                                  if (apt.status === "upcoming") {
-                                    await handleUpdateStatus(
-                                      apt.id,
-                                      "in_progress",
-                                    );
-                                  }
-                                  setActiveTelemedicineApt(apt);
-                                }}
-                                className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
-                                title="Atendimento por Vídeo"
-                              >
-                                <Video size={14} />
-                                Atender em Vídeo
-                              </button>
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    if (apt.status === "upcoming") {
+                                      await handleUpdateStatus(
+                                        apt.id,
+                                        "in_progress",
+                                      );
+                                    }
+                                    setActiveTelemedicineApt(apt);
+                                  }}
+                                  className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
+                                  title="Atendimento por Vídeo"
+                                >
+                                  <Video size={14} />
+                                  Atender em Vídeo
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const link = `${window.location.origin}/?room=${apt.id}`;
+                                    navigator.clipboard.writeText(link);
+                                    addToast("Link da teleconsulta copiado com sucesso!", "success");
+                                  }}
+                                  className="px-4 py-2 bg-vitta-surface-3 border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-surface hover:border-vitta-text-primary transition-all flex items-center gap-1.5"
+                                  title="Copiar Link de Convite"
+                                >
+                                  <Share2 size={14} />
+                                  Copiar Link
+                                </button>
+                              </>
                             )}
 
                           {apt.status === "upcoming" && (
@@ -16567,20 +16595,34 @@ const AppointmentsView = ({
                   </span>
                 </div>
 
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center flex-wrap">
                   {(apt.status === "upcoming" ||
                     apt.status === "in_progress") &&
                     (apt.modality === "telemedicine" ||
                       apt.modality === "online" ||
                       apt.specialty?.toLowerCase().includes("tele") ||
                       !apt.modality) && (
-                      <button
-                        onClick={() => setActiveTelemedicineApt(apt)}
-                        className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/95 transition-all flex items-center gap-1.5 shadow-md shadow-vitta-accent/10"
-                      >
-                        <Video size={14} />
-                        Acessar Teleconsulta
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setActiveTelemedicineApt(apt)}
+                          className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/95 transition-all flex items-center gap-1.5 shadow-md shadow-vitta-accent/10"
+                        >
+                          <Video size={14} />
+                          Acessar Teleconsulta
+                        </button>
+                        <button
+                          onClick={() => {
+                            const link = `${window.location.origin}/?room=${apt.id}`;
+                            navigator.clipboard.writeText(link);
+                            addToast("Link da teleconsulta copiado com sucesso!", "success");
+                          }}
+                          className="px-4 py-2 bg-vitta-surface-3 border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-surface hover:border-vitta-text-primary transition-all flex items-center gap-1.5"
+                          title="Copiar Link de Convite"
+                        >
+                          <Share2 size={14} />
+                          Copiar Link
+                        </button>
+                      </>
                     )}
                   {apt.status === "completed" && !apt.isReviewed && (
                     <button
@@ -18856,6 +18898,20 @@ const LoginView = ({
   return (
     <div className="min-h-screen flex items-center justify-center bg-vitta-bg p-6">
       <div className="w-full max-w-md space-y-8">
+        {new URLSearchParams(window.location.search).get("room") && (
+          <div className="mb-4 p-5 bg-vitta-accent/10 border border-vitta-accent/20 rounded-2xl flex items-start gap-3.5 text-left shadow-lg shadow-vitta-accent/[0.03]">
+            <Video className="text-vitta-accent shrink-0 mt-0.5" size={18} />
+            <div>
+              <h4 className="text-xs font-bold text-vitta-accent uppercase tracking-wider mb-1">
+                Acesso Seguro à Telemedicina
+              </h4>
+              <p className="text-xs text-vitta-text-secondary leading-relaxed">
+                Para acessar esta transmissão médica segura, por favor realize o login ou cadastro com as credenciais vinculadas a sua consulta na Vitta.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-vitta-accent rounded-xl shadow-xl shadow-vitta-accent/20 mb-4">
             <Heart className="text-white" size={32} />
@@ -19623,6 +19679,50 @@ export default function App() {
       if (unsubscribeUserData) unsubscribeUserData();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || !user || !userData) return;
+
+    const checkRoomDeepLink = async () => {
+      const roomParam = new URLSearchParams(window.location.search).get("room");
+      if (!roomParam) return;
+
+      try {
+        const aptDoc = await getDoc(doc(db, "appointments", roomParam));
+        if (aptDoc.exists()) {
+          const aptData = { id: aptDoc.id, ...aptDoc.data() } as any;
+
+          // 1. Check completed/cancelled status
+          if (aptData.status === "completed" || aptData.status === "cancelled") {
+            addToast("Esta consulta de telemedicina já foi encerrada ou expirou.", "error");
+          } else {
+            // 2. Clearances or security check
+            const isPatient = aptData.userId === user.uid || (aptData.patientEmail && aptData.patientEmail === user.email);
+            const isProfessional = aptData.professionalUserId === user.uid || (userData.role === "professional" && userData.id === aptData.professionalId) || (aptData.professionalEmail && aptData.professionalEmail === user.email);
+
+            if (isPatient || isProfessional) {
+              setActiveTelemedicineApt(aptData);
+              addToast("Bem-vindo(a) à sala de telemedicina segura!", "success");
+            } else {
+              addToast("Acesso negado: você não tem permissão para acessar esta consulta médica confidencial.", "error");
+            }
+          }
+        } else {
+          addToast("Erro: Sala de telemedicina não localizada ou inválida.", "error");
+        }
+      } catch (error) {
+        console.error("Error processing deep link room:", error);
+        addToast("Erro ao processar convite de telemedicina.", "error");
+      } finally {
+        // Clean up URL parameter to maintain elegant state and routing
+        const url = new URL(window.location.href);
+        url.searchParams.delete("room");
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+      }
+    };
+
+    checkRoomDeepLink();
+  }, [isAuthReady, user, userData]);
 
   const handleLogout = async () => {
     try {

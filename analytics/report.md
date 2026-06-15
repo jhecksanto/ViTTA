@@ -1,53 +1,48 @@
-# Relatório de Análise Geral e Finalização de Requisitos
-**Projeto:** ViTTA Convênios (Plataforma de Saúde & Bem-estar)  
-**Autor:** Assistente AI Studio  
-**Data:** 13 de Junho de 2026  
+# Relatório de Análise Geral do Sistema de Telemedicina
+**Data e Hora de Geração:** 15 de junho de 2026, 20:03:29 (Horário de Brasília)
 
 ---
 
-## 1. Introdução
-Este relatório apresenta uma análise crítica e pragmática do estado atual do sistema **ViTTA Convênios**. O objetivo é mapear as pontas soltas das funcionalidades já instaladas ou codificadas no repositório, garantindo que o sistema atinja sua maturidade de produção e experiência do usuário (UX) refinada. 
+## 📋 Introdução e Escopo
+Este documento apresenta uma análise detalhada sobre o estado atual da implementação da telemedicina no sistema **Vitta** e identifica as lacunas e requisitos faltantes para completar a solução. 
 
-Adotamos a diretriz de **não introduzir nenhuma funcionalidade nova não requisitada**, concentrando os esforços puramente no fechamento cirúrgico de fluxos incompletos e na montagem das passagens funcionais (as conexões entre componentes existentes).
-
----
-
-## 2. Inventário de Funcionalidades e Status Atual
-
-| Funcionalidade | Implementado | Integrado no Fluxo Principal | Status Técnico |
-| :--- | :---: | :---: | :--- |
-| **Autenticação, Firebase e Perfis** | Sim | Sim | Estável. Separação de rotas entre Associados, Profissionais e Administração operacional. |
-| **Clínica e Consultas (Presenciais)** | Sim | Sim | Completo. Agendamento, remarcação, cancelamento e visualização de prontuários. |
-| **Métricas de Saúde e Metas** | Sim | Sim | Funcional no cliente. Conectado ao Firestore para persistência, porém vulnerável a falhas de conexão em tempo real (oficialmente sem tratamento de fila de sync). |
-| **Indicação Offline (Banner)** | Sim | Sim | O componente detecta estado de rede com precisão, mas funciona de forma meramente consultiva. Não realiza o rollback ou enfileiramento das operações locais. |
-| **Carteiras e Transações Financeiras** | Sim | Sim | Completo para transferências e saques em BRL. |
-| **Vitta Coins (Cashback & Prêmios)** | Sim | Sim | Mecanismo de cashback (ganho) e troca (débito) implementado na `WalletsView` sob o Firestore. Vouchers são adicionados ao acervo, mas falta polimento na amostragem e consumo. |
-| **Sala de Telemedicina (`TelemedicineRoom`)** | Sim | Não | **Pendente de Integração.** O componente da sala WebRTC/Firestore simulada está 100% pronto na pasta `src/components/`, mas não está conectado ao fluxo visual do `App.tsx` para permitir que o paciente ou o médico entrem na chamada. |
+Atualmente, o sistema possui uma tela de consulta por vídeo funcional (`TelemedicineRoom`) que gerencia estados em tempo real como transmissão local, mudo, câmera desligada, compartilhamento de tela e chat síncrono integrado com o Firestore. No entanto, o sistema carece de um ciclo de vida robusto para links únicos e controle refinado de acesso.
 
 ---
 
-## 3. Análise Detalhada das Pontas Soltas (O que falta concluir)
+## 🔍 Análise do Estado Atual (Diagnóstico)
 
-### A. Integração Completa da Telemedicina (`TelemedicineRoom`)
-* **O que já temos:** Um componente espetacular, robusto e responsivo em `src/components/TelemedicineRoom.tsx`. Ele possui chat com suporte a envio simulado de exames em PDF, área de prescrições e atestados integrados para o médico que salvam via debounce no Firestore, simulação de tracks locais de câmera e microfone usando a API nativa do navegador (`navigator.mediaDevices.getUserMedia`) e animação visual de ondas sonoras.
-* **O que falta:**
-  1. Conexão real na visualização de consultas do Paciente (`AppointmentsView` no frontend): exibir botão **"Entrar na Sala"** quando a consulta for de modalidade telemedicina e estiver datada para o dia atual ou em andamento.
-  2. Conexão real no painel do Profissional (`ProfessionalDashboardView`): no card do paciente com status agendado, exibir botão de chamada por vídeo para abrir o workspace do médico.
-  3. Transição segura de layouts: criação de um estado raiz de controle no `App.tsx` que esconde os menus tradicionais e foca 100% na chamada, restaurando o painel de forma limpa quando o usuário clica em "Sair" ou "Finalizar".
+### 1. Mecanismo de Entrada na Chamada
+* **Atualmente:** A sala de telemedicina é ativada através do estado local do componente pai (`activeTelemedicineApt`), que substitui a visualização principal do dashboard.
+* **Limitação:** Não há deep-linking ou URLs dedicadas para as salas de consulta. Ao clicar em "Convidar" na sala, o sistema copia apenas a URL base atual do navegador (`window.location.href`). Se outro usuário abrir essa URL, ele será enviado para o dashboard principal e não entrará diretamente na chamada correspondente.
 
-### B. Sincronização em Segundo Plano (Fila Local Offline)
-* **O que já temos:** `OfflineIndicatorBanner` sinalizando quando a rede cai e quando volta, com um service worker básico em `/public/sw.js`.
-* **O que falta:**
-  1. Cria de uma fila de requisições pendentes gravadas no `localStorage` quando o associado altera suas métricas de peso, passos, hidratação ou logs de medicação no modo offline.
-  2. Listener de rede eficiente no `App.tsx` que monitora a transição `offline` -> `online`. Ao reestabelecer a conexão, lê a pilha temporária do `localStorage`, executa as chamadas em lote (batch-write) no Firebase e emite um toast de sucesso consolidado.
+### 2. Geração e Unicidade dos Links
+* **Atualmente:** Não há armazenamento de links ou IDs de sala únicos no Firestore para cada agendamento de telemedicina.
+* **Limitação:** Falta um identificador exclusivo (como um token/UUID) por consulta que atue como o endereço de conexão seguro e único para aquele atendimento.
 
-### C. Polimento de Usabilidade do Vitta Coins e Ativação de Vouchers
-* **O que já temos:** Módulo de cashback e resgate totalmente programado na carteira física do paciente.
-* **O que falta:**
-  1. Polimento de responsividade gráfica e formatações de data nas linhas de transação específicas para Coins.
-  2. Integração de exibição: após o associado trocar suas moedas por um cupom de prêmio (ex: *Voucher Consulta Telemedicina* ou *Isenção de Coparticipação em Exame*), este benefício precisa ser listado no acervo ativo de benefícios (vouchers do usuário) de forma transparente para que ele possa utilizar a ativação ou mostrar o QR Code de resgate.
+### 3. Validação e Ciclo de Vida do Link
+* **Atualmente:** O profissional de saúde pode finalizar a consulta clicando em "Desconectar e Finalizar", o que atualiza o `status` do agendamento para `completed` e fecha a sala localmente para si e para o paciente.
+* **Limitação:** Como o link não é um recurso explícito, não há regras de expiração ou validação de encerramento do link. Se o usuário tentar acessar a sala de consulta após a finalização, não há uma barreira que informe explicitamente que a sessão de telemedicina expirou ou foi concluída.
 
 ---
 
-## 4. Próximos Passos
-Preparamos, de forma aderente às especificações técnicas descritas na sua diretriz, a especificação das issues e seu planejamento técnico detalhado de montagem nos arquivos subsequentes: `analytics/Spec.md` e a quebra estrutural nas subtarefas em `analytics/issues/`.
+## 🚀 Requisitos Restantes para Conclusão da Telemedicina
+
+Para que a implementação atinja o padrão esperado pelo usuário de "link único por chamada" e "acessível somente até a finalização pelo profissional", os seguintes aspectos devem ser construídos:
+
+### 📑 Requisito 1: Geração de Link Único Baseado em UUID/Token
+* Cada agendamento onde a modalidade for `telemedicine` ou `online` deve receber um identificador de sala exclusivo e seguro (`telemedicineRoomId`) gerado no momento do agendamento ou na abertura da chamada pelo médico.
+* A URL gerada deve ter o formato consistente como de deep-linking (`https://.../?room={telemedicineRoomId}` ou usando o roteador interno com hash).
+
+### 📑 Requisito 2: Ciclo de Vida do Link e Acesso Condicional
+* **Ativação:** O link se torna ativo apenas quando a consulta é iniciada (ou em um intervalo pré-determinado antes do horário agendado).
+* **Validação de Acesso:** Ao entrar na sala de telemedicina, o sistema deve validar se o `status` da consulta no Firestore é diferente de `completed` ou `cancelled`.
+* **Expiração imediata:** Assim que o médico profissional acionar a desconexão ("Desconectar e Finalizar"), o `status` da consulta é alterado para `completed`. Tentativas de acesso subsequentes com o link desta sala devem ser imediatamente bloqueadas pela interface, redirecionando o usuário para uma tela de aviso: *"Esta consulta/link de transmissão foi encerrado pelo profissional."*
+
+### 📑 Requisito 3: Roteamento Inteligente e Integração de Deep-linking
+* O sistema deve reconhecer o parâmetro de sala na URL de inicialização do app (exemplo: query string `?room=XYZ` ou roteador interno) e, se o usuário estiver autenticado e for parte da consulta, redirecioná-lo automaticamente para o `TelemedicineRoom` correspondente.
+
+### 📑 Requisito 4: Interface do Paciente e do Médico Atualizados
+* O card de consulta de ambos deve mostrar claramente a opção de copiar o link único de telemedicina para compartilhamento externo facilitado (ex: convidar acompanhante ou médico assistente), exibindo o status do link ("Ativo" ou "Expirado").
+
+---

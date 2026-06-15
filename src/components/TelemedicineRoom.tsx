@@ -67,6 +67,11 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     status: appointment.status || 'upcoming'
   });
 
+  // Track session closed status
+  const [isSessionClosed, setIsSessionClosed] = useState(
+    appointment.status === 'completed' || appointment.status === 'cancelled'
+  );
+
   // Chat/Messages state
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessageText, setNewMessageText] = useState('');
@@ -83,6 +88,16 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
   // Handle local camera access
   useEffect(() => {
+    if (isSessionClosed) {
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          try { track.stop(); } catch (e) { console.warn(e); }
+        });
+        setLocalStream(null);
+      }
+      return;
+    }
+
     let activeStream: MediaStream | null = null;
     async function setupCamera() {
       try {
@@ -106,7 +121,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         activeStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, []);
+  }, [isSessionClosed]);
 
   // Sync state tracking from Firestore
   useEffect(() => {
@@ -116,6 +131,12 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     const unsubApp = onSnapshot(doc(db, 'appointments', appointment.id), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        const currentStatus = data.status || 'upcoming';
+
+        if (currentStatus === 'completed' || currentStatus === 'cancelled') {
+          setIsSessionClosed(true);
+        }
+
         setRoomState((prev: any) => ({
           ...prev,
           doctorJoined: data.doctorJoined ?? false,
@@ -125,7 +146,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           doctorCamOff: data.doctorCamOff ?? false,
           patientCamOff: data.patientCamOff ?? false,
           clinicalNotes: data.clinicalNotes ?? '',
-          status: data.status || 'upcoming'
+          status: currentStatus
         }));
         if (!isProfessional) {
           setDocNotes(data.clinicalNotes || '');
@@ -135,6 +156,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
     // Mark current user as JOINED
     const syncJoin = async () => {
+      if (appointment.status === 'completed' || appointment.status === 'cancelled') return;
       const updatePayload: any = {};
       if (isProfessional) {
         updatePayload.doctorJoined = true;
@@ -348,6 +370,40 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
     onLeave();
   };
+
+  if (isSessionClosed) {
+    return (
+      <div className="fixed inset-0 bg-slate-950 text-white z-[70] flex flex-col items-center justify-center font-sans p-6 text-center">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-xl w-full bg-slate-900 border border-slate-800 p-10 rounded-3xl space-y-8 flex flex-col items-center shadow-2xl relative overflow-hidden"
+        >
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 to-vitta-accent" />
+          
+          <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 shadow-lg shadow-rose-500/10">
+            <VideoOff size={40} />
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-3xl font-extrabold tracking-tight">
+              Atendimento de Telemedicina Encerrado
+            </h2>
+            <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
+              Esta consulta por vídeo foi finalizada com sucesso pelo médico profissional responsável. O prontuário e as receitas médicas já estão devidamente integrados ao seu perfil.
+            </p>
+          </div>
+
+          <button
+            onClick={onLeave}
+            className="w-full sm:w-auto px-8 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-2xl font-bold text-sm tracking-wide transition-all shadow-lg shadow-vitta-accent/20 flex items-center justify-center gap-2"
+          >
+            Voltar para o Painel
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   const otherPersonRole = isProfessional ? 'Paciente' : 'Médico';
   const otherPersonJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
