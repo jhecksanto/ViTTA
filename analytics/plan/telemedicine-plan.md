@@ -1,64 +1,80 @@
-# Plano de Implementação de Telemedicina Avançada (telemedicine-plan.md)
-**Data e Hora de Geração:** 15 de junho de 2026, 20:03:29 (Horário de Brasília)
+# Plano de Implementação de Refinamentos de Telemedicina (telemedicine-plan.md)
+**Data e Hora de Geração:** 15 de junho de 2026, 21:34:25 (Horário de Brasília)
 
 ---
 
-Este plano detalha a pesquisa técnica prévia e os passos sequenciais para a implementação das especificações presentes em `/analytics/issues/` sem realizar qualquer modificação no código ativo do sistema Vitta nesta etapa.
+Este plano detalha a pesquisa técnica de engenharia de software e as abordagens e etapas estratégicas necessárias para implementar os refinamentos especificados nas Issues #1, #2 e #3 no sistema de telemedicina **Vitta**. Todo o escopo é estritamente focado em polimento técnica e segurança de recursos, sem adicionar novas funcionalidades externas ao escopo.
 
 ---
 
-## 🔬 1. Pesquisa Técnica e Mitigação de Riscos
+## 🔬 1. Pesquisa Técnica e Engenharia de Software
 
-### A. Roteamento SPA e Manipulação de Parâmetros de URL
-* **Desafio:** Como o sistema é uma SPA (Single Page Application) montada por abas interativas, a inserção de caminhos na URL (`/sala`) pode causar mal comportamento se o servidor nginx não possuir roteamento curinga estático ou se causar quebras em assets.
-* **Solução Planificada:** Utilizar o formato seguro de query string na própria raiz do sistema: `?room={id}`. É interpretável no carregamento global em qualquer ambiente e facilmente limpo utilizando a History API do navegador sem forçar um refresh:
-  ```ts
-  window.history.replaceState({}, document.title, window.location.pathname);
-  ```
+### A. Lifecycle de Recursos de Mídia e Web Audio API
+- **Problema**: O indicador físico de uso da câmera/microfone (LED) ou alertas do navegador de que a mídia está em uso podem persistir e consumir bateria/sistema após o fechamento da sala.
+- **Estratégia**:
+  - Interromper manualmente cada faixa de mídia instanciada do objeto `MediaStream`:
+    ```ts
+    localStream.getTracks().forEach((track) => {
+      if (track.readyState === "live") {
+        track.stop();
+      }
+    });
+    ```
+  - Fechar formalmente a instância do `AudioContext` do analisador visual do microfone em tempo real de forma assíncrona:
+    ```ts
+    if (audioCtx && audioCtx.state !== "closed") {
+      audioCtx.close().catch((err) => console.warn(err));
+    }
+    ```
+  - Limpar imediatamente todas as referências de intervalos de cronômetros (`setInterval`) responsáveis por reproduzir o som de toque recursivo de espera para impedir sobreposição de áudio residual.
 
-### B. Invalidação de Transmissão de Mídia Segura
-* **Desafio:** Garantir que após a finalização da teleconsulta, os recursos locais do usuário (câmera e microfone) sejam encerrados em baixo nível no navegador do paciente e do doutor, liberando os dispositivos de mídia.
-* **Solução Planificada:** Adicionar limpeza ativa quando a consulta transita para `completed`. No `useEffect` do `TelemedicineRoom`, guardar uma referência para o `localStream` e iterar em todas as faixas chamando `.stop()` antes de desmontar o componente e exibir a tela de links expirados.
+### B. Escopo de Sincronia no Firestore Sincronizado
+- **Problema**: Forçar que o encerramento do atendimento pelo médico reflita instantaneamente do lado do paciente e encerre as conexões simultaneamente com elegância gráfica.
+- **Estratégia**:
+  - O ouvinte em tempo real (`onSnapshot`) mapeia a alteração do `status` do agendamento para `completed`.
+  - No componente `TelemedicineRoom.tsx`, esse status monitorado aciona o fluxo de saída e encadeia um temporizador suave de feedback visual (efeito de fade-out com Framer Motion) por 2.5 segundos antes de executar a limpeza de mídia e retornar o cliente para seu respectivo painel principal.
 
-### C. Escuta em Tempo Real do Firestore e Vazamento de Memória
-* **Desafio:** Manter listeners de snapshots do Firestore sem causar memory leak ou re-rendereização circular do app.
-* **Solução Planificada:** Retornar a função de desinscrição do snapshot (`unsubscribe`) de dentro do `useEffect` correspondente do `TelemedicineRoom` ou do roteador principal para limpar os listeners de forma limpa nos ciclos normais de vida do React.
-
----
-
-## 🚀 2. Cronograma de Implementação (Fases Recomendadas)
-
-O desenvolvimento deve seguir uma ordem pragmática baseada em dependências mútuas, minimizando retrabalhos:
-
-### Fase 1: Geração, Persistência e UI de Cópia (Foco: Issue #2)
-1. **Modelagem de Dados:** Garantir que toda e qualquer consulta com chave de teleconsulta gere um ID randômico ou use o próprio `doc.id` do agendamento como o token da sala.
-2. **Escrita no Firestore:** Atualizar handlers de agendamento de consultas na raiz e nos modais para incluir:
-   * `telemedicineRoomId`
-   * `telemedicineUrl` (computado como `${window.location.origin}/?room=${id}`)
-3. **Botão In-App de Links:** Adicionar botão de cópia com ícone de link e toast de feedback nos cards de agendameto do paciente e do doutor.
-
-### Fase 2: Interceptador Deep-linking e Roteamento Direto (Foco: Issue #1)
-1. **Detecção Global:** Adicionar lógica de interceptação na raiz do app (`App.tsx`).
-2. **Processamento do Link Único:**
-   * Ler `?room=XYZ` e buscar correspondência no Firestore.
-   * Se correspondente, setar o estado `activeTelemedicineApt`.
-3. **Limpeza Inteligente do Path:** Limpar a URL removendo a query string para deixar o visual impecável.
-
-### Fase 3: Monitor de Ciclo de Vida e Expiração (Foco: Issue #3)
-1. **Proteção Reativa:** Modificar o componente `TelemedicineRoom` para ler em tempo real o status no snapshot.
-2. **Renderizador de Conclusão:** Se status mudar para `completed` ou `cancelled`, encerrar fluxos WebRTC e renderizar a tela de encerramento bonita, impedindo acessos posteriores.
-
-### Fase 4: Proteções de Acesso e Convidados (Foco: Issue #4)
-1. **Guarda de Sessão:** Validar se o usuário autenticado atual corresponde ao médico ou paciente do agendamento.
-2. **Login no Loop:** Se um participante não autenticado tentar acessar, reter a query string, direcioná-lo ao login simplificado e redirecionar de volta à sala após sucesso.
+### C. Responsividade do Bento Grid em Telas Estreitas (< 360px)
+- **Problema**: Em resoluções extremamente compactas de celulares (por exemplo, iPhone SE com largura menor que 360px), as visualizações de feeds de vídeo e botões de comando podem truncar ou escorregar para fora da área visual (overflow).
+- **Estratégia**:
+  - Utilizar classes utilitárias responsivas do Tailwind CSS (`max-sm:h-28`, `max-sm:aspect-video`, `md:aspect-square`).
+  - Redefinir a barra de controles inferiores de mudo/vídeo para se acomodar em uma grade flexível ou grid de quatro colunas com menos espaço de padding interno (`px-2 py-1.5`) e áreas de toque mínimas de 44x44px.
+  - Transformar o painel flutuante do chat em sobreposição absoluta (`absolute right-0 bottom-16 top-0 w-80 bg-slate-950 z-50 shadow-2xl rounded-l-2xl border-l border-slate-800`) para não comprimir o feed de vídeo quando aberto.
 
 ---
 
-## 🧪 3. Plano de Teste e Validação
+## 🚀 2. Plano de Ação Passo a Passo
 
-Para certificar as implementações pós-codificação:
-- **Caso de Teste 1 (Geração):** Agendar uma teleconsulta e verificar se o link único é gerado, e se o botão copia e formata a URL perfeitamente.
-- **Caso de Teste 2 (Inicialização por URL):** Abrir uma nova janela anônima e acessar o link gerado com `?room=XYZ`. Validar o login obrigatório e o encaminhamento automático à sala de vídeo.
-- **Caso de Teste 3 (Invalidação Progressiva):** Manter médico e pacientes com a chamada aberta. O médico clica em finalizar. Testar se o feed do paciente congela e redireciona reativamente para a tela de finalização.
-- **Caso de Teste 4 (Sanidade após Finalização):** Tentar re-acessar o link de uma consulta que já consta como `completed`. Conferir se de fato o sistema bloqueia o acesso, notificando sobre a expiração.
+### 📅 Fase 1: Desativação Física dos Dispositivos (Resolvendo Issue #1)
+1. No `useEffect` que lida com o ciclo de vida do componente `TelemedicineRoom.tsx` ou no fechamento da consulta:
+   - Capturar o stream local ativo e dar um loop interrompendo as faixas de vídeo e áudio físico.
+   - Chamar `.close()` na referência do `AudioContext` instanciado para o analisador de frequência.
+   - Desabilitar loops paralelos de ringtone no desmontar do componente (`componentWillUnmount` conceitual de retorno do `useEffect`).
+
+### 📅 Fase 2: Redirecionamento e Sincronização Síncrona de Saída (Resolvendo Issue #2)
+1. Integrar um validador no snapshot do Firestore. Se o status da consulta for detectado como `completed`:
+   - Ativar uma tela de encerramento elegante e dinâmica ("Transmissão Encerrada / Consulta Concluída pelo Profissional") com animações fluidas do Framer Motion.
+   - Disparar a limpeza de hardware local programada.
+   - Adicionar um timer de 2.5 segundos para transicionar suavemente e acionar o callback `onLeave()`, que limpa a tela principal e redireciona o usuário para seu painel de controle (Agenda para Médicos, Histórico para Pacientes).
+
+### 📅 Fase 3: Layout Mobile Fino e Notas WebRTC Avançadas (Resolvendo Issue #3)
+1. Modificar as marcações CSS no componente `TelemedicineRoom.tsx`:
+   - Reduzir margens e paddings visuais de cards sob query-screen mobile (`px-3 py-2 sm:px-6 sm:py-4`).
+   - Ajustar as propriedades de largura e posicionamento do painel de chat de forma condensada.
+2. Inserir notas e comentários robustos documentando como a orquestração atual de canal de dados sínclono governada via Firestore escala em produção utilizando WebRTC real (ex: handshake SDP, transações de ICE Candidates e conexões STUN/TURN).
+
 ---
+
+## 🧪 3. Protocolo de Homologação e Testes de Qualidade
+
+Para garantir a qualidade de cada correção sem corromper o sistema existente:
+- **Teste de Vazamento de Hardware (Mídia)**:
+  - Ingressar na chamada de telemedicina.
+  - Conceder permissão de áudio e vídeo e observar o funcionamento e as barras dinâmicas do analisador local.
+  - Encerrar o atendimento e certificar-se de que a webcam fisicamente suspenda seu funcionamento (LED apague) e não haja logs de erro de `AudioContext` pendentes no painel de console do navegador.
+- **Teste de Sincronia de Saída**:
+  - Abrir duas janelas concorrentes (médico e paciente) e simular a entrada do peer usando o botão auxiliar de simulação de homologação de participante.
+  - Clicar em "Desconectar e Finalizar" na aba profissional e confirmar se a tela do paciente atualiza na hora com animações de encerramento, forçando ambos a retornar aos seus respectivos dashboards amigavelmente.
+- **Teste Visual de Tamanho Compacto (Responsividade SE)**:
+  - Reduzir a resolução do simulador de navegação no DevTools do navegador para 320px de largura.
+  - Testar todas as interações (mudo, câmera, digitar no chat, alternar abas de observação) para atestar conforto tátil e visual impecáveis.
