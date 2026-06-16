@@ -5676,21 +5676,23 @@ const ProfessionalDashboardView = ({
   const [selectedApt, setSelectedApt] = useState<any>(null);
   const [editingApt, setEditingApt] = useState<any>(null);
 
-  const handleReschedule = async (newDate: string, newTime: string) => {
+  const handleReschedule = async (newDate: string, newTime: string, newModality?: string) => {
     if (!editingApt) return;
     try {
       await updateDoc(doc(db, "appointments", editingApt.id), {
         date: newDate,
         time: newTime,
+        ...(newModality ? { modality: newModality } : {}),
         status: "upcoming",
         updatedAt: Timestamp.now(),
       });
 
       // Send notification to patient
+      const modLabel = newModality === "presencial" ? "Presencial" : "Telemedicina";
       await addDoc(collection(db, "notifications"), {
         userId: editingApt.userId,
         title: "Consulta Remarcada",
-        message: `Sua consulta com ${professionalProfile.name} foi remarcada para o dia ${formatDateForDisplay(newDate)} às ${newTime}.`,
+        message: `Sua consulta com ${professionalProfile.name} foi remarcada para o dia ${formatDateForDisplay(newDate)} às ${newTime} (${modLabel}).`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
@@ -7289,23 +7291,25 @@ const AdminView = ({ user }: { user: any }) => {
     });
   };
 
-  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+  const handleSaveReschedule = async (newDate: string, newTime: string, newModality?: string) => {
     if (!editingApt) return;
     try {
       const oldData = { ...editingApt };
       const newData = {
         date: newDate,
         time: newTime,
+        ...(newModality ? { modality: newModality } : {}),
         updatedAt: Timestamp.now(),
       };
       await updateDoc(doc(db, "appointments", editingApt.id), newData);
 
       // Notify user about rescheduling
       if (editingApt.userId) {
+        const modLabel = newModality === "presencial" ? "Presencial" : "Telemedicina";
         await addDoc(collection(db, "notifications"), {
           userId: editingApt.userId,
           title: "Consulta Remarcada",
-          message: `Sua consulta com ${editingApt.professionalName} foi remarcada pelo administrador para ${formatDateForDisplay(newDate)} às ${newTime}.`,
+          message: `Sua consulta com ${editingApt.professionalName} foi remarcada pelo administrador para ${formatDateForDisplay(newDate)} às ${newTime} (${modLabel}).`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now(),
@@ -7314,7 +7318,7 @@ const AdminView = ({ user }: { user: any }) => {
 
       await logAdminAction(
         "RESCHEDULE_APPOINTMENT",
-        `Remarcou agendamento ID: ${editingApt.id} para ${newDate} ${newTime}`,
+        `Remarcou agendamento ID: ${editingApt.id} para ${newDate} ${newTime}${newModality ? " (" + newModality + ")" : ""}`,
         oldData,
         { ...oldData, ...newData },
       );
@@ -7962,25 +7966,27 @@ const AdminAppointmentsView = () => {
     }
   };
 
-  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+  const handleSaveReschedule = async (newDate: string, newTime: string, newModality?: string) => {
     if (!editingApt) return;
     try {
       await updateDoc(doc(db, "appointments", editingApt.id), {
         date: newDate,
         time: newTime,
+        ...(newModality ? { modality: newModality } : {}),
         updatedAt: Timestamp.now(),
       });
+      const modLabel = newModality === "presencial" ? "Presencial" : "Telemedicina";
       await addDoc(collection(db, "notifications"), {
         userId: editingApt.userId,
         title: "Consulta Reagendada pelo Admin",
-        message: `Sua consulta com ${editingApt.professionalName} foi alterada para o dia ${formatDateForDisplay(newDate)} às ${newTime}.`,
+        message: `Sua consulta com ${editingApt.professionalName} foi alterada para o dia ${formatDateForDisplay(newDate)} às ${newTime} (${modLabel}).`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
       });
       await logAdminAction(
         "RESCHEDULE_APPOINTMENT",
-        `Reagendou consulta ${editingApt.id} para ${newDate} ${newTime}`,
+        `Reagendou consulta ${editingApt.id} para ${newDate} ${newTime}${newModality ? " (" + newModality + ")" : ""}`,
       );
       addToast("Consulta reagendada com sucesso.", "success");
       setEditingApt(null);
@@ -10422,19 +10428,59 @@ const PartnersView = ({
 const OffersView = ({ user }: { user?: any }) => {
   const [activeTab, setActiveTab] = useState<"all" | "my-vouchers">("all");
   const [offers, setOffers] = useState<any[]>([]);
+  const [partners, setPartners] = useState<any[]>([]);
   const [myVouchers, setMyVouchers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [redeeming, setRedeeming] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
+  const [showAlreadyRedeemedModal, setShowAlreadyRedeemedModal] = useState(false);
+  const [alreadyRedeemedOffer, setAlreadyRedeemedOffer] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribePartners = onSnapshot(
+      collection(db, "partners"),
+      (snapshot) => {
+        setPartners(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, "partners");
+      },
+    );
+    return () => unsubscribePartners();
+  }, []);
 
   const generateVoucherCode = () => {
     return `VITTA-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
   };
 
+  const getVoucherWhatsAppLink = (voucher: any) => {
+    if (!voucher) return "";
+    const currentPartner = partners.find(
+      (p) => (p.name || "").toLowerCase() === (voucher.offerPartner || "").toLowerCase()
+    );
+    const targetPhone = currentPartner?.phone || "5528999881386";
+    let cleaned = targetPhone.replace(/\D/g, "");
+    if (!cleaned) {
+      cleaned = "5528999881386";
+    } else if ((cleaned.length === 10 || cleaned.length === 11) && !cleaned.startsWith("55")) {
+      cleaned = `55${cleaned}`;
+    }
+    const msg = `Olá! Tenho um cupom ViTTA para resgatar.\n\n*Código: ${voucher.code}*\nOferta: ${voucher.offerTitle}\nParceiro: ${voucher.offerPartner}`;
+    return `https://wa.me/${cleaned}?text=${encodeURIComponent(msg)}`;
+  };
+
   const handleRedeem = async (offer: any) => {
     if (!user) return;
+
+    // Check if user already redeemed a voucher for this offer
+    const existingVoucher = myVouchers.find((v) => v.offerId === offer.id);
+    if (existingVoucher) {
+      setAlreadyRedeemedOffer(offer);
+      setShowAlreadyRedeemedModal(true);
+      return;
+    }
 
     setRedeeming(offer.id);
     try {
@@ -10445,6 +10491,7 @@ const OffersView = ({ user }: { user?: any }) => {
         offerTitle: offer.title,
         offerPartner: offer.partner,
         offerDiscount: offer.discount,
+        offerImageUrl: offer.imageUrl || "",
         code: voucherCode,
         status: "active",
         createdAt: Timestamp.now(),
@@ -10593,67 +10640,80 @@ const OffersView = ({ user }: { user?: any }) => {
               ></div>
             ))
           ) : filteredOffers.length > 0 ? (
-            filteredOffers.map((offer) => (
-              <motion.div
-                key={offer.id}
-                whileHover={{ y: -8 }}
-                className="bg-vitta-surface rounded-[2rem] border-2 border-vitta-border shadow-xl hover:shadow-2xl hover:border-vitta-accent/30 transition-all overflow-hidden flex flex-col group"
-              >
-                <div className="relative h-56 overflow-hidden">
-                  <img
-                    src={
-                      offer.imageUrl ||
-                      `https://picsum.photos/seed/${offer.id}/600/400`
-                    }
-                    alt={offer.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  <div className="absolute top-6 left-6 bg-white/90 backdrop-blur px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vitta-text-primary shadow-xl">
-                    {offer.partner}
-                  </div>
-                  <div className="absolute bottom-6 right-6 bg-vitta-accent text-white px-5 py-2.5 rounded-full text-base font-black shadow-2xl flex items-center gap-2">
-                    <Tag size={18} />
-                    {offer.discount}
-                  </div>
-                </div>
-                <div className="p-8 flex-1 flex flex-col">
-                  <h3 className="font-black text-2xl mb-3 text-vitta-text-primary leading-tight">
-                    {offer.title}
-                  </h3>
-                  <p className="text-sm text-vitta-text-secondary mb-8 flex-1 leading-relaxed">
-                    {offer.description ||
-                      "Aproveite esta oferta exclusiva para membros ViTTA."}
-                  </p>
+            filteredOffers.map((offer) => {
+              const isAlreadyRedeemed = myVouchers.some((v) => v.offerId === offer.id);
 
-                  {offer.expiryDate && (
-                    <div className="flex items-center gap-2 mb-6 text-vitta-danger font-bold text-xs bg-vitta-danger/10 px-4 py-2 rounded-xl w-fit">
-                      <Clock size={14} />
-                      Válido até:{" "}
-                      {new Date(offer.expiryDate).toLocaleDateString()}
+              return (
+                <motion.div
+                  key={offer.id}
+                  whileHover={{ y: -8 }}
+                  className="bg-vitta-surface rounded-[2rem] border-2 border-vitta-border shadow-xl hover:shadow-2xl hover:border-vitta-accent/30 transition-all overflow-hidden flex flex-col group"
+                >
+                  <div className="relative h-56 overflow-hidden">
+                    <img
+                      src={
+                        offer.imageUrl ||
+                        `https://picsum.photos/seed/${offer.id}/600/400`
+                      }
+                      alt={offer.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    <div className="absolute top-6 left-6 bg-white/90 backdrop-blur px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vitta-text-primary shadow-xl">
+                      {offer.partner}
                     </div>
-                  )}
+                    <div className="absolute bottom-6 right-6 bg-vitta-accent text-white px-5 py-2.5 rounded-full text-base font-black shadow-2xl flex items-center gap-2">
+                      <Tag size={18} />
+                      {offer.discount}
+                    </div>
+                  </div>
+                  <div className="p-8 flex-1 flex flex-col">
+                    <h3 className="font-black text-2xl mb-3 text-vitta-text-primary leading-tight">
+                      {offer.title}
+                    </h3>
+                    <p className="text-sm text-vitta-text-secondary mb-8 flex-1 leading-relaxed">
+                      {offer.description ||
+                        "Aproveite esta oferta exclusiva para membros ViTTA."}
+                    </p>
 
-                  <button
-                    onClick={() => handleRedeem(offer)}
-                    disabled={redeeming === offer.id}
-                    className="w-full py-4 bg-vitta-text-primary text-white rounded-2xl text-sm font-black hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl hover:shadow-vitta-text-primary/20 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    {redeeming === offer.id ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Zap
-                          size={18}
-                          className="text-vitta-accent fill-vitta-accent"
-                        />
-                        Resgatar Agora
-                      </>
+                    {offer.expiryDate && (
+                      <div className="flex items-center gap-2 mb-6 text-vitta-danger font-bold text-xs bg-vitta-danger/10 px-4 py-2 rounded-xl w-fit">
+                        <Clock size={14} />
+                        Válido até:{" "}
+                        {new Date(offer.expiryDate).toLocaleDateString()}
+                      </div>
                     )}
-                  </button>
-                </div>
-              </motion.div>
-            ))
+
+                    <button
+                      onClick={() => handleRedeem(offer)}
+                      disabled={redeeming === offer.id}
+                      className={`w-full py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 shadow-xl active:scale-[0.98] disabled:opacity-50 ${
+                        isAlreadyRedeemed
+                          ? "bg-vitta-accent/10 border-2 border-vitta-accent text-vitta-accent hover:bg-vitta-accent/20"
+                          : "bg-vitta-text-primary text-white hover:bg-black hover:shadow-vitta-text-primary/20"
+                      }`}
+                    >
+                      {redeeming === offer.id ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : isAlreadyRedeemed ? (
+                        <>
+                          <Check size={18} />
+                          Cupom Resgatado
+                        </>
+                      ) : (
+                        <>
+                          <Zap
+                            size={18}
+                            className="text-vitta-accent fill-vitta-accent"
+                          />
+                          Resgatar Agora
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })
           ) : (
             <div className="col-span-full py-20 text-center bg-vitta-surface rounded-[3rem] border-4 border-dashed border-vitta-border">
               <div className="w-24 h-24 bg-vitta-surface-2 rounded-full flex items-center justify-center mx-auto mb-6 text-vitta-text-muted">
@@ -10672,64 +10732,106 @@ const OffersView = ({ user }: { user?: any }) => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredVouchers.length > 0 ? (
-            filteredVouchers.map((v) => (
-              <motion.div
-                key={v.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-vitta-surface rounded-[2.5rem] border-2 border-vitta-border p-8 shadow-large flex flex-col relative overflow-hidden"
-              >
-                <div className="absolute top-0 right-0 p-4">
-                  <div
-                    className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${v.status === "active" ? "bg-vitta-green/10 text-vitta-green" : "bg-vitta-danger/10 text-vitta-danger"}`}
-                  >
-                    {v.status === "active" ? "Ativo" : "Utilizado"}
-                  </div>
-                </div>
+            filteredVouchers.map((v) => {
+              const matchOffer = offers.find((o) => o.id === v.offerId);
+              const imageUrl = matchOffer?.imageUrl || v.offerImageUrl || `https://picsum.photos/seed/${v.offerId || v.id}/600/400`;
+              const dealDiscount = matchOffer?.discount || v.offerDiscount || "Desconto";
+              const dealDescription = matchOffer?.description || "Aproveite esta oferta exclusiva para membros ViTTA.";
 
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 bg-vitta-accent/10 text-vitta-accent rounded-2xl flex items-center justify-center shrink-0">
-                    <Ticket size={28} />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-lg text-vitta-text-primary leading-tight">
-                      {v.offerTitle}
-                    </h3>
-                    <p className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest">
-                      {v.offerPartner}
-                    </p>
-                  </div>
-                </div>
+              return (
+                <motion.div
+                  key={v.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-vitta-surface rounded-[2.5rem] border-2 border-vitta-border shadow-large flex flex-col relative overflow-hidden group hover:shadow-2xl hover:border-vitta-accent/30 transition-all text-left"
+                >
+                  {/* Highlight Image in Evidence */}
+                  <div className="relative h-48 overflow-hidden">
+                    <img
+                      src={imageUrl}
+                      alt={v.offerTitle}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+                    
+                    {/* Status Badge Overlaid */}
+                    <div className="absolute top-4 right-4">
+                      <div
+                        className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg ${
+                          v.status === "active"
+                            ? "bg-vitta-green text-white"
+                            : "bg-vitta-danger text-white"
+                        }`}
+                      >
+                        {v.status === "active" ? "Ativo" : "Utilizado"}
+                      </div>
+                    </div>
 
-                <div className="bg-vitta-surface-2 p-6 rounded-3xl mb-8 border border-vitta-border border-dashed flex flex-col items-center">
-                  <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-[0.2em] mb-2">
-                    Código do Cupom
-                  </p>
-                  <p className="text-2xl font-black text-vitta-accent tracking-widest font-mono select-all">
-                    {v.code}
-                  </p>
-                </div>
+                    {/* Discount Badge */}
+                    <div className="absolute bottom-4 left-4 bg-vitta-accent text-white px-4 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-1.5">
+                      <Tag size={12} />
+                      {dealDiscount}
+                    </div>
+                  </div>
 
-                <div className="flex flex-col gap-3 mt-auto">
-                  <button
-                    onClick={() => {
-                      setSelectedVoucher(v);
-                      setShowVoucherModal(true);
-                    }}
-                    className="w-full py-4 bg-vitta-accent text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
-                  >
-                    Ver Voucher
-                  </button>
-                  <p className="text-[10px] text-vitta-text-muted text-center italic">
-                    Gerado em:{" "}
-                    {v.createdAt && "toDate" in v.createdAt
-                      ? v.createdAt.toDate().toLocaleDateString()
-                      : new Date().toLocaleDateString()}
-                  </p>
-                </div>
-              </motion.div>
-            ))
+                  <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-vitta-accent/10 text-vitta-accent rounded-xl flex items-center justify-center shrink-0">
+                          <Ticket size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-widest truncate">
+                            {v.offerPartner}
+                          </p>
+                          <h3 className="font-black text-lg text-vitta-text-primary leading-tight truncate">
+                            {v.offerTitle}
+                          </h3>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-vitta-text-secondary mb-6 line-clamp-2">
+                        {dealDescription}
+                      </p>
+
+                      <div className="bg-vitta-surface-2 p-4 rounded-2xl mb-6 border border-vitta-border border-dashed flex flex-col items-center">
+                        <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-[0.2em] mb-1">
+                          Código do Cupom
+                        </p>
+                        <p className="text-xl font-black text-vitta-accent tracking-[0.2em] font-mono select-all break-all">
+                          {v.code}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 mt-auto">
+                      <button
+                        onClick={() => {
+                          setSelectedVoucher({
+                            ...v,
+                            offerDiscount: dealDiscount,
+                            offerDescription: dealDescription,
+                            offerImageUrl: imageUrl,
+                          });
+                          setShowVoucherModal(true);
+                        }}
+                        className="w-full py-4 bg-vitta-accent text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20 flex items-center justify-center gap-2"
+                      >
+                        <QrCode size={16} />
+                        Ver Voucher / QR Code
+                      </button>
+                      <p className="text-[10px] text-vitta-text-muted text-center italic">
+                        Gerado em:{" "}
+                        {v.createdAt && "toDate" in v.createdAt
+                          ? v.createdAt.toDate().toLocaleDateString()
+                          : new Date().toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })
           ) : (
             <div className="col-span-full py-20 text-center bg-vitta-surface rounded-[3rem] border-4 border-dashed border-vitta-border">
               <div className="w-24 h-24 bg-vitta-surface-2 rounded-full flex items-center justify-center mx-auto mb-6 text-vitta-text-muted">
@@ -10756,12 +10858,12 @@ const OffersView = ({ user }: { user?: any }) => {
       {/* Voucher Modal */}
       <AnimatePresence>
         {showVoucherModal && selectedVoucher && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/40 backdrop-blur-md">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-vitta-text-primary/40 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-vitta-surface w-full max-w-sm rounded-[3rem] shadow-2xl border-4 border-vitta-accent/20 overflow-hidden relative"
+              className="bg-vitta-surface w-full max-w-sm max-h-[92vh] overflow-y-auto no-scrollbar rounded-[2.5rem] xs:rounded-[3rem] shadow-2xl border-4 border-vitta-accent/20 relative flex flex-col font-sans"
             >
               <div className="absolute top-4 right-4 z-10">
                 <button
@@ -10772,62 +10874,124 @@ const OffersView = ({ user }: { user?: any }) => {
                 </button>
               </div>
 
-              <div className="p-10 flex flex-col items-center">
-                <div className="w-20 h-20 bg-vitta-accent/10 text-vitta-accent rounded-3xl flex items-center justify-center mb-8">
-                  <Ticket size={40} />
+              <div className="p-6 xs:p-8 sm:p-10 flex flex-col items-center w-full">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-vitta-accent/10 text-vitta-accent rounded-3xl flex items-center justify-center mb-6 sm:mb-8 shrink-0">
+                  <Ticket size={36} className="sm:size-[40px]" />
                 </div>
 
-                <div className="text-center mb-10">
-                  <h3 className="text-2xl font-black text-vitta-text-primary mb-2 leading-tight">
+                <div className="text-center mb-6 sm:mb-10 w-full">
+                  <h3 className="text-xl sm:text-2xl font-black text-vitta-text-primary mb-2 leading-tight">
                     {selectedVoucher.offerTitle}
                   </h3>
-                  <p className="text-vitta-accent font-black uppercase tracking-widest text-sm">
+                  <p className="text-vitta-accent font-black uppercase tracking-widest text-xs sm:text-sm">
                     {selectedVoucher.offerPartner}
                   </p>
-                  <div className="inline-block mt-4 px-4 py-1.5 bg-vitta-green text-white rounded-full text-xs font-black shadow-lg">
+                  <div className="inline-block mt-3 px-4 py-1.5 bg-vitta-green text-white rounded-full text-xs font-black shadow-lg">
                     {selectedVoucher.offerDiscount}
                   </div>
                 </div>
 
-                <div className="w-full bg-vitta-surface-2 rounded-[2rem] p-8 border-2 border-vitta-border border-dashed relative">
+                <div className="w-full bg-vitta-surface-2 rounded-[1.5rem] sm:rounded-[2rem] p-6 sm:p-8 border-2 border-vitta-border border-dashed relative">
                   <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-vitta-surface rounded-full border-2 border-vitta-border -ml-3"></div>
                   <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-vitta-surface rounded-full border-2 border-vitta-border -mr-3"></div>
 
-                  <div className="flex flex-col items-center mb-6">
-                    <div className="w-32 h-32 bg-white rounded-2xl p-2 mb-4 border border-vitta-border shadow-sm flex items-center justify-center">
-                      {/* Placeholder for QR Code */}
-                      <div className="w-full h-full bg-vitta-surface-3 rounded-lg flex items-center justify-center border-2 border-vitta-border border-dotted">
-                        <QrCode size={48} className="text-vitta-text-muted" />
-                      </div>
+                  <div className="flex flex-col items-center mb-2 sm:mb-4">
+                    <div className="w-32 h-32 bg-white rounded-2xl p-2 mb-4 border border-vitta-border shadow-sm flex items-center justify-center relative overflow-hidden">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(getVoucherWhatsAppLink(selectedVoucher))}`}
+                        alt={`QR Code para o cupom ${selectedVoucher.code}`}
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
                     </div>
                     <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-[0.2em] mb-2">
                       Código do Cupom
                     </p>
-                    <p className="text-3xl font-black text-vitta-accent tracking-[0.3em] font-mono select-all">
+                    <p 
+                      className="text-[18px] leading-[32px] w-[260px] text-center font-black text-vitta-accent tracking-[0.22em] font-mono select-all break-all"
+                      style={{ fontSize: "18px", lineHeight: "32px", width: "260px", textAlign: "center" }}
+                    >
                       {selectedVoucher.code}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-10 space-y-4 w-full">
+                <div className="mt-6 sm:mt-10 space-y-4 w-full">
                   <button
                     onClick={() => {
-                      const msg = `Olá! Tenho um cupom ViTTA para resgatar.\n\n*Código: ${selectedVoucher.code}*\nOferta: ${selectedVoucher.offerTitle}\nParceiro: ${selectedVoucher.offerPartner}`;
                       window.open(
-                        `https://wa.me/5528999881386?text=${encodeURIComponent(msg)}`,
+                        getVoucherWhatsAppLink(selectedVoucher),
                         "_blank",
                       );
                     }}
-                    className="w-full py-4 bg-vitta-green text-white rounded-2xl text-sm font-black flex items-center justify-center gap-3 shadow-xl shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all active:scale-[0.98]"
+                    className="w-full py-3.5 sm:py-4 bg-vitta-green text-white rounded-2xl text-sm font-black flex items-center justify-center gap-3 shadow-xl shadow-vitta-green/20 hover:bg-vitta-green/90 transition-all active:scale-[0.98]"
                   >
                     <Phone size={20} />
                     Falar no WhatsApp
                   </button>
-                  <p className="text-[10px] text-vitta-text-secondary text-center px-6">
+                  <p className="text-[10px] text-vitta-text-secondary text-center px-4 sm:px-6">
                     Apresente este código ou QR Code no estabelecimento parceiro
                     para validar seu desconto.
                   </p>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Already Redeemed Info Warning Modal */}
+      <AnimatePresence>
+        {showAlreadyRedeemedModal && alreadyRedeemedOffer && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-vitta-text-primary/40 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-vitta-surface w-full max-w-sm rounded-[2.5rem] shadow-2xl border-4 border-vitta-accent/20 p-8 relative flex flex-col font-sans text-center"
+            >
+              <div className="absolute top-4 right-4 z-10">
+                <button
+                  onClick={() => setShowAlreadyRedeemedModal(false)}
+                  className="p-2.5 bg-vitta-surface-2 rounded-full text-vitta-text-primary hover:bg-vitta-border transition-colors outline-none"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="w-16 h-16 bg-vitta-accent/10 text-vitta-accent rounded-2xl flex items-center justify-center mx-auto mb-6 shrink-0">
+                <Info size={32} />
+              </div>
+
+              <h3 className="text-xl font-black text-vitta-text-primary mb-2 leading-tight">
+                Cupom Já Resgatado!
+              </h3>
+              <p className="text-sm text-vitta-text-secondary mb-6 leading-relaxed">
+                Você já resgatou um cupom de desconto para a oferta de <strong className="text-vitta-text-primary">{alreadyRedeemedOffer.partner}</strong>: {alreadyRedeemedOffer.title}. Aproveite seu benefício utilizando o código já gerado.
+              </p>
+
+              <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border border-dashed mb-6 flex flex-col items-center">
+                <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-[0.15em] mb-1">Oferta</span>
+                <span className="text-sm font-black text-vitta-text-primary leading-tight">{alreadyRedeemedOffer.title}</span>
+                <span className="text-xs text-vitta-accent font-bold mt-1">{alreadyRedeemedOffer.discount} Off</span>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    setShowAlreadyRedeemedModal(false);
+                    setActiveTab("my-vouchers");
+                  }}
+                  className="w-full py-4 bg-vitta-accent text-white rounded-2xl text-sm font-black hover:bg-vitta-accent/90 shadow-lg shadow-vitta-accent/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                >
+                  Visualizar em Meus Cupons
+                </button>
+                <button
+                  onClick={() => setShowAlreadyRedeemedModal(false)}
+                  className="w-full py-3 bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary rounded-2xl text-xs font-bold hover:bg-vitta-border transition-all"
+                >
+                  Voltar para Ofertas
+                </button>
               </div>
             </motion.div>
           </div>
@@ -16391,10 +16555,11 @@ const RescheduleModal = ({
 }: {
   appointment: any;
   onClose: () => void;
-  onConfirm: (date: string, time: string) => Promise<void>;
+  onConfirm: (date: string, time: string, modality: string) => Promise<void>;
 }) => {
   const [date, setDate] = useState(appointment.date);
   const [time, setTime] = useState(appointment.time);
+  const [modality, setModality] = useState(appointment.modality || "telemedicine");
   const [isSaving, setIsSaving] = useState(false);
   const [professional, setProfessional] = useState<any>(null);
   const [isLoadingProf, setIsLoadingProf] = useState(true);
@@ -16506,7 +16671,7 @@ const RescheduleModal = ({
   const handleConfirm = async () => {
     if (!time) return;
     setIsSaving(true);
-    await onConfirm(date, time);
+    await onConfirm(date, time, modality);
     setIsSaving(false);
   };
 
@@ -16567,6 +16732,36 @@ const RescheduleModal = ({
               }}
               className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs focus:ring-1 focus:ring-vitta-accent/30 outline-none text-vitta-text-primary transition-all font-sans font-medium"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+              Tipo de Atendimento
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setModality("presencial")}
+                className={`py-3 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1.5 ${
+                  modality === "presencial"
+                    ? "border-vitta-accent bg-vitta-accent/10 text-vitta-accent font-extrabold"
+                    : "border-vitta-border bg-vitta-surface hover:border-vitta-accent/50 text-vitta-text-primary"
+                }`}
+              >
+                🏥 Presencial
+              </button>
+              <button
+                type="button"
+                onClick={() => setModality("telemedicine")}
+                className={`py-3 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1.5 ${
+                  modality === "telemedicine"
+                    ? "border-vitta-accent bg-vitta-accent/10 text-vitta-accent font-extrabold"
+                    : "border-vitta-border bg-vitta-surface hover:border-vitta-accent/50 text-vitta-text-primary"
+                }`}
+              >
+                📹 Telemedicina
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -16734,13 +16929,14 @@ const AppointmentsView = ({
     });
   };
 
-  const handleSaveReschedule = async (newDate: string, newTime: string) => {
+  const handleSaveReschedule = async (newDate: string, newTime: string, newModality?: string) => {
     if (!editingApt) return;
     try {
       const aptRef = doc(db, "appointments", editingApt.id);
       await updateDoc(aptRef, {
         date: newDate,
         time: newTime,
+        ...(newModality ? { modality: newModality } : {}),
         updatedAt: Timestamp.now(),
       });
 
@@ -16755,10 +16951,11 @@ const AppointmentsView = ({
       }
 
       // Notify user
+      const modLabel = newModality === "presencial" ? "Presencial" : "Telemedicina";
       await addDoc(collection(db, "notifications"), {
         userId: user.uid,
         title: "Consulta Remarcada",
-        message: `Sua consulta com ${editingApt.professionalName} foi remarcada para ${formatDateForDisplay(newDate)} às ${newTime}.`,
+        message: `Sua consulta com ${editingApt.professionalName} foi remarcada para ${formatDateForDisplay(newDate)} às ${newTime} (${modLabel}).`,
         type: "appointment",
         read: false,
         createdAt: Timestamp.now(),
