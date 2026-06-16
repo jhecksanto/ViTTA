@@ -26,6 +26,9 @@ import {
   doc, 
   onSnapshot, 
   addDoc, 
+  setDoc,
+  deleteDoc,
+  getDocs,
   updateDoc, 
   getDoc,
   Timestamp, 
@@ -55,8 +58,13 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoWaitingRef = useRef<HTMLVideoElement | null>(null);
   
+  // Real Remote Stream State (WebRTC)
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  
   // Real-time audio analyser levels (0 - 255)
   const [localAudioLevel, setLocalAudioLevel] = useState<number>(0);
+  const [remoteAudioLevel, setRemoteAudioLevel] = useState<number>(0);
   const [playRingSound, setPlayRingSound] = useState(true);
 
   // Sair/redirecionamento e controle responsivo do chat
@@ -75,6 +83,10 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     prescriptionSent: false,
     status: appointment.status || 'upcoming'
   });
+
+  const otherPersonRole = isProfessional ? 'Paciente' : 'Médico';
+  const otherPersonJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
+  const otherPersonName = isProfessional ? appointment.patientName : appointment.professionalName;
 
   // Track session closed status
   const [isSessionClosed, setIsSessionClosed] = useState(
@@ -248,6 +260,14 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
   }, [localStream, isCamOff, roomState.doctorJoined, roomState.patientJoined]);
 
+  // Keep remote video ref properly synced with remoteStream when elements mount/toggle
+  useEffect(() => {
+    if (remoteStream && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      console.log("[WebRTC] Remote stream bound successfully to video element.");
+    }
+  }, [remoteStream, otherPersonJoined, roomState.doctorCamOff, roomState.patientCamOff]);
+
   // Web Audio API analyser loop to display physical local mic activity in real time
   useEffect(() => {
     if (!localStream || isMuted) {
@@ -298,24 +318,217 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     };
   }, [localStream, isMuted]);
 
-  /*****************************************************************************************
-   * 🌐 NOTA ARQUITETURAL: SINALIZAÇÃO E ORQUESTRAÇÃO WEBRTC EM PRODUÇÃO (Issue #3)
-   * 
-   * Atualmente, a sincronização de áudio, vídeo, mutação e chat é gerenciada em tempo real 
-   * através de ouvintes reativos do Firestore acting as roomState (onSnapshot).
-   * Em um ambiente de produção de ultra-baixa latência, o próprio Firestore (ou um WebSocket)
-   * servirá como o Canal de Sinalização (Signalling Channel) para estabelecer uma conexão P2P real:
-   * 
-   * Fluxo de Handshake para Conexão P2P com RTCPeerConnection:
-   * 1. Cada par inicializa seu canal: `const peerConnection = new RTCPeerConnection(iceServers);`
-   * 2. Anexa as faixas locais: `localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));`
-   * 3. O chamador cria um SDP Offer: `const offer = await peerConnection.createOffer();`
-   *    Define sua localDescription e persiste no Firestore: `await updateDoc(doc, { sdpOffer: offer.sdp });`
-   * 4. O destinatário recebe o evento, aceita a oferta: `await peerConnection.setRemoteDescription(new RTCSessionDescription(sdpOffer));`
-   *    Cria um SDP Answer e atualiza no Firestore: `await updateDoc(doc, { sdpAnswer: answer.sdp });`
-   * 5. Candidatos de rede (ICE Candidates, como endereços IP/portas e servidores STUN/TURN)
-   *    são salvos na subcoleção `/iceCandidates` e retransmitidos mutuamente até estabelecer a conexão direta.
-   *****************************************************************************************/
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+
+  // Web Audio API analyser loop to display physical remote mic activity in real time
+  useEffect(() => {
+    const isPeerMuted = isProfessional ? roomState.patientMuted : roomState.doctorMuted;
+    const isPeerJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
+
+    if (!remoteStream || isPeerMuted || !isPeerJoined) {
+      setRemoteAudioLevel(0);
+      return;
+    }
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let animId: number;
+
+    try {
+      if (remoteStream.getAudioTracks().length > 0) {
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        source = audioCtx.createMediaStreamSource(remoteStream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 32;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        source.connect(analyser);
+
+        const updateLevel = () => {
+          if (analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength;
+            setRemoteAudioLevel(avg);
+          }
+          animId = requestAnimationFrame(updateLevel);
+        };
+        updateLevel();
+      }
+    } catch (e) {
+      console.warn("Could not start remote microphone analyzer:", e);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+      if (source) source.disconnect();
+      if (audioCtx) {
+        try {
+          audioCtx.close();
+        } catch (e) {}
+      }
+    };
+  }, [remoteStream, roomState.patientMuted, roomState.doctorMuted, roomState.patientJoined, roomState.doctorJoined, isProfessional]);
+
+  // WebRTC handshaking and signaling using Firestore as intermediary
+  useEffect(() => {
+    if (!appointment?.id || !localStream || isSessionClosed) return;
+
+    console.log("[WebRTC] Orchestrating peer stream negotiation. Role:", isProfessional ? "Caller (Doctor)" : "Answerer (Patient)");
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
+    });
+    peerConnectionRef.current = pc;
+
+    // Create a client-side remote stream container
+    const rdocStream = new MediaStream();
+    setRemoteStream(rdocStream);
+
+    pc.ontrack = (event) => {
+      console.log("[WebRTC] Remote track detected:", event.track.kind);
+      event.streams[0].getTracks().forEach((track) => {
+        rdocStream.addTrack(track);
+      });
+      // Force update state to re-trigger binding
+      setRemoteStream(new MediaStream(rdocStream.getTracks()));
+    };
+
+    // Forward all local camera and microphone tracks to peer candidate
+    localStream.getTracks().forEach((track) => {
+      pc.addTrack(track, localStream);
+    });
+
+    const signalDocRef = doc(db, 'appointments', appointment.id, 'webrtc', 'signal');
+    const myCandidatesCol = collection(
+      db, 
+      'appointments', 
+      appointment.id, 
+      isProfessional ? 'doctorCandidates' : 'patientCandidates'
+    );
+    const peerCandidatesCol = collection(
+      db, 
+      'appointments', 
+      appointment.id, 
+      isProfessional ? 'patientCandidates' : 'doctorCandidates'
+    );
+
+    // Save and send local ice candidates when discovered
+    pc.onicecandidate = async (event) => {
+      if (event.candidate) {
+        try {
+          await addDoc(myCandidatesCol, event.candidate.toJSON());
+        } catch (e) {
+          console.warn("[WebRTC] Candidate registration error:", e);
+        }
+      }
+    };
+
+    let unsubSignal: () => void = () => {};
+    let unsubCandidates: () => void = () => {};
+
+    const setupSignaling = async () => {
+      const remoteCandidatesQueue: RTCIceCandidateInit[] = [];
+
+      const flushCandidatesQueue = async () => {
+        while (remoteCandidatesQueue.length > 0) {
+          const cand = remoteCandidatesQueue.shift();
+          if (cand) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+              console.log("[WebRTC] Flushed queued ICE candidate.");
+            } catch (e) {
+              console.warn("[WebRTC] Error flushing candidate:", e);
+            }
+          }
+        }
+      };
+
+      if (isProfessional) {
+        // Offer Side: Doctor initiates
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(offer);
+
+        await setDoc(signalDocRef, {
+          offer: {
+            type: offer.type,
+            sdp: offer.sdp
+          },
+          createdAt: Timestamp.now()
+        });
+
+        unsubSignal = onSnapshot(signalDocRef, async (snapshot) => {
+          if (!snapshot.exists()) return;
+          const data = snapshot.data();
+          if (data && data.answer && !pc.remoteDescription) {
+            console.log("[WebRTC Doctor] Received answer from Patient.");
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            await flushCandidatesQueue();
+          }
+        });
+
+      } else {
+        // Answer Side: Patient receives & answers
+        unsubSignal = onSnapshot(signalDocRef, async (snapshot) => {
+          if (!snapshot.exists()) return;
+          const data = snapshot.data();
+          if (data && data.offer && !pc.remoteDescription) {
+            console.log("[WebRTC Patient] Received offer from Doctor.");
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            await updateDoc(signalDocRef, {
+              answer: {
+                type: answer.type,
+                sdp: answer.sdp
+              }
+            });
+            await flushCandidatesQueue();
+          }
+        });
+      }
+
+      // Continuous monitoring of incoming ICE candidates
+      unsubCandidates = onSnapshot(peerCandidatesCol, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data() as RTCIceCandidateInit;
+            if (pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(data));
+              } catch (e) {
+                console.warn("[WebRTC] Error adding received candidate:", e);
+              }
+            } else {
+              remoteCandidatesQueue.push(data);
+            }
+          }
+        });
+      });
+    };
+
+    setupSignaling();
+
+    return () => {
+      console.log("[WebRTC] Safely clearing peer media connections.");
+      unsubSignal();
+      unsubCandidates();
+      pc.close();
+      peerConnectionRef.current = null;
+    };
+  }, [appointment?.id, localStream, isProfessional, isSessionClosed]);
 
   // Sync state tracking from Firestore
   useEffect(() => {
@@ -437,10 +650,6 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
   }, [isMuted, localStream]);
 
-  const otherPersonRole = isProfessional ? 'Paciente' : 'Médico';
-  const otherPersonJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
-  const otherPersonName = isProfessional ? appointment.patientName : appointment.professionalName;
-
   const prevJoinedRef = useRef(false);
 
   // Connection alert chime
@@ -488,7 +697,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
   };
 
-  // Audio wave visualizer animation
+  // Audio wave visualizer animation responsive to real voice-level amplitude
   useEffect(() => {
     const isPeerMuted = isProfessional ? roomState.patientMuted : roomState.doctorMuted;
     const isPeerJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
@@ -499,10 +708,13 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
 
     const interval = setInterval(() => {
-      setAudioWaves(Array.from({ length: 5 }, () => Math.floor(Math.random() * 40) + 12));
-    }, 150);
+      setAudioWaves(Array.from({ length: 5 }, (_, i) => {
+        const randomFactor = Math.sin(Date.now() / 150 + i) * 5;
+        return isPeerMuted ? 4 : Math.max(4, Math.min(24, (remoteAudioLevel / 10) * (i + 1) + 4 + randomFactor));
+      }));
+    }, 80);
     return () => clearInterval(interval);
-  }, [isProfessional, roomState.patientMuted, roomState.doctorMuted, roomState.patientJoined, roomState.doctorJoined]);
+  }, [remoteAudioLevel, isProfessional, roomState.patientMuted, roomState.doctorMuted, roomState.patientJoined, roomState.doctorJoined]);
 
   // Auto-sync professional clinical notes to Firestore (Debounced)
   const handleNotesChange = (txt: string) => {
@@ -792,19 +1004,32 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Câmera desligada pelo peer</p>
                     </div>
                   ) : (
-                    // Beautiful moving healthcare live feed placeholder for realism
-                    <div className="absolute inset-0 bg-slate-900/60 overflow-hidden flex items-center justify-center">
-                      <div className="absolute inset-0 opacity-15 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-vitta-accent via-transparent to-transparent flex items-center justify-center animate-pulse">
-                        <div className="w-[500px] h-[500px] rounded-full filter blur-[100px] bg-vitta-accent/40" />
-                      </div>
-                      <div className="flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="w-24 h-24 rounded-full bg-slate-850 border border-slate-700 shadow-xl overflow-hidden flex items-center justify-center relative justify-self-center">
-                          <Activity size={40} className="text-vitta-accent animate-pulse" />
+                    <div className="absolute inset-0 w-full h-full bg-slate-950 flex items-center justify-center overflow-hidden">
+                      {/* Real WebRTC Remote Video Stream */}
+                      <video
+                        ref={remoteVideoRef}
+                        autoPlay
+                        playsInline
+                        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-350"
+                      />
+                      
+                      {/* Loading indicator if remote audio/video tracks are not yet fully active */}
+                      {(!remoteStream || remoteStream.getVideoTracks().length === 0) && (
+                        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center text-center space-y-4 p-4 z-10">
+                          <div className="w-16 h-16 rounded-full bg-vitta-accent/10 border border-vitta-accent/20 flex items-center justify-center text-vitta-accent">
+                            <Activity size={28} className="animate-pulse" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-slate-300">Conectando canal de transmissão...</p>
+                            <p className="text-[10px] text-slate-500">Aguardando handshake de mídia seguro</p>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <p className="font-bold text-slate-200">Transmissão Segura de Vídeo Ativa</p>
-                          <p className="text-xs text-slate-400">WebRTC Peer Connection • Full HD</p>
-                        </div>
+                      )}
+                      
+                      {/* Overlay indicator to show secure transmission */}
+                      <div className="absolute bottom-4 right-4 bg-slate-900/60 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2 text-[10px] text-slate-300 font-medium z-10">
+                        <Activity size={12} className="text-emerald-400 animate-pulse" />
+                        <span>Transmissão WebRTC Criptografada</span>
                       </div>
                     </div>
                   )}
