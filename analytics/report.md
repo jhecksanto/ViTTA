@@ -1,51 +1,48 @@
-# Relatório de Análise Geral do Sistema de Telemedicina (Vitta)
-**Data e Hora de Geração:** 15 de junho de 2026, 21:34:25 (Horário de Brasília)
+# Relatório de Diagnóstico e Avanço - Sistema de Telemedicina (Vitta)
+**Data e Hora de Geração:** 16 de junho de 2026, 11:03:00 (Horário de Brasília)
 
 ---
 
-## 📋 1. Visão Geral do Sistema
-Este relatório apresenta um diagnóstico preciso e atualizado do sistema de telemedicina integrado à plataforma **Vitta**. Fornecemos uma análise transparente de todas as conquistas técnicas já estabelecidas, focadas na experiência do usuário e robustez do fluxo de atendimento por videoconferência, bem como as pendências de refinamento técnico necessárias para consolidar a entrega sem a introdução de novos escopos funcionais.
+## 📋 1. Visão Geral e Contexto Atual
+Este relatório apresenta um diagnóstico preciso e atualizado do sistema de telemedicina integrado à plataforma **Vitta**. O sistema atual evoluiu significativamente de uma estrutura meramente simulada para uma integração real de videoconferência síncrona utilizando **WebRTC (RTCPeerConnection)** estruturada de forma resiliente sobre o **Cloud Firestore** como canal de sinalização de ofertas, respostas (SDP Offer/Answer) e candidatos de rede (ICE Candidates).
 
-O objetivo central é consolidar um fluxo seguro e resiliente que ligue médicos e pacientes em salas exclusivas, governadas em tempo real pelo Firestore e protegidas por regras de acesso eficientes.
+O objetivo desta análise é mapear estritamente o que já está concluído/em andamento e as arestas técnicas finas que restam refinar (finalização de pendências) para consolidar a entrega, sem adição de novos escopos funcionais.
 
 ---
 
 ## 🔍 2. Estado de Implementação Atual (O que já está CONCLUÍDO)
 
-### 🎥 Janela de Videoconferência (`TelemedicineRoom`)
-- **Gestão Resiliente de Hardwares**: Implementação de mecanismos de fallback inteligente no acesso à webcam e microfone. O sistema tenta capturar vídeo e áudio juntos. Se falhar por bloqueio de permissão ou ausência física, tenta vídeo apenas; se falhar, tenta áudio apenas; se ambos falharem, entra em modo de transmissão silenciosa com alertas amigáveis em tela, permitindo o uso integral do chat síncrono.
-- **Analisador de Áudio com Web Audio API**: Integração de um analisador de espectro em tempo real conectado ao microfone do usuário (quando não silenciado). Fornece feedback visual dinâmico com barras animadas, indicando de forma explícita a atividade física do microfone para que o usuário saiba que seu áudio está funcionando perfeitamente.
-- **Sinalização Síncrona via Firestore**: O status de mutado (`isMuted`), vídeo desativado (`isCamOff`) e status de conexão de cada participante é sincronizado instantaneamente por meio de ouvintes (`onSnapshot`) em tempo real no documento da consulta.
-- **Efeitos de Alerta Sônicos (Chimes & Ringing)**: 
-  - Toque musical recursivo (ringtone com `AudioContext` artificial de baixa latência) reproduzido de forma recorrente enquanto o usuário está aguardando o parceiro de transmissão na sala de espera virtual.
-  - Alerta sônico de conexão assertivo (chime duplo cristalino) reproduzido no instante exato em que o outro participante conecta-se à transmissão.
-- **Depuração e Simulação para Homologação**: Inclusão de botões para simular a entrada/saída em tempo real do parceiro de vídeo (médico ou paciente), facilitando testes locais e validações rápidas pelo usuário final. Também conta com ferramentas para simular compartilhamento de tela e upload de arquivos simulados (como receitas médicas e exames físicos).
+### 🚀 Fluxo de Handshake WebRTC Real via Firestore
+- **Canal de Sinalização Síncrono**: O componente `TelemedicineRoom.tsx` utiliza o Firestore como intermediário sob a subcoleção `/webrtc/signal` para troca direta das especificações criptografadas de mídia (Offer/Answer).
+- **Tratamento de ICE Candidates**: Coleta e pareamento mútuo em tempo real de candidatos de rede de ambos os lados (médico e paciente) através de ouvintes reativos nas subcoleções temporárias `doctorCandidates` e `patientCandidates`.
+- **Limpeza Automática de Conexões Anteriores**: Mecanismo robusto que limpa registros de sinalização e ICE candidates estéreis ou antigos no Firestore no exato momento da conexão de um novo usuário, evitando handshakes falsos ou colisões em chamadas reabertas.
 
-### 🔗 Deep-Linking & Fluxo de Acesso Seguro (Roteador de Inicialização)
-- **Roteamento Inteligente**: No carregamento global do `App.tsx`, o interceptador analisa se o parâmetro `?room=id_da_consulta` está presente.
-- **Guardas de Autenticação**: 
-  - Se o usuário não está logado, bloqueia o acesso à sala e exibe um banner explicativo contextualizado na tela de login/registro para autenticação de telemedicina.
-  - Se o usuário está logado, verifica as credenciais. Apenas o médico responsável e o paciente específico vinculados àquela consulta têm autorização para ingressar na videoconferência, barrando terceiros não-autorizados.
-- **Limpeza de Parâmetros**: Remove o parâmetro `?room` da URL na barra de endereços através do `window.history.replaceState` imediatamente após validar e persistir o estado de abertura, garantindo excelente estética visual e impedindo recarregamentos acidentais.
+### 🎥 Controles Síncronos e Análise de Espectro
+- **Análise Física de Microfone Síncrona**: O aplicativo utiliza a `Web Audio API` com `AnalyserNode` para desenhar barras dinâmicas responsivas de acordo com a amplitude real de som do microfone local e também do microfone remoto (interlocutor).
+- **Propagação Síncrona de Estados (Mute / Cam Off)**: Os flags `isMuted` e `isCamOff` são transmitidos instantaneamente via Firestore e aplicados diretamente aos emissores locais de canais de mídia (`RTCRtpSender`), garantindo propagação imediata da suspensão de vídeo/áudio na rede.
+- **Bypass de Políticas de Autoplay do Navegador**: Escuta de interações de toque e clique nas janelas de exibição para reativar de forma segura as transmissões de vídeo remoto caso o navegador tenha suspendido a inicialização automática do som do fluxo remoto.
 
-### 📅 Agendamento e Compartilhamento de Links Únicos
-- **Geração Unívoca Sob Demanda**: No agendamento da consulta online (seja pelo paciente ou profissional), o sistema gera automaticamente os campos `telemedicineRoomId` e `telemedicineUrl` amarrados ao ID do documento de consulta.
-- **Ações Rápidas de Copiar**: Botões dedicados com ícones correspondentes integrados em todos os cards de agendamento ativos no Dashboard do Profissional e do Paciente, permitindo copiar o link seguro em 1 clique com feedback via toast de sucesso.
+### 🛡 Roteamento, Deep-Linking e Segurança de Acesso
+- **Autorização Estrita de Participantes**: Bloqueio ativo de conexões de qualquer usuário autenticado que não seja o profissional ou o paciente diretamente vinculados à consulta, redirecionando invasores para o fluxo principal.
+- **Remoção de Parâmetros de URL**: Limpeza automática do endereço de busca `?room` do navegador usando `window.history.replaceState` imediatamente após o acionamento interno da videoconferência, evitando carregamentos cíclicos.
 
 ---
 
 ## 🛠 3. O que Está em Andamento e Falta Terminar (Foco em Finalização)
 
-Para concluir perfeitamente o sistema de telemedicina existente sem expandir o escopo original para novos caminhos funcionais, os seguintes detalhes devem ser finalizados de forma limpa no código:
+Embora o sistema apresente alta robustez, as seguintes arestas de polimento técnico precisam ser consolidadas nos componentes associados para garantir que nada permaneça ativo em segundo plano e que o display físico se ajuste com precisão total:
 
-1. **Garantia de Liberação de Recursos de Mídia (Polimento de Memória e Energia)**:
-   - Assegurar que, no momento exato em que a sala de telemedicina for fechada ou destruída (médico clica em "Finalizar" ou paciente clica em "Sair"), todos os capturadores de mídia (`localStream.getTracks().forEach(t => t.stop())`) e instâncias do analisador de espectro de áudio (`AudioContext.close()`) sejam destruídos com segurança para liberar webcam/microfone no sistema operacional de forma imediata.
+### 1. Reforço de Cleanup Físico Remoto e Eventos Globais (Pendência de Performance)
+- **Status do Item**: Em andamento.
+- **Detalhamento**: Assegurar que os receptores globais de cliques na janela criados para mitigar as barreiras de autoplay (`unlockAutoplay`) sejam removidos por completo na destruição do componente, estancando eventuais vazamentos de memória na SPA.
+- **Ajuste Fino**: Realizar auditoria no encerramento da conexão WebRTC (`pc.close()`) para que, nos gatilhos de recarregamento e desmontagem, todas as faixas do objeto `remoteStream` e loops de nível de áudio sejam resetados de imediato para zerar qualquer overhead de segundo plano.
 
-2. **Ajuste Fino de Layout Responsivo (Visual Bento Grid em Telas Pequenas)**:
-   - Polimento estético das visualizações de grade do vídeo local, vídeo remoto e chat lateral para assegurar uma visualização limpa de 100% dos elementos controladores (botões de mute, cam off, chat toggles) em resoluções mobile estreitas (menores que 360px de largura).
+### 2. Desligamento do Hardware de Câmera Físico na Transição de Fechamento (Pendência de UI/UX)
+- **Status do Item**: Em andamento.
+- **Detalhamento**: Atualmente, quando o médico finaliza o atendimento, a sala entra em estado de encerramento (`isSessionClosed === true`) e exibe uma contagem regressiva visual elegante de 2.5 segundos com o Framer Motion. 
+- **Ajuste Fino**: O fluxo de mídia local precisa desligar fisicamente as faixas (`track.stop()`) do dispositivo de hardware no **primeiro milissegundo** em que a transição entra em ação para apagar imediatamente a luz LED física de gravação do usuário antes do término da contagem, transmitindo sensação instantânea de privacidade e segurança.
 
-3. **Arquitetura de Sinalização WebRTC Real (Documentação Técnica)**:
-   - Incluir comentários estruturados explicativos nas funções de transmissão na sala de videoconferência para discernir a simulação do estado síncrono governado via Firestore de uma sinalização de canais WebRTC real de rede segura, oferecendo total transparência arquitetural.
-
-4. **Sinalização Perfeita de Fechamento de Sessão Síncrona**:
-   - Garantir que a alteração de status para `completed` de um agendamento seja propagada e renderizada instantaneamente nos dois canais (médico e paciente) por meio de um redirecionamento seguro para os dashboards de origem após o encerramento da vídeochamada.
+### 3. Responsividade no Grid de Controles para Telas de Largura Ultrarreduzida (< 360px)
+- **Status do Item**: Em andamento.
+- **Detalhamento**: Em dispositivos ultra-compactos (como iPhone SE ou telas de 320px no DevTools), a barra de controle flutuante inferior contendo ativação de mudo, câmera, abertura de chat e botão de encerramento pode estourar as margens laterais orquestradas por paddings longos.
+- **Ajuste Fino**: Ajustar os espaçamentos internos para resoluções menores de forma adaptativa (`max-xs:gap-1.5 px-2`), garantindo que o layout mantenha as áreas de clique recomendadas de 44px sem truncamento de ícones ou desalinhamentos.

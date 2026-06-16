@@ -163,20 +163,37 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     if (localStream) {
       localStream.getTracks().forEach(track => {
         try { 
-          track.stop(); 
-          console.log(`[Telemedicina Vitta] Recurso de mídia parado com sucesso: ${track.kind}`);
+          if (track.readyState === 'live') {
+            track.stop(); 
+          }
+          console.log(`[Telemedicina Vitta] Recurso de mídia local parado com sucesso: ${track.kind}`);
         } catch (e) {
-          console.warn("Erro ao interromper recurso de mídia:", e);
+          console.warn("Erro ao interromper recurso de mídia local:", e);
         }
       });
       setLocalStream(null);
     }
+
+    if (remoteStream) {
+      remoteStream.getTracks().forEach(track => {
+        try { 
+          if (track.readyState === 'live') {
+            track.stop(); 
+          }
+          console.log(`[Telemedicina Vitta] Recurso de mídia remoto parado com sucesso: ${track.kind}`);
+        } catch (e) {
+          console.warn("Erro ao interromper recurso de mídia remoto:", e);
+        }
+      });
+      setRemoteStream(null);
+    }
+
     setPlayRingSound(false);
 
-    // Timer de redirecionamento suave de 2.5 segundos (ou contagem regressiva de 3s)
+    // Timer de redirecionamento de 3 segundos sincronizado com o visual de contagem regressiva
     const timer = setTimeout(() => {
       onLeave();
-    }, 2500);
+    }, 3000);
 
     const interval = setInterval(() => {
       setRedirectCount(prev => Math.max(0, prev - 1));
@@ -186,7 +203,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [isSessionClosed, onLeave, localStream]);
+  }, [isSessionClosed, onLeave, localStream, remoteStream]);
 
   // Handle local camera/microphone access with graceful degradation fallbacks
   useEffect(() => {
@@ -273,6 +290,8 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
   // Global window listener to automatically unlock audio and play remote video elements on click
   useEffect(() => {
+    if (isSessionClosed) return;
+
     const unlockAutoplay = () => {
       if (remoteVideoRef.current && remoteVideoRef.current.paused && remoteStream) {
         remoteVideoRef.current.play()
@@ -286,7 +305,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       window.removeEventListener('click', unlockAutoplay);
       window.removeEventListener('touchstart', unlockAutoplay);
     };
-  }, [remoteStream]);
+  }, [remoteStream, isSessionClosed]);
 
   // Web Audio API analyser loop to display physical local mic activity in real time
   useEffect(() => {
@@ -959,7 +978,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                 className="h-full bg-vitta-accent" 
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
-                transition={{ duration: 2.5, ease: "linear" }}
+                transition={{ duration: 3, ease: "linear" }}
               />
             </div>
           </div>
@@ -1209,11 +1228,11 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           </AnimatePresence>
         </div>
 
-        {/* BOTTOM CONTROLS BOARD */}
-        <footer className="h-20 shrink-0 bg-slate-950 border-t border-slate-800/80 flex items-center justify-center gap-3 sm:gap-6 px-3 sm:px-10 z-20">
+        {/* BOTTOM CONTROLS BOARD (Issue #3 Responsividade - Ajuste de Gap paras telas < 360px) */}
+        <footer className="h-20 shrink-0 bg-slate-950 border-t border-slate-800/80 flex items-center justify-center gap-1.5 xs:gap-3 sm:gap-6 px-1.5 xs:px-4 sm:px-10 z-20">
           <button 
             onClick={() => setIsMuted(!isMuted)}
-            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shrink-0 ${
               isMuted ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isMuted ? "Ativar Microfone" : "Silenciar Microfone"}
@@ -1223,7 +1242,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
           <button 
             onClick={() => setIsCamOff(!isCamOff)}
-            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shrink-0 ${
               isCamOff ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isCamOff ? "Ativar Câmera" : "Desligar Câmera"}
@@ -1236,7 +1255,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
               setIsScreenSharing(!isScreenSharing);
               addToast(isScreenSharing ? 'Compartilhamento de tela encerrado' : 'Compartilhamento de tela simulado iniciado', 'success');
             }}
-            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shrink-0 ${
               isScreenSharing ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isScreenSharing ? "Parar Compartilhamento" : "Compartilhar Tela"}
@@ -1247,7 +1266,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           {/* Botão de abrir/fechar chat no mobile */}
           <button 
             onClick={() => setIsChatOpen(!isChatOpen)}
-            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex md:hidden items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex md:hidden items-center justify-center transition-all shrink-0 ${
               isChatOpen ? 'bg-vitta-accent text-white shadow-lg animate-pulse' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title="Chat de Mensagens"
@@ -1255,15 +1274,15 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
             <MessageSquare size={18} />
           </button>
 
-          <div className="w-px h-8 bg-slate-850 mx-1 sm:mx-2" />
+          <div className="w-px h-8 bg-slate-850 mx-0.5 xs:mx-1 sm:mx-2 shrink-0" />
 
           {/* End Consultation Button */}
           <button 
             onClick={handleHangUp}
-            className="px-4 sm:px-6 py-2 sm:py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm tracking-wide transition-all shadow-lg shadow-rose-600/20 flex items-center gap-1.5 sm:gap-2 animate-pulse"
+            className="px-2.5 xs:px-4 sm:px-6 py-2 sm:py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl sm:rounded-2xl font-bold text-[10px] xs:text-xs sm:text-sm tracking-wide transition-all shadow-lg shadow-rose-600/20 flex items-center gap-1.5 sm:gap-2 animate-pulse shrink-0"
             title="Encerrar consulta"
           >
-            <Phone className="size-[14px] sm:size-[18px] rotate-[135deg]" />
+            <Phone className="size-[12px] sm:size-[18px] rotate-[135deg]" />
             <span className="hidden sm:inline">{isProfessional ? 'Desconectar e Finalizar' : 'Sair da Chamada'}</span>
             <span className="inline sm:hidden">{isProfessional ? 'Fim' : 'Sair'}</span>
           </button>
@@ -1278,15 +1297,15 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         }`}
       >
         
-        {/* Navigation Tabs (Chat / Notes) */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between gap-2">
-          <div className="flex bg-slate-900 p-1 rounded-xl flex-1">
-            <button className="flex-1 py-2 text-xs font-bold rounded-lg bg-slate-800 text-white flex items-center justify-center gap-1.5">
-              <MessageSquare size={14} className="text-vitta-accent" />
+        {/* Navigation Tabs (Chat / Notes) (Issue #3 Responsividade - Ajuste de tamanhos para telas compactas) */}
+        <div className="p-3 xs:p-4 border-b border-slate-800 flex items-center justify-between gap-1.5 xs:gap-2">
+          <div className="flex bg-slate-900 p-1 rounded-xl flex-1 min-w-0">
+            <button className="flex-1 py-1.5 px-2 text-[10px] xs:text-xs font-bold rounded-lg bg-slate-800 text-white flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0">
+              <MessageSquare size={12} className="text-vitta-accent" />
               Conversas
             </button>
             {isProfessional && (
-              <div className="px-2 self-center text-xs text-slate-500 font-bold uppercase tracking-wider">
+              <div className="px-1.5 self-center text-[9px] xs:text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
                 | Dr Workspace
               </div>
             )}
@@ -1295,7 +1314,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           <button 
             type="button"
             onClick={() => setIsChatOpen(false)}
-            className="md:hidden p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center border border-slate-800/85"
+            className="md:hidden p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center border border-slate-800/85 shrink-0"
             title="Fechar Chat"
           >
             <X size={18} />
