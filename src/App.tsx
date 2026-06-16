@@ -115,6 +115,11 @@ import {
   Share2,
   Coins,
   Sparkles,
+  Landmark,
+  Percent,
+  ArrowUp,
+  ArrowDown,
+  RefreshCw,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { motion, AnimatePresence } from "motion/react";
@@ -192,6 +197,7 @@ import HelpCenter from "./components/HelpCenter";
 import ReviewModal from "./components/ReviewModal";
 import KYCWizard from "./components/KYCWizard";
 import TelemedicineRoom from "./components/TelemedicineRoom";
+import { AdminWalletManagementView } from "./components/AdminWalletManagementView";
 import { enqueueOfflineAction } from "./lib/offlineQueue";
 
 const Skeleton = ({
@@ -721,6 +727,7 @@ const BookingModal = ({
   user,
   userData,
   googleToken,
+  setActiveTab,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -728,6 +735,7 @@ const BookingModal = ({
   user: any;
   userData?: any;
   googleToken?: string | null;
+  setActiveTab?: (tab: string) => void;
 }) => {
   const [modalTab, setModalTab] = useState<"profile" | "booking">("profile");
   const [isBooking, setIsBooking] = useState(false);
@@ -755,6 +763,7 @@ const BookingModal = ({
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "cash_presencial">("wallet");
 
   useEffect(() => {
     if (!isOpen || !professional || !selectedDate) return;
@@ -842,8 +851,21 @@ const BookingModal = ({
   const handleConfirm = async () => {
     if (!user || !professional || !selectedTime) return;
 
+    const parsedPriceStr = professional.price || "R$ 150,00";
+    const priceNumeric = parseFloat(parsedPriceStr.replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+
+    if (paymentMethod === "wallet") {
+      const clientBalance = userData?.walletBalance || 0;
+      if (clientBalance < priceNumeric) {
+        addToast("Saldo insuficiente na sua carteira ViTTA para realizar este agendamento.", "error");
+        return;
+      }
+    }
+
     setIsBooking(true);
     try {
+      const payStatus = paymentMethod === "wallet" ? "paid" : "pending";
+
       // 1. Save to Firestore
       const aptRef = await addDoc(collection(db, "appointments"), {
         userId: user.uid,
@@ -858,9 +880,77 @@ const BookingModal = ({
         time: selectedTime,
         status: "pending",
         modality,
+        price: parsedPriceStr,
+        priceNumeric: priceNumeric,
+        paymentMethod: paymentMethod,
+        paymentStatus: payStatus,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
+
+      if (paymentMethod === "wallet") {
+        // Deduct from client
+        await updateDoc(doc(db, "users", user.uid), {
+          walletBalance: increment(-priceNumeric),
+        });
+
+        // Log client debit transaction
+        await addDoc(collection(db, "transactions"), {
+          userId: user.uid,
+          type: "debit",
+          amount: priceNumeric,
+          title: `Pagamento Consulta - ${professional.name}`,
+          description: `Consulta agendada para ${selectedDate} às ${selectedTime}`,
+          category: "Consulta",
+          date: new Date().toISOString(),
+        });
+
+        // Credit to professional
+        if (professional.userId) {
+          const profFeeRate = professional.feeRate || 0;
+          const feeAmount = (priceNumeric * profFeeRate) / 100;
+          const netAmount = priceNumeric; // custody in-wallet
+
+          await updateDoc(doc(db, "users", professional.userId), {
+            walletBalance: increment(netAmount),
+          });
+
+          // Log professional credit transaction
+          await addDoc(collection(db, "transactions"), {
+            userId: professional.userId,
+            type: "credit",
+            amount: netAmount,
+            title: `Recebimento - Consulta de ${userData?.name || user.displayName || user.email}`,
+            description: `Pago via Carteira Digital`,
+            category: "Rendimento",
+            date: new Date().toISOString(),
+          });
+        }
+      } else {
+        // Paid in Cash Presencial (creates informational transactions for ledger calculation without virtual balance subtraction)
+        if (professional.userId) {
+          await addDoc(collection(db, "transactions"), {
+            userId: professional.userId,
+            type: "credit",
+            amount: priceNumeric,
+            title: `Recebimento Presencial (Dinheiro) - Consulta de ${userData?.name || user.displayName || user.email}`,
+            description: `Pago presencialmente em dinheiro`,
+            category: "Rendimento",
+            date: new Date().toISOString(),
+            isCash: true,
+          });
+        }
+        await addDoc(collection(db, "transactions"), {
+          userId: user.uid,
+          type: "debit",
+          amount: priceNumeric,
+          title: `Consulta em Dinheiro - ${professional.name}`,
+          description: `Pago presencialmente em dinheiro`,
+          category: "Consulta",
+          date: new Date().toISOString(),
+          isCash: true,
+        });
+      }
 
       if (modality === "telemedicine") {
         await updateDoc(doc(db, "appointments", aptRef.id), {
@@ -903,6 +993,13 @@ const BookingModal = ({
 
       const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, "_blank");
+
+      addToast("Consulta solicitada com sucesso!", "success");
+
+      // Redirection to 'Meus Agendamentos'
+      if (setActiveTab) {
+        setActiveTab("appointments");
+      }
 
       onClose();
     } catch (error) {
@@ -1164,6 +1261,55 @@ const BookingModal = ({
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Seção Forma de Pagamento */}
+                <div className="space-y-3 p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border mt-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">Valor do Atendimento</span>
+                    <span className="text-sm font-black text-vitta-green">{professional?.price || "R$ 150,00"}</span>
+                  </div>
+                  
+                  <div className="space-y-2 pt-2 border-t border-vitta-border/60">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 block mb-1">
+                      Selecione a Forma de Pagamento
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("wallet")}
+                        className={`p-3 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
+                          paymentMethod === "wallet"
+                            ? "bg-vitta-green/5 border-vitta-green text-vitta-text-primary"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:border-vitta-green/35"
+                        }`}
+                      >
+                        <span className="font-bold">🎫 Carteira Digital</span>
+                        <span className="text-[10px] text-vitta-text-muted">
+                          Saldo: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(userData?.walletBalance || 0)}
+                        </span>
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod("cash_presencial")}
+                        className={`p-3 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
+                          paymentMethod === "cash_presencial"
+                            ? "bg-vitta-amber/5 border-vitta-amber text-vitta-text-primary"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:border-vitta-amber/35"
+                        }`}
+                      >
+                        <span className="font-bold font-sans">💵 Dinheiro</span>
+                        <span className="text-[10px] text-vitta-text-muted">Presencialmente no consultório</span>
+                      </button>
+                    </div>
+                    
+                    {paymentMethod === "wallet" && (userData?.walletBalance || 0) < (parseFloat((professional?.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".")) || 0) && (
+                      <p className="text-[10px] font-bold text-vitta-danger mt-1">
+                        ⚠️ Saldo insuficiente na sua carteira ViTTA. Por favor, adicione fundos ou escolha pagamento em dinheiro.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -7153,6 +7299,7 @@ const AdminView = ({ user }: { user: any }) => {
     | "config"
     | "chat"
     | "transactions"
+    | "wallet-management"
     | "appointments"
     | "deletion-requests"
     | "audit-logs"
@@ -7470,6 +7617,17 @@ const AdminView = ({ user }: { user: any }) => {
         >
           <DollarSign size={18} />
           Financeiro
+        </button>
+        <button
+          onClick={() => setSubTab("wallet-management")}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === "wallet-management"
+              ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20"
+              : "bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border"
+          }`}
+        >
+          <Wallet size={18} />
+          Gestão de Carteiras
         </button>
         <button
           onClick={() => setSubTab("subscriptions")}
@@ -7870,6 +8028,7 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === "content" && <ContentManagerView />}
           {subTab === "chat" && <AdminSupportChatView adminUser={user} />}
           {subTab === "transactions" && <AdminFinancialView adminUser={user} />}
+          {subTab === "wallet-management" && <AdminWalletManagementView />}
           {subTab === "audit-logs" && <AuditLogsList />}
           {subTab === "subscriptions" && <SubscriptionManagementView />}
         </motion.div>
@@ -9853,10 +10012,12 @@ const ProfessionalsView = ({
   user,
   userData,
   googleToken,
+  setActiveTab,
 }: {
   user: any;
   userData?: any;
   googleToken?: string | null;
+  setActiveTab?: (tab: string) => void;
 }) => {
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -10056,6 +10217,7 @@ const ProfessionalsView = ({
         user={user}
         userData={userData}
         googleToken={googleToken}
+        setActiveTab={setActiveTab}
       />
     </div>
   );
@@ -10388,9 +10550,18 @@ const PartnersView = ({
                 className="group cursor-pointer bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col h-full"
               >
                 <div
-                  className={`h-32 ${cat.color || "bg-vitta-text-muted"} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500`}
+                  className={`h-32 ${cat.color || "bg-vitta-text-muted"} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500 overflow-hidden`}
                 >
-                  {getIcon(cat.icon)}
+                  {cat.imageUrl ? (
+                    <img
+                      src={cat.imageUrl}
+                      alt={cat.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    getIcon(cat.icon)
+                  )}
                   <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
                     {getPartnersCount(cat.name)} parceiros
                   </div>
@@ -11047,6 +11218,8 @@ const SettingsView = ({
       "https://picsum.photos/seed/user/200/200",
     deletionRequested: userData?.deletionRequested || false,
     twoFactorEnabled: userData?.twoFactorEnabled || false,
+    feeRate: userData?.feeRate !== undefined ? userData.feeRate : 0,
+    pixKey: userData?.pixKey || "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSearchingCep, setIsSearchingCep] = useState(false);
@@ -11126,6 +11299,8 @@ const SettingsView = ({
         photoURL: userData.photoURL || prev.photoURL,
         deletionRequested: userData.deletionRequested || false,
         twoFactorEnabled: userData.twoFactorEnabled || false,
+        feeRate: userData.feeRate !== undefined ? userData.feeRate : prev.feeRate,
+        pixKey: userData.pixKey || prev.pixKey,
       }));
     }
   }, [userData]);
@@ -11798,6 +11973,72 @@ const SettingsView = ({
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Dados Financeiros & Tarifas */}
+          <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+              <h2 className="text-lg font-bold text-vitta-text-primary">
+                Dados Financeiros & Tarifas
+              </h2>
+              <Landmark className="text-vitta-accent" size={20} />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                  Chave PIX
+                </label>
+                <input
+                  type="text"
+                  value={profileData.pixKey || ""}
+                  onChange={(e) =>
+                    setProfileData((prev) => ({
+                      ...prev,
+                      pixKey: e.target.value,
+                    }))
+                  }
+                  placeholder="E-mail, CPF, Telefone ou Chave Aleatória"
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
+                    Taxa Fee (%)
+                  </label>
+                  {!(userData?.role === "admin" || user?.email === "jhecksanto@gmail.com") && (
+                    <span className="text-[9px] text-vitta-danger font-bold uppercase">
+                      Apenas Admin
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={profileData.feeRate !== undefined ? profileData.feeRate : ""}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setProfileData((prev) => ({
+                      ...prev,
+                      feeRate: val,
+                    }));
+                  }}
+                  disabled={!(userData?.role === "admin" || user?.email === "jhecksanto@gmail.com")}
+                  className={`w-full px-4 py-3 bg-vitta-surface-2 border rounded-xl text-sm text-vitta-text-primary transition-all ${
+                    (userData?.role === "admin" || user?.email === "jhecksanto@gmail.com")
+                      ? "border-vitta-border focus:ring-2 focus:ring-vitta-accent/20 outline-none cursor-text"
+                      : "border-vitta-border/50 opacity-60 cursor-not-allowed text-vitta-text-muted"
+                  }`}
+                />
+                <p className="text-[10px] text-vitta-text-secondary px-1 italic">
+                  Percentual de custo por uso da plataforma para transações de profissionais.
+                </p>
               </div>
             </div>
           </div>
@@ -13711,6 +13952,7 @@ const PartnershipsView = ({
           type: "partner",
           icon: newItem.icon,
           color: newItem.color,
+          imageUrl: newItem.imageUrl || "",
           description: newItem.description,
           createdAt: new Date().toISOString(),
         });
@@ -14269,6 +14511,58 @@ const PartnershipsView = ({
                     className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary h-24 resize-none"
                   />
                 </div>
+                <div className="space-y-4 border-t border-vitta-border pt-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      URL da Imagem do Ícone (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://exemplo.com/icone.png"
+                      value={newItem.imageUrl || ""}
+                      onChange={(e) =>
+                        setNewItem({ ...newItem, imageUrl: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 items-center">
+                    <label className="cursor-pointer shrink-0 flex items-center justify-center px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl transition-all gap-2 text-xs font-bold shadow-md shadow-vitta-accent/10">
+                      <Upload size={14} />
+                      <span>Fazer Upload do Ícone</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleLogoUpload(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {newItem.imageUrl && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-vitta-surface-2 border border-vitta-border rounded-xl">
+                        <img
+                          src={newItem.imageUrl}
+                          alt="Ícone Preview"
+                          className="w-6 h-6 rounded-md object-cover bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewItem({ ...newItem, imageUrl: "" });
+                          }}
+                          className="text-[10px] font-bold text-vitta-danger hover:underline"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div className="flex gap-3">
                   <button
                     type="submit"
@@ -14400,6 +14694,58 @@ const PartnershipsView = ({
                     className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary h-24 resize-none"
                   />
                 </div>
+                <div className="space-y-4 border-t border-vitta-border pt-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      URL da Imagem do Ícone (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://exemplo.com/icone.png"
+                      value={editingItem.imageUrl || ""}
+                      onChange={(e) =>
+                        setEditingItem({ ...editingItem, imageUrl: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 items-center">
+                    <label className="cursor-pointer shrink-0 flex items-center justify-center px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl transition-all gap-2 text-xs font-bold shadow-md shadow-vitta-accent/10">
+                      <Upload size={14} />
+                      <span>Fazer Upload do Ícone</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleLogoUpload(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {editingItem.imageUrl && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-vitta-surface-2 border border-vitta-border rounded-xl">
+                        <img
+                          src={editingItem.imageUrl}
+                          alt="Ícone Preview"
+                          className="w-6 h-6 rounded-md object-cover bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingItem({ ...editingItem, imageUrl: "" });
+                          }}
+                          className="text-[10px] font-bold text-vitta-danger hover:underline"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div className="flex gap-3">
                   <button
                     type="submit"
@@ -14446,9 +14792,18 @@ const PartnershipsView = ({
                     <td className="px-8 py-4">
                       <div className="flex items-center gap-3">
                         <div
-                          className={`w-8 h-8 ${category.color || "bg-vitta-surface-2 text-vitta-text-primary"} rounded-lg flex items-center justify-center text-white`}
+                          className={`w-8 h-8 ${category.color || "bg-vitta-surface-2 text-vitta-text-primary"} rounded-lg flex items-center justify-center text-white overflow-hidden`}
                         >
-                          {getIcon(category.icon, 16)}
+                          {category.imageUrl ? (
+                            <img
+                              src={category.imageUrl}
+                              alt={category.name}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            getIcon(category.icon, 16)
+                          )}
                         </div>
                         <span className="font-bold text-sm text-vitta-text-primary">
                           {category.name}
@@ -17674,13 +18029,16 @@ const AddFundsModal = ({
   );
 };
 
-const WalletsView = ({ user }: { user: any }) => {
+const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
   const { addToast } = useToast();
   const [balance, setBalance] = useState(0);
   const [vittaCoins, setVittaCoins] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [isSubmittingWithdraw, setIsSubmittingWithdraw] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<"history" | "rewards">(
     "history",
   );
@@ -17851,13 +18209,23 @@ const WalletsView = ({ user }: { user: any }) => {
             prêmios
           </p>
         </div>
-        <button
-          onClick={() => setIsAddFundsModalOpen(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-        >
-          <Plus size={20} />
-          Adicionar Fundos
-        </button>
+        {userData?.role === "professional" || userData?.role === "conveniado" ? (
+          <button
+            onClick={() => setIsWithdrawModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+          >
+            <ArrowUp size={20} />
+            Solicitar Saque
+          </button>
+        ) : (
+          <button
+            onClick={() => setIsAddFundsModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+          >
+            <Plus size={20} />
+            Adicionar Fundos
+          </button>
+        )}
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -18136,6 +18504,190 @@ const WalletsView = ({ user }: { user: any }) => {
         onClose={() => setIsAddFundsModalOpen(false)}
         user={user}
       />
+
+      {/* Modal de Solicitação de Saque */}
+      {isWithdrawModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-vitta-surface border border-vitta-border rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative">
+            <div className="p-6 border-b border-vitta-border flex items-center justify-between">
+              <h3 className="text-lg font-bold text-vitta-text-primary flex items-center gap-2">
+                <Landmark size={20} className="text-emerald-500" />
+                Solicitar Saque (PIX)
+              </h3>
+              <button
+                onClick={() => {
+                  setIsWithdrawModalOpen(false);
+                  setWithdrawAmount("");
+                }}
+                className="text-vitta-text-secondary hover:text-vitta-text-primary transition-all p-1.5 hover:bg-vitta-surface-2 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-1.5 p-4 bg-vitta-surface-2 border border-vitta-border rounded-2xl p-4">
+                <p className="text-xs text-vitta-text-secondary">Chave PIX Cadastrada:</p>
+                <p className="text-sm font-bold text-vitta-text-primary">
+                  {userData?.pixKey ? (
+                    <span className="font-mono">{userData.pixKey}</span>
+                  ) : (
+                    <span className="text-vitta-danger flex items-center gap-1">
+                      ⚠️ Nenhuma chave cadastrada!
+                    </span>
+                  )}
+                </p>
+                {!userData?.pixKey && (
+                  <p className="text-[10px] text-vitta-danger font-medium leading-relaxed mt-1">
+                    Aviso: Cadastre sua Chave PIX nas Configurações do seu Perfil antes de solicitar o resgate de valores.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-4 p-4 bg-vitta-surface-2 border border-vitta-border rounded-2xl">
+                <div className="flex-1">
+                  <p className="text-[10px] text-vitta-text-muted uppercase tracking-wider font-bold">Saldo Disponível</p>
+                  <p className="text-lg font-bold text-vitta-text-primary">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(balance)}
+                  </p>
+                </div>
+                <div className="border-l border-vitta-border pl-4">
+                  <p className="text-[10px] text-vitta-text-muted uppercase tracking-wider font-bold">Sua Taxa Fee</p>
+                  <p className="text-lg font-bold text-vitta-accent">
+                    {userData?.feeRate || 0}%
+                  </p>
+                </div>
+              </div>
+
+              {userData?.pixKey && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Valor do Saque (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      max={balance}
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      placeholder="0,00"
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all"
+                    />
+                  </div>
+
+                  {parseFloat(withdrawAmount) > 0 && (
+                    <div className="space-y-2 p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl dark:bg-emerald-950/20 dark:border-emerald-900/30">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-vitta-text-secondary">Valor Solicitado:</span>
+                        <span className="font-medium text-vitta-text-primary">
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(withdrawAmount))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-rose-600">
+                        <span>Fee Plataforma ({userData?.feeRate || 0}%):</span>
+                        <span>
+                          -{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((parseFloat(withdrawAmount) * (userData?.feeRate || 0)) / 100)}
+                        </span>
+                      </div>
+                      <div className="border-t border-vitta-border/65 pt-2 flex justify-between text-sm font-bold text-vitta-text-primary font-bold">
+                        <span>Líquido a Receber (PIX):</span>
+                        <span className="text-emerald-600">
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(withdrawAmount) - (parseFloat(withdrawAmount) * (userData?.feeRate || 0)) / 100)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWithdrawModalOpen(false);
+                    setWithdrawAmount("");
+                  }}
+                  className="flex-1 py-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-all text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    const amount = parseFloat(withdrawAmount);
+                    if (isNaN(amount) || amount <= 0) {
+                      addToast("Por favor, digite um valor de saque válido.", "error");
+                      return;
+                    }
+                    if (amount > balance) {
+                      addToast("Saldo insuficiente para realizar este saque.", "error");
+                      return;
+                    }
+                    if (!userData?.pixKey) {
+                      addToast("Configure sua chave PIX no perfil antes de solicitar o saque.", "error");
+                      return;
+                    }
+
+                    setIsSubmittingWithdraw(true);
+                    try {
+                      // 1. Deduct walletBalance in users document
+                      await updateDoc(doc(db, "users", user.uid), {
+                        walletBalance: increment(-amount),
+                      });
+
+                      // 2. Create withdrawal request
+                      await addDoc(collection(db, "withdrawals"), {
+                        userId: user.uid,
+                        userName: userData?.name || user.displayName || "Profissional",
+                        userEmail: userData?.email || user.email,
+                        userRole: userData?.role || "professional",
+                        pixKey: userData?.pixKey || "",
+                        amount: amount,
+                        feeRate: userData?.feeRate || 0,
+                        feeAmount: (amount * (userData?.feeRate || 0)) / 100,
+                        netAmount: amount - (amount * (userData?.feeRate || 0)) / 100,
+                        status: "pending",
+                        createdAt: new Date().toISOString(),
+                      });
+
+                      // 3. Log transaction
+                      await addDoc(collection(db, "transactions"), {
+                        userId: user.uid,
+                        type: "debit",
+                        amount: amount,
+                        title: "Solicitação de Saque - PIX",
+                        category: "Saque",
+                        date: new Date().toISOString(),
+                      });
+
+                      addToast("Solicitação de saque enviada com sucesso! O sistema fará o controle informativo.", "success");
+                      setIsWithdrawModalOpen(false);
+                      setWithdrawAmount("");
+                    } catch (err: any) {
+                      console.error("Erro no saque:", err);
+                      addToast("Ocorreu um erro ao processar sua solicitação de saque.", "error");
+                    } finally {
+                      setIsSubmittingWithdraw(false);
+                    }
+                  }}
+                  disabled={isSubmittingWithdraw || !userData?.pixKey || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > balance}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                >
+                  {isSubmittingWithdraw ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Confirmar Saque
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -20280,7 +20832,7 @@ export default function App() {
           />
         );
       case "professionals":
-        return <ProfessionalsView user={user} userData={userData} googleToken={googleToken} />;
+        return <ProfessionalsView user={user} userData={userData} googleToken={googleToken} setActiveTab={setActiveTab} />;
       case "appointments":
         return (
           <AppointmentsView
@@ -20298,7 +20850,7 @@ export default function App() {
           <PartnersView setActiveTab={setActiveTab} user={user} />
         );
       case "wallets":
-        return <WalletsView user={user} />;
+        return <WalletsView user={user} userData={userData} />;
       case "voucher":
         return <VoucherView user={user} setActiveTab={setActiveTab} />;
       case "pharmacies":
