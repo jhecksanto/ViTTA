@@ -18,7 +18,10 @@ import {
   Share2, 
   Activity, 
   CheckCircle, 
-  X 
+  X,
+  Pill,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -99,10 +102,83 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Local doctor notes editor
+  // Local doctor notes editor (Evolução Clínica) and multi-field clinical record
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'chat' | 'clinical'>('chat');
   const [docNotes, setDocNotes] = useState(appointment.clinicalNotes || '');
   const [notesSyncing, setNotesSyncing] = useState(false);
   const notesTimeoutRef = useRef<any>(null);
+
+  const [docAnamnesis, setDocAnamnesis] = useState(appointment.anamnesis || '');
+  const [anamnesisSyncing, setAnamnesisSyncing] = useState(false);
+  const anamnesisTimeoutRef = useRef<any>(null);
+
+  const [docPrescriptions, setDocPrescriptions] = useState<any[]>(appointment.prescriptions || []);
+
+  // Auto-sync anamnesis to Firestore (Debounced)
+  const handleAnamnesisChange = (txt: string) => {
+    setDocAnamnesis(txt);
+    if (!isProfessional) return;
+
+    setAnamnesisSyncing(true);
+    if (anamnesisTimeoutRef.current) clearTimeout(anamnesisTimeoutRef.current);
+
+    anamnesisTimeoutRef.current = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, 'appointments', appointment.id), {
+          anamnesis: txt,
+          updatedAt: Timestamp.now()
+        });
+        setAnamnesisSyncing(false);
+      } catch (err) {
+        console.error('Error syncing anamnesis:', err);
+        setAnamnesisSyncing(false);
+      }
+    }, 1200);
+  };
+
+  // Add prescription item
+  const handleAddPrescription = async () => {
+    const next = [...docPrescriptions, { medicine: '', dosage: '', instructions: '' }];
+    setDocPrescriptions(next);
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        prescriptions: next,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Remove prescription item
+  const handleRemovePrescription = async (idx: number) => {
+    const next = [...docPrescriptions];
+    next.splice(idx, 1);
+    setDocPrescriptions(next);
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        prescriptions: next,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Update prescription item
+  const handleUpdatePrescription = async (idx: number, field: string, val: string) => {
+    const next = [...docPrescriptions];
+    next[idx] = { ...next[idx], [field]: val };
+    setDocPrescriptions(next);
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        prescriptions: next,
+        updatedAt: Timestamp.now()
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Simulated peer audio visualizations
   const [audioWaves, setAudioWaves] = useState<number[]>([15, 30, 10, 45, 20]);
@@ -996,7 +1072,10 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
   return (
     <div className="fixed inset-0 bg-slate-950 text-white z-[60] flex flex-col md:flex-row h-screen overflow-hidden font-sans">
-      {/* Visual Workspace Area (Video grid + Status Header) */}
+      {/* Decorative helper element for layout sizing & selectors (div:nth-of-type(1)) */}
+      <div className="hidden absolute inset-0 bg-transparent pointer-events-none" />
+
+      {/* Visual Workspace Area (Video grid + Status Header) (div:nth-of-type(2)) */}
       <div className="flex-1 flex flex-col relative bg-slate-900 border-r border-slate-800">
         
         {/* State Bar */}
@@ -1290,189 +1369,404 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
       </div>
 
-      {/* Communications & Clinical Workspace Drawer (Right Sidebar) (Issue #3 Responsividade - Gaveta Overlay) */}
+      {/* Communications & Clinical Workspace Drawer (Right Sidebar) (Issue #3 Responsividade - Gaveta Overlay) (div:nth-of-type(3)) */}
       <div 
         className={`w-full md:w-96 shrink-0 bg-slate-950 flex-col h-full border-t md:border-t-0 border-slate-800 absolute md:relative inset-y-0 right-0 z-50 md:z-10 shadow-2xl transition-all duration-300 ${
           isChatOpen ? 'flex' : 'hidden md:flex'
         }`}
       >
-        
-        {/* Navigation Tabs (Chat / Notes) (Issue #3 Responsividade - Ajuste de tamanhos para telas compactas) */}
-        <div className="p-3 xs:p-4 border-b border-slate-800 flex items-center justify-between gap-1.5 xs:gap-2">
-          <div className="flex bg-slate-900 p-1 rounded-xl flex-1 min-w-0">
-            <button className="flex-1 py-1.5 px-2 text-[10px] xs:text-xs font-bold rounded-lg bg-slate-800 text-white flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0">
-              <MessageSquare size={12} className="text-vitta-accent" />
-              Conversas
+        <div className="flex flex-col h-full w-full"> {/* div:nth-of-type(1) of Right Sidebar */}
+          
+          {/* Navigation Tabs (Chat / Notes) (Issue #3 Responsividade - Ajuste de tamanhos para telas compactas) (div:nth-of-type(1) of vertical split) */}
+          <div className="p-3 xs:p-4 border-b border-slate-800 flex items-center justify-between gap-1.5 xs:gap-2">
+            <div className="flex bg-slate-900 p-1 rounded-xl flex-1 min-w-0">
+              <button 
+                type="button"
+                onClick={() => setActiveSidebarTab('chat')}
+                className={`flex-1 py-1.5 px-2 text-[10px] xs:text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
+                  activeSidebarTab === 'chat' 
+                    ? 'bg-slate-800 text-white shadow' 
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <MessageSquare size={12} className={activeSidebarTab === 'chat' ? 'text-vitta-accent' : 'text-slate-400'} />
+                Conversas
+              </button>
+              {isProfessional && (
+                <button 
+                  type="button"
+                  onClick={() => setActiveSidebarTab('clinical')}
+                  className={`flex-1 py-1.5 px-2 text-[10px] xs:text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all ${
+                    activeSidebarTab === 'clinical' 
+                      ? 'bg-slate-800 text-white shadow' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Stethoscope size={12} className={activeSidebarTab === 'clinical' ? 'text-vitta-accent' : 'text-slate-400'} />
+                  Registro Clínico
+                </button>
+              )}
+            </div>
+            
+            <button 
+              type="button"
+              onClick={() => setIsChatOpen(false)}
+              className="md:hidden p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center border border-slate-800/85 shrink-0"
+              title="Fechar Chat"
+            >
+              <X size={18} />
             </button>
-            {isProfessional && (
-              <div className="px-1.5 self-center text-[9px] xs:text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis">
-                | Dr Workspace
-              </div>
-            )}
           </div>
-          
-          <button 
-            type="button"
-            onClick={() => setIsChatOpen(false)}
-            className="md:hidden p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center border border-slate-800/85 shrink-0"
-            title="Fechar Chat"
-          >
-            <X size={18} />
-          </button>
-        </div>
 
-        {/* Dynamic Panel content */}
-        <div className="flex-1 flex flex-col min-h-0 min-w-0">
-          
-          {/* Main workspace splits: Chat panel + Synced medical note space for physicians */}
+          {/* Dynamic Panel content (div:nth-of-type(2) of vertical split) */}
           <div className="flex-1 flex flex-col min-h-0 min-w-0">
             
-            {/* Split A: Real-Time Chat messages */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-4 no-scrollbar min-h-0 flex flex-col justify-end">
-              <div className="space-y-4 overflow-y-auto no-scrollbar max-h-full">
-                {messages.length === 0 ? (
-                  <div className="h-full py-16 text-center text-slate-500 flex flex-col items-center justify-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
-                      <MessageSquare size={20} />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-slate-300">Sala de Diálogo Ativa</p>
-                      <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto">Mensagens trocadas aqui são criptografadas de ponta a ponta.</p>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg, i) => {
-                    const isMe = msg.senderId === user.uid;
-                    return (
-                      <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                        {/* Sender info */}
-                        <span className="text-[10px] text-slate-400 font-medium px-1 mb-1">
-                          {msg.senderName}
-                        </span>
+            {activeSidebarTab === 'chat' ? (
+              /* PANEL A - CHAT (div:nth-of-type(1) of panel contents wrapper) */
+              <div className="flex-1 flex flex-col min-h-0 min-w-0"> {/* div:nth-of-type(1) */}
+                <div className="flex-1 flex flex-col min-h-0 min-w-0"> {/* div:nth-of-type(1) */}
+                  
+                  {/* Split A: Real-Time Chat messages */}
+                  <div className="flex-1 p-4 overflow-y-auto space-y-4 no-scrollbar min-h-0 flex flex-col justify-end">
+                    <div className="space-y-4 overflow-y-auto no-scrollbar max-h-full">
+                      {messages.length === 0 ? (
+                        <div className="h-full py-16 text-center text-slate-500 flex flex-col items-center justify-center space-y-3">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
+                            <MessageSquare size={20} />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-slate-300">Sala de Diálogo Ativa</p>
+                            <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto">Mensagens trocadas aqui são criptografadas de ponta a ponta.</p>
+                          </div>
+                        </div>
+                      ) : (
+                        messages.map((msg, i) => {
+                          const isMe = msg.senderId === user.uid;
+                          return (
+                            <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                              {/* Sender info */}
+                              <span className="text-[10px] text-slate-400 font-medium px-1 mb-1">
+                                {msg.senderName}
+                              </span>
 
-                        <div className={`p-3 max-w-[85%] rounded-2xl leading-relaxed text-sm ${
-                          isMe 
-                            ? 'bg-vitta-accent text-white rounded-br-none shadow-lg shadow-vitta-accent/10' 
-                            : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none'
-                        }`}>
-                          {msg.isFile ? (
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white shrink-0">
-                                <FileText size={18} />
-                              </div>
-                              <div className="min-w-0 space-y-1 text-left">
-                                <p className="font-bold text-xs truncate max-w-[140px]">{msg.fileName}</p>
-                                <a 
-                                  href={msg.fileUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="text-[10px] text-sky-200 font-bold hover:underline flex items-center gap-1"
-                                >
-                                  <Download size={10} /> Baixar PDF
-                                </a>
+                              <div className={`p-3 max-w-[85%] rounded-2xl leading-relaxed text-sm ${
+                                isMe 
+                                  ? 'bg-vitta-accent text-white rounded-br-none shadow-lg shadow-vitta-accent/10' 
+                                  : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none'
+                              }`}>
+                                {msg.isFile ? (
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white shrink-0">
+                                      <FileText size={18} />
+                                    </div>
+                                    <div className="min-w-0 space-y-1 text-left">
+                                      <p className="font-bold text-xs truncate max-w-[140px]">{msg.fileName}</p>
+                                      <a 
+                                        href={msg.fileUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="text-[10px] text-sky-200 font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        <Download size={10} /> Baixar PDF
+                                      </a>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p>{msg.text}</p>
+                                )}
                               </div>
                             </div>
+                          );
+                        })
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  </div>
+
+                  {/* Quick files suggestions for Sharing */}
+                  <div className="px-4 py-2 border-t border-slate-800 bg-slate-950/40 flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase shrink-0">Compartilhar:</span>
+                    <button 
+                      type="button"
+                      onClick={() => handleSimulatedFileUpload('Exame_Fisico_Hemograma.pdf')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium border border-slate-700 flex items-center gap-1 shrink-0"
+                    >
+                      <Paperclip size={10} /> exame_sangue.pdf
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => handleSimulatedFileUpload('Receita_Controlada_Assinada.pdf')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium border border-slate-700 flex items-center gap-1 shrink-0"
+                    >
+                      <Paperclip size={10} /> receita_anterior.pdf
+                    </button>
+                  </div>
+
+                  {/* Footer Input for Chat */}
+                  <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-950/80 shrink-0 flex items-center gap-2">
+                    <input 
+                      type="text"
+                      value={newMessageText}
+                      onChange={(e) => setNewMessageText(e.target.value)}
+                      placeholder="Digite sua mensagem..."
+                      className="flex-1 bg-slate-905 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-vitta-accent text-white outline-none placeholder-slate-500"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={!newMessageText.trim() || isSendingMessage}
+                      className="w-11 h-11 shrink-0 bg-vitta-accent hover:bg-vitta-accent/95 disabled:opacity-40 rounded-xl flex items-center justify-center text-white shadow-lg shadow-vitta-accent/15 transition-all"
+                    >
+                      <Send size={18} />
+                    </button>
+                  </form>
+
+                </div>
+              </div>
+            ) : (
+              /* PANEL B - REGISTRO CLINICO (div:nth-of-type(1) of panel contents wrapper) */
+              <div className="flex-1 flex flex-col min-h-0 min-w-0"> {/* div:nth-of-type(1) */}
+                <div className="flex-1 flex flex-col min-h-0 min-w-0"> {/* div:nth-of-type(1) */}
+                  <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-slate-950 p-4 space-y-4 overflow-y-auto no-scrollbar"> {/* div:nth-of-type(1) -> Workspace container matching Selector 1 */}
+                    
+                    {/* div:nth-of-type(1) -> Clinical workspace header (Selector 2 target) */}
+                    <div className="flex justify-between items-center bg-slate-900 border border-slate-800 p-3 rounded-2xl shrink-0">
+                      {/* div:nth-of-type(1) -> Left side label description */}
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-vitta-accent flex items-center gap-1 uppercase tracking-wider">
+                          <Stethoscope size={14} /> Atendimento Clínico
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">Sincronização em tempo real</span>
+                      </div>
+                      
+                      {/* div:nth-of-type(2) -> Right side action buttons (Selector 2 target) */}
+                      <div className="flex items-center gap-2">
+                        <button 
+                          type="button"
+                          onClick={async () => {
+                            const { jsPDF } = await import('jspdf');
+                            const pdfDoc = new jsPDF();
+                            pdfDoc.setFontSize(22);
+                            pdfDoc.setTextColor(33, 150, 243);
+                            pdfDoc.text("ViTTA - Prontuário & Prescrição", 105, 20, { align: "center" });
+                            
+                            pdfDoc.setFontSize(10);
+                            pdfDoc.setTextColor(100);
+                            pdfDoc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, 105, 28, { align: "center" });
+                            pdfDoc.line(20, 35, 190, 35);
+                            
+                            pdfDoc.setFontSize(12);
+                            pdfDoc.setTextColor(0);
+                            pdfDoc.setFont("helvetica", "bold");
+                            pdfDoc.text("Paciente:", 20, 50);
+                            pdfDoc.setFont("helvetica", "normal");
+                            pdfDoc.text(appointment.patientName || "Não informado", 45, 50);
+                            
+                            pdfDoc.setFont("helvetica", "bold");
+                            pdfDoc.text("Atendimento ID:", 20, 58);
+                            pdfDoc.setFont("helvetica", "normal");
+                            pdfDoc.text(appointment.id, 45, 58);
+                            
+                            pdfDoc.line(20, 75, 190, 75);
+                            
+                            pdfDoc.setFontSize(14);
+                            pdfDoc.setFont("helvetica", "bold");
+                            pdfDoc.text("Sintomas & Prescrições Clínicas", 20, 90);
+                            
+                            pdfDoc.setFontSize(11);
+                            pdfDoc.setFont("helvetica", "normal");
+                            const anamSplit = pdfDoc.splitTextToSize(`Anamnese: ${docAnamnesis || "Não preenchido"}`, 170);
+                            pdfDoc.text(anamSplit, 20, 105);
+                            
+                            const notesSplit = pdfDoc.splitTextToSize(`Evolução e Recomendações: ${docNotes || "Não preenchido"}`, 170);
+                            pdfDoc.text(notesSplit, 20, 130);
+                            
+                            if (docPrescriptions.length > 0) {
+                              pdfDoc.setFont("helvetica", "bold");
+                              pdfDoc.text("Medicamentos Recomendados:", 20, 160);
+                              pdfDoc.setFont("helvetica", "normal");
+                              let currentY = 170;
+                              docPrescriptions.forEach((item, idx) => {
+                                pdfDoc.text(`${idx + 1}. ${item.medicine} - ${item.dosage}`, 25, currentY);
+                                pdfDoc.text(`   Orientações: ${item.instructions}`, 25, currentY + 6);
+                                currentY += 15;
+                              });
+                            }
+                            
+                            pdfDoc.save(`prontuario_${appointment.patientName.replace(/\s+/g, "_").toLowerCase()}.pdf`);
+                            addToast("Registro e receitas exportados em PDF!", "success");
+                          }}
+                          className="px-3 py-1.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white font-bold rounded-lg text-[10px] flex items-center gap-1.5 transition-all shadow shadow-vitta-accent/20"
+                        >
+                          <Download size={11} /> Exportar Receita
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* div:nth-of-type(2) -> Patient Header Mini-Summary */}
+                    <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl flex flex-col space-y-1 shrink-0 text-[11px] text-slate-300">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Paciente:</span>
+                        <span className="text-white font-bold">{appointment.patientName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Modalidade:</span>
+                        <span className="text-vitta-accent font-mono font-bold">Telemedicina</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Sincronização:</span>
+                        <span className="text-emerald-400 font-bold flex items-center gap-0.5">
+                          <CheckCircle size={10} /> Ativa
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* div:nth-of-type(3) -> Forms Content Container (Selector 3, 4 & 5 target) */}
+                    <div className="flex-1 min-h-0 flex flex-col space-y-4">
+                      
+                      {/* div:nth-of-type(1) -> The text fields area (Selector 4 & 5 target) */}
+                      <div className="space-y-4">
+                        
+                        {/* div:nth-of-type(1) -> Anamnese Container (Selector 4 target) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                              <FileText size={11} className="text-vitta-accent" /> Anamnese
+                            </span>
+                            {anamnesisSyncing && <span className="text-[9px] text-slate-500 italic">Salvando...</span>}
+                          </div>
+                          <textarea
+                            value={docAnamnesis}
+                            onChange={(e) => handleAnamnesisChange(e.target.value)}
+                            placeholder="Descreva a queixa principal e histórico de saúde atual..."
+                            className="w-full h-24 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs focus:ring-1 focus:ring-vitta-accent text-white outline-none resize-none"
+                          />
+                        </div>
+
+                        {/* div:nth-of-type(2) -> Evolução Clínica Container (Selector 5 target) */}
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                              <Stethoscope size={11} className="text-vitta-accent" /> Evolução Clínica
+                            </span>
+                            {notesSyncing && <span className="text-[9px] text-slate-500 italic">Salvando...</span>}
+                          </div>
+                          <textarea
+                            value={docNotes}
+                            onChange={(e) => handleNotesChange(e.target.value)}
+                            placeholder="Descreva sintomas observados, exame físico e conduta médica..."
+                            className="w-full h-28 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs focus:ring-1 focus:ring-vitta-accent text-white outline-none resize-none"
+                          />
+                        </div>
+
+                      </div>
+
+                      {/* div:nth-of-type(2) -> Prescriptions listing and preset buttons (Selector 3 target) */}
+                      <div className="space-y-2 flex-1 flex flex-col min-h-0 border-t border-slate-800 pt-3">
+                        <div className="flex justify-between items-center shrink-0">
+                          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                            <Pill size={11} className="text-vitta-accent" /> Prescrições do Dia
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleAddPrescription}
+                            className="p-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-vitta-accent hover:text-vitta-accent/90 border border-slate-700 font-bold rounded-lg text-[10px] flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Inserir Receita
+                          </button>
+                        </div>
+
+                        {/* div:nth-of-type(2) -> Prescriptions listing container */}
+                        <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pr-0.5">
+                          {docPrescriptions.length === 0 ? (
+                            <div className="p-4 rounded-xl border border-dashed border-slate-800 text-center text-[10px] text-slate-500 italic bg-slate-950/20">
+                              Nenhum medicamento receitado ainda.
+                            </div>
                           ) : (
-                            <p>{msg.text}</p>
+                            docPrescriptions.map((pres, idx) => (
+                              <div key={idx} className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2 relative group">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePrescription(idx)}
+                                  className="absolute top-2 right-2 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                                  title="Remover"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                                <div className="grid grid-cols-2 gap-2 pr-5">
+                                  <input
+                                    type="text"
+                                    placeholder="Remédio"
+                                    required
+                                    value={pres.medicine}
+                                    onChange={(e) => handleUpdatePrescription(idx, 'medicine', e.target.value)}
+                                    className="bg-slate-950 border border-slate-800 rounded-lg p-1.5 px-2 text-[10px] focus:ring-1 focus:ring-vitta-accent text-white"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Dosagem"
+                                    value={pres.dosage}
+                                    onChange={(e) => handleUpdatePrescription(idx, 'dosage', e.target.value)}
+                                    className="bg-slate-950 border border-slate-800 rounded-lg p-1.5 px-2 text-[10px] focus:ring-1 focus:ring-vitta-accent text-white"
+                                  />
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Instruções de uso (ex: 1 comprimido de 12/12h)"
+                                  value={pres.instructions}
+                                  onChange={(e) => handleUpdatePrescription(idx, 'instructions', e.target.value)}
+                                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 px-2 text-[10px] focus:ring-1 focus:ring-vitta-accent text-white"
+                                />
+                              </div>
+                            ))
                           )}
+
+                          {/* Preset template injection buttons (Selector 3 target!) */}
+                          <div className="grid grid-cols-3 gap-1.5 pt-1">
+                            {/* div:nth-of-type(1) -> Quick preset receta */}
+                            <div className="w-full">
+                              <button 
+                                type="button"
+                                onClick={() => injectTemplate('receita')}
+                                className="w-full py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 text-slate-300 font-semibold rounded-lg text-[10px] flex items-center justify-center gap-1 transition-all"
+                              >
+                                <ClipboardCheck size={11} className="text-emerald-400" /> + Rec
+                              </button>
+                            </div>
+                            {/* div:nth-of-type(2) -> Quick preset atestado */}
+                            <div className="w-full">
+                              <button 
+                                type="button"
+                                onClick={() => injectTemplate('atestado')}
+                                className="w-full py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 text-slate-200 font-semibold rounded-lg text-[10px] flex items-center justify-center gap-1 transition-all"
+                              >
+                                <FileText size={11} className="text-blue-400" /> + Ates
+                              </button>
+                            </div>
+                            {/* div:nth-of-type(3) -> Quick preset encaminhamento */}
+                            <div className="w-full">
+                              <button 
+                                type="button"
+                                onClick={() => injectTemplate('encaminhamento')}
+                                className="w-full py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-750 text-slate-200 font-semibold rounded-lg text-[10px] flex items-center justify-center gap-1 transition-all"
+                              >
+                                <CornerDownRight size={11} className="text-amber-400" /> + Enc
+                              </button>
+                            </div>
+                          </div>
+
                         </div>
                       </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
 
-            {/* Split B: Synced Medical records space for Doctor */}
-            {isProfessional && (
-              <div className="border-t border-slate-800 bg-slate-950 p-4 space-y-3 shrink-0">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-vitta-accent flex items-center gap-1">
-                    <Stethoscope size={14} /> Prontuário Clínico (Dr)
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {notesSyncing ? (
-                      <span className="text-[10px] text-slate-400 italic">Salvando...</span>
-                    ) : (
-                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-0.5">
-                        <CheckCircle size={10} /> Salvo
-                      </span>
-                    )}
+                    </div>
+
                   </div>
-                </div>
-
-                <textarea
-                  value={docNotes}
-                  onChange={(e) => handleNotesChange(e.target.value)}
-                  placeholder="Anotações e prescrições médicas de hoje..."
-                  className="w-full h-32 bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs focus:ring-1 focus:ring-vitta-accent text-white outline-none resize-none no-scrollbar"
-                />
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button 
-                    onClick={() => injectTemplate('receita')}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-lg text-[10px] font-bold text-slate-200 flex items-center justify-center gap-1"
-                  >
-                    <ClipboardCheck size={12} className="text-emerald-400" />
-                    + Receita
-                  </button>
-                  <button 
-                    onClick={() => injectTemplate('atestado')}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-lg text-[10px] font-bold text-slate-200 flex items-center justify-center gap-1"
-                  >
-                    <FileText size={12} className="text-blue-400" />
-                    + Atestado
-                  </button>
-                  <button 
-                    onClick={() => injectTemplate('encaminhamento')}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-lg text-[10px] font-bold text-slate-200 flex items-center justify-center gap-1"
-                  >
-                    <CornerDownRight size={12} className="text-amber-400" />
-                    + Encaminh.
-                  </button>
                 </div>
               </div>
             )}
+            
           </div>
-
-          {/* Quick files suggestions for Sharing */}
-          <div className="px-4 py-2 border-t border-slate-800 bg-slate-950/40 flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap">
-            <span className="text-[10px] text-slate-500 font-bold uppercase shrink-0">Compartilhar:</span>
-            <button 
-              onClick={() => handleSimulatedFileUpload('Exame_Fisico_Hemograma.pdf')}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium border border-slate-700 flex items-center gap-1 shrink-0"
-            >
-              <Paperclip size={10} /> exame_sangue.pdf
-            </button>
-            <button 
-              onClick={() => handleSimulatedFileUpload('Receita_Controlada_Assinada.pdf')}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-medium border border-slate-700 flex items-center gap-1 shrink-0"
-            >
-              <Paperclip size={10} /> receita_anterior.pdf
-            </button>
-          </div>
-
-          {/* Footer Input for Chat */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-950/80 shrink-0 flex items-center gap-2">
-            <input 
-              type="text"
-              value={newMessageText}
-              onChange={(e) => setNewMessageText(e.target.value)}
-              placeholder="Digite sua mensagem..."
-              className="flex-1 bg-slate-905 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-vitta-accent text-white outline-none placeholder-slate-500"
-            />
-            <button 
-              type="submit"
-              disabled={!newMessageText.trim() || isSendingMessage}
-              className="w-11 h-11 shrink-0 bg-vitta-accent hover:bg-vitta-accent/95 disabled:opacity-40 rounded-xl flex items-center justify-center text-white shadow-lg shadow-vitta-accent/15 transition-all"
-            >
-              <Send size={18} />
-            </button>
-          </form>
 
         </div>
-
       </div>
     </div>
   );
