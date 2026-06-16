@@ -264,9 +264,29 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   useEffect(() => {
     if (remoteStream && remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(e => {
+        console.warn("[WebRTC] Autoplay prevented. Will resume play on user click interaction.", e);
+      });
       console.log("[WebRTC] Remote stream bound successfully to video element.");
     }
   }, [remoteStream, otherPersonJoined, roomState.doctorCamOff, roomState.patientCamOff]);
+
+  // Global window listener to automatically unlock audio and play remote video elements on click
+  useEffect(() => {
+    const unlockAutoplay = () => {
+      if (remoteVideoRef.current && remoteVideoRef.current.paused && remoteStream) {
+        remoteVideoRef.current.play()
+          .then(() => console.log("[WebRTC] Autoplay bypassed on user interaction successfully."))
+          .catch(err => console.warn("[WebRTC] Browser still blocking audio play:", err));
+      }
+    };
+    window.addEventListener('click', unlockAutoplay);
+    window.addEventListener('touchstart', unlockAutoplay);
+    return () => {
+      window.removeEventListener('click', unlockAutoplay);
+      window.removeEventListener('touchstart', unlockAutoplay);
+    };
+  }, [remoteStream]);
 
   // Web Audio API analyser loop to display physical local mic activity in real time
   useEffect(() => {
@@ -394,11 +414,27 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
     pc.ontrack = (event) => {
       console.log("[WebRTC] Remote track detected:", event.track.kind);
-      event.streams[0].getTracks().forEach((track) => {
-        rdocStream.addTrack(track);
-      });
+      const incomingStream = event.streams && event.streams[0] ? event.streams[0] : null;
+      if (incomingStream) {
+        incomingStream.getTracks().forEach((track) => {
+          if (!rdocStream.getTracks().some(t => t.id === track.id)) {
+            rdocStream.addTrack(track);
+          }
+        });
+      } else {
+        rdocStream.addTrack(event.track);
+      }
       // Force update state to re-trigger binding
       setRemoteStream(new MediaStream(rdocStream.getTracks()));
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("[WebRTC] Connection state changed:", pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        addToast("Conexão direta de vídeo com o interlocutor ativa!", "success");
+      } else if (pc.connectionState === 'failed') {
+        addToast("Sinal de transmissão de vídeo oscilou. Reestabelecendo...", "warning");
+      }
     };
 
     // Forward all local camera and microphone tracks to peer candidate
@@ -561,17 +597,61 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       }
     });
 
-    // Mark current user as JOINED
+    // Mark current user as JOINED and purge old WebRTC session records
     const syncJoin = async () => {
       if (appointment.status === 'completed' || appointment.status === 'cancelled') return;
       const updatePayload: any = {};
+      
       if (isProfessional) {
         updatePayload.doctorJoined = true;
         updatePayload.status = 'in_progress';
+
+        try {
+          // Doctor (Caller) purges old communication records
+          const signalDocRef = doc(db, 'appointments', appointment.id, 'webrtc', 'signal');
+          await deleteDoc(signalDocRef).catch(() => {});
+
+          const docCandCol = collection(db, 'appointments', appointment.id, 'doctorCandidates');
+          const docCandSnap = await getDocs(docCandCol).catch(() => null);
+          if (docCandSnap) {
+            for (const d of docCandSnap.docs) {
+              await deleteDoc(d.ref).catch(() => {});
+            }
+          }
+
+          const patCandCol = collection(db, 'appointments', appointment.id, 'patientCandidates');
+          const patCandSnap = await getDocs(patCandCol).catch(() => null);
+          if (patCandSnap) {
+            for (const p of patCandSnap.docs) {
+              await deleteDoc(p.ref).catch(() => {});
+            }
+          }
+          console.log("[WebRTC] Stale signal and candidates completely cleared.");
+        } catch (e) {
+          console.warn("[WebRTC] Ignored cleanup error:", e);
+        }
       } else {
         updatePayload.patientJoined = true;
+        try {
+          // Patient (Receiver) clears old local candidates
+          const patCandCol = collection(db, 'appointments', appointment.id, 'patientCandidates');
+          const patCandSnap = await getDocs(patCandCol).catch(() => null);
+          if (patCandSnap) {
+            for (const p of patCandSnap.docs) {
+              await deleteDoc(p.ref).catch(() => {});
+            }
+          }
+          console.log("[WebRTC] Patient candidate records pre-cleaned.");
+        } catch (e) {
+          console.warn("[WebRTC] Ignored patient cleanup error:", e);
+        }
       }
-      await updateDoc(doc(db, 'appointments', appointment.id), updatePayload);
+
+      try {
+        await updateDoc(doc(db, 'appointments', appointment.id), updatePayload);
+      } catch (err) {
+        console.error("[WebRTC] Error marking peer as joined:", err);
+      }
     };
     syncJoin();
 
@@ -639,6 +719,15 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         track.enabled = !isCamOff;
       });
     }
+    // Directly apply to WebRTC RTCRtpSender to guarantee instant propagation
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.getSenders().forEach(sender => {
+        if (sender.track && sender.track.kind === 'video') {
+          sender.track.enabled = !isCamOff;
+          console.log("[WebRTC] Local video track sender state updated:", !isCamOff);
+        }
+      });
+    }
   }, [isCamOff, localStream]);
 
   // Handle local microphone track on/off
@@ -646,6 +735,15 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     if (localStream) {
       localStream.getAudioTracks().forEach(track => {
         track.enabled = !isMuted;
+      });
+    }
+    // Directly apply to WebRTC RTCRtpSender to guarantee instant propagation
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.getSenders().forEach(sender => {
+        if (sender.track && sender.track.kind === 'audio') {
+          sender.track.enabled = !isMuted;
+          console.log("[WebRTC] Local audio track sender state updated:", !isMuted);
+        }
       });
     }
   }, [isMuted, localStream]);
