@@ -53,6 +53,11 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const [isCamOff, setIsCamOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localVideoWaitingRef = useRef<HTMLVideoElement | null>(null);
+  
+  // Real-time audio analyser levels (0 - 255)
+  const [localAudioLevel, setLocalAudioLevel] = useState<number>(0);
+  const [playRingSound, setPlayRingSound] = useState(true);
 
   // Synced states from Firestore
   const [roomState, setRoomState] = useState<any>({
@@ -86,7 +91,55 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   // Simulated peer audio visualizations
   const [audioWaves, setAudioWaves] = useState<number[]>([15, 30, 10, 45, 20]);
 
-  // Handle local camera access
+  // Synthetic sound chime creator
+  const playRingtoneSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(660, audioCtx.currentTime); // E5
+      
+      gainNode.gain.setValueAtTime(0.04, audioCtx.currentTime); // Low volume
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.2);
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 1.2);
+    } catch (err) {
+      // AudioContext might be blocked until user gesture
+    }
+  };
+
+  const playChimeSound = (freq = 523.25) => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      osc1.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
+      osc2.frequency.setValueAtTime(freq, audioCtx.currentTime); // C5 or custom
+      
+      gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.0);
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      osc1.start();
+      osc2.start();
+
+      osc1.stop(audioCtx.currentTime + 1.0);
+      osc2.stop(audioCtx.currentTime + 1.0);
+    } catch (err) {}
+  };
+
+  // Handle local camera/microphone access with graceful degradation fallbacks
   useEffect(() => {
     if (isSessionClosed) {
       if (localStream) {
@@ -101,27 +154,112 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     let activeStream: MediaStream | null = null;
     async function setupCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 360, height: 270, facingMode: 'user' },
+        // Fallback approach: Try complete stream first
+        activeStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
           audio: true
         });
-        activeStream = stream;
-        setLocalStream(stream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
       } catch (err) {
-        console.warn("Real webcam/mic not available or permission denied:", err);
+        console.warn("Full camera+mic stream failed, trying camera only...", err);
+        try {
+          activeStream = await navigator.mediaDevices.getUserMedia({
+            video: true
+          });
+        } catch (errVideo) {
+          console.warn("Camera failed, trying audio only...", errVideo);
+          try {
+            activeStream = await navigator.mediaDevices.getUserMedia({
+              audio: true
+            });
+          } catch (errAudio) {
+            console.error("All media inputs are blocked or absent:", errAudio);
+            addToast("Dispositivos de câmera e áudio não detectados. Você ainda pode usar o chat.", "warning");
+          }
+        }
+      }
+
+      if (activeStream) {
+        setLocalStream(activeStream);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = activeStream;
+        }
+        if (localVideoWaitingRef.current) {
+          localVideoWaitingRef.current.srcObject = activeStream;
+        }
       }
     }
     setupCamera();
 
     return () => {
       if (activeStream) {
-        activeStream.getTracks().forEach(track => track.stop());
+        activeStream.getTracks().forEach(track => {
+          try { track.stop(); } catch (e) {}
+        });
       }
     };
   }, [isSessionClosed]);
+
+  // Keep webcam video refs properly synced with localStream when elements mount/toggle
+  useEffect(() => {
+    if (localStream) {
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+      if (localVideoWaitingRef.current) {
+        localVideoWaitingRef.current.srcObject = localStream;
+      }
+    }
+  }, [localStream, isCamOff, roomState.doctorJoined, roomState.patientJoined]);
+
+  // Web Audio API analyser loop to display physical local mic activity in real time
+  useEffect(() => {
+    if (!localStream || isMuted) {
+      setLocalAudioLevel(0);
+      return;
+    }
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let animId: number;
+
+    try {
+      if (localStream.getAudioTracks().length > 0) {
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        source = audioCtx.createMediaStreamSource(localStream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 32;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        source.connect(analyser);
+
+        const updateLevel = () => {
+          if (analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength;
+            setLocalAudioLevel(avg);
+          }
+          animId = requestAnimationFrame(updateLevel);
+        };
+        updateLevel();
+      }
+    } catch (e) {
+      console.warn("Could not start local microphone analyzer:", e);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+      if (source) source.disconnect();
+      if (audioCtx) {
+        try {
+          audioCtx.close();
+        } catch (e) {}
+      }
+    };
+  }, [localStream, isMuted]);
 
   // Sync state tracking from Firestore
   useEffect(() => {
@@ -242,6 +380,57 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       });
     }
   }, [isMuted, localStream]);
+
+  const otherPersonRole = isProfessional ? 'Paciente' : 'Médico';
+  const otherPersonJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
+  const otherPersonName = isProfessional ? appointment.patientName : appointment.professionalName;
+
+  const prevJoinedRef = useRef(false);
+
+  // Connection alert chime
+  useEffect(() => {
+    if (otherPersonJoined && !prevJoinedRef.current) {
+      playChimeSound(659.25); // High E connected tone
+      addToast(`${otherPersonRole === 'Médico' ? 'O Médico' : 'O Paciente'} (${otherPersonName}) entrou na videoconferência!`, 'success');
+    }
+    prevJoinedRef.current = otherPersonJoined;
+  }, [otherPersonJoined, otherPersonRole, otherPersonName]);
+
+  // Subtle calling sound while alone on line (waiting for peer stream)
+  useEffect(() => {
+    if (otherPersonJoined || isSessionClosed || !playRingSound) return;
+
+    playRingtoneSound();
+    const interval = setInterval(() => {
+      playRingtoneSound();
+    }, 4500);
+
+    return () => clearInterval(interval);
+  }, [otherPersonJoined, isSessionClosed, playRingSound]);
+
+  // Function to toggle simulated peer connection
+  const handleToggleSimulatePeer = async () => {
+    if (!appointment?.id) return;
+    const targetField = isProfessional ? 'patientJoined' : 'doctorJoined';
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        [targetField]: !otherPersonJoined,
+        ...(isProfessional 
+          ? { patientMuted: false, patientCamOff: false } 
+          : { doctorMuted: false, doctorCamOff: false }
+        )
+      });
+      addToast(
+        !otherPersonJoined 
+          ? `Simulação Iniciada: ${otherPersonName} entrou.` 
+          : `Simulação Finalizada: ${otherPersonName} saiu.`, 
+        'info'
+      );
+    } catch (e) {
+      console.error(e);
+      addToast('Erro ao chavear simulador de participante.', 'error');
+    }
+  };
 
   // Audio wave visualizer animation
   useEffect(() => {
@@ -405,10 +594,6 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     );
   }
 
-  const otherPersonRole = isProfessional ? 'Paciente' : 'Médico';
-  const otherPersonJoined = isProfessional ? roomState.patientJoined : roomState.doctorJoined;
-  const otherPersonName = isProfessional ? appointment.patientName : appointment.professionalName;
-
   return (
     <div className="fixed inset-0 bg-slate-950 text-white z-[60] flex flex-col md:flex-row h-screen overflow-hidden font-sans">
       {/* Visual Workspace Area (Video grid + Status Header) */}
@@ -453,25 +638,25 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="max-w-md w-full bg-slate-950/45 p-8 rounded-3xl border border-slate-800 text-center space-y-8 flex flex-col items-center shadow-2xl relative overflow-hidden"
+                className="max-w-md w-full bg-slate-950/45 p-8 rounded-3xl border border-slate-800 text-center space-y-6 flex flex-col items-center shadow-2xl relative overflow-hidden"
               >
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-vitta-accent to-vitta-purple animate-shimmer" />
-                <div className="relative">
-                  <div className="w-24 h-24 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent relative z-10 shadow-lg shadow-vitta-accent/10">
-                    <Activity size={48} className="animate-pulse" />
+                <div className="relative mt-2">
+                  <div className="w-20 h-20 bg-vitta-accent-bg rounded-full flex items-center justify-center text-vitta-accent relative z-10 shadow-lg shadow-vitta-accent/10">
+                    <Activity size={40} className="animate-pulse" />
                   </div>
                   <div className="absolute inset-0 bg-vitta-accent/20 rounded-full animate-ping scale-150" />
                 </div>
 
-                <div className="space-y-3">
-                  <h3 className="text-2xl font-bold tracking-tight">Sala de Espera Virtual</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold tracking-tight">Sala de Espera Virtual</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
                     Aguardando o {otherPersonRole === 'Médico' ? `Dr(a). ${otherPersonName}` : `paciente ${otherPersonName}`} entrar na chamada de vídeo...
                   </p>
                 </div>
 
-                <div className="w-full space-y-2 pt-2">
-                  <div className="flex justify-between text-xs text-slate-400">
+                <div className="w-full space-y-2 pt-1">
+                  <div className="flex justify-between text-[11px] text-slate-400">
                     <span>Sua câmera e mic:</span>
                     <span className="text-emerald-400 font-bold">Ativos e prontos</span>
                   </div>
@@ -481,23 +666,32 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                 </div>
 
                 {/* Local feed miniature during waiting selection */}
-                <div className="w-48 h-36 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mt-2 relative shadow-inner">
-                  {isCamOff ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-slate-500">
-                      <VideoOff size={24} />
-                      <span className="text-[10px] mt-1 font-bold uppercase tracking-wider">Câmera Desligada</span>
+                <div className="w-56 h-40 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner flex items-center justify-center">
+                  <video 
+                    ref={localVideoWaitingRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${isCamOff ? 'opacity-0' : 'opacity-100'}`}
+                  />
+                  {isCamOff && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 z-10 text-slate-500">
+                      <VideoOff size={24} className="text-rose-500" />
+                      <span className="text-[10px] mt-1.5 font-bold uppercase tracking-wider text-slate-400">Câmera Desligada</span>
                     </div>
-                  ) : (
-                    <video 
-                      ref={localVideoRef} 
-                      autoPlay 
-                      playsInline 
-                      muted 
-                      className="w-full h-full object-cover scale-x-[-1]"
-                    />
                   )}
-                  <span className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] font-bold">Você (Preview)</span>
+                  <span className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] font-bold z-20">Você (Preview)</span>
                 </div>
+
+                {/* Simulated Peer join bypass button for easy local evaluation */}
+                <button
+                  type="button"
+                  onClick={handleToggleSimulatePeer}
+                  className="w-full mt-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 rounded-xl font-semibold text-xs tracking-wide transition-all shadow flex items-center justify-center gap-2"
+                >
+                  <User size={14} className="text-vitta-accent" />
+                  Simular Entrada do {otherPersonRole}
+                </button>
               </motion.div>
             ) : (
               // ACTIVE CONSULTATION STREAM GRID
@@ -572,28 +766,49 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                     <span className="text-slate-400">({userData?.name})</span>
                   </div>
 
-                  {isCamOff ? (
-                    <div className="flex flex-col items-center justify-center text-slate-400 space-y-2">
-                      <div className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-500">
+                  {/* Always mounted video element ensures stream attachment is held on camera toggling */}
+                  <video 
+                    ref={localVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-350 ${isCamOff ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                  />
+
+                  {isCamOff && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 bg-slate-950/95 z-10 space-y-3">
+                      <div className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center text-rose-500 shadow-lg">
                         <VideoOff size={28} />
                       </div>
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Sua câmera está desligada</p>
                     </div>
-                  ) : (
-                    <video 
-                      ref={localVideoRef} 
-                      autoPlay 
-                      playsInline 
-                      muted 
-                      className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-                    />
                   )}
 
-                  {isMuted && (
-                    <div className="absolute bottom-4 left-4 bg-rose-500/90 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1">
-                      <MicOff size={14} /> Microfone Silenciado
+                  {/* Audio Indicators with Web Audio Analyser levels */}
+                  <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/60 p-2 rounded-xl border border-slate-800/60 z-20">
+                    <div className="flex items-end gap-0.5 h-6">
+                      {Array.from({ length: 5 }).map((_, i) => {
+                        const randomFactor = Math.sin(Date.now() / 150 + i) * 5;
+                        const height = isMuted ? 4 : Math.max(4, Math.min(24, (localAudioLevel / 10) * (i + 1) + 4 + randomFactor));
+                        return (
+                          <div 
+                            key={i} 
+                            className="w-1 bg-emerald-400 rounded-full transition-all duration-75" 
+                            style={{ height: `${height}px` }} 
+                          />
+                        );
+                      })}
                     </div>
-                  )}
+                    {isMuted ? (
+                      <span className="text-rose-500 text-xs font-bold flex items-center gap-1">
+                        <MicOff size={14} /> Mutado
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
+                        <Mic size={14} /> Áudio Ativo
+                      </span>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )}
