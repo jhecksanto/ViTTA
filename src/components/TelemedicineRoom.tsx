@@ -59,6 +59,10 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const [localAudioLevel, setLocalAudioLevel] = useState<number>(0);
   const [playRingSound, setPlayRingSound] = useState(true);
 
+  // Sair/redirecionamento e controle responsivo do chat
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [redirectCount, setRedirectCount] = useState(3);
+
   // Synced states from Firestore
   const [roomState, setRoomState] = useState<any>({
     doctorJoined: false,
@@ -138,6 +142,39 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       osc2.stop(audioCtx.currentTime + 1.0);
     } catch (err) {}
   };
+
+  // Sair/Redirecionamento automático e liberação absoluta de hardware (Issue #1 e #2)
+  useEffect(() => {
+    if (!isSessionClosed) return;
+
+    // Parar mídias físicas e limpar loops de áudio imediatamente para economizar recursos do sistema
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        try { 
+          track.stop(); 
+          console.log(`[Telemedicina Vitta] Recurso de mídia parado com sucesso: ${track.kind}`);
+        } catch (e) {
+          console.warn("Erro ao interromper recurso de mídia:", e);
+        }
+      });
+      setLocalStream(null);
+    }
+    setPlayRingSound(false);
+
+    // Timer de redirecionamento suave de 2.5 segundos (ou contagem regressiva de 3s)
+    const timer = setTimeout(() => {
+      onLeave();
+    }, 2500);
+
+    const interval = setInterval(() => {
+      setRedirectCount(prev => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [isSessionClosed, onLeave, localStream]);
 
   // Handle local camera/microphone access with graceful degradation fallbacks
   useEffect(() => {
@@ -260,6 +297,25 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       }
     };
   }, [localStream, isMuted]);
+
+  /*****************************************************************************************
+   * 🌐 NOTA ARQUITETURAL: SINALIZAÇÃO E ORQUESTRAÇÃO WEBRTC EM PRODUÇÃO (Issue #3)
+   * 
+   * Atualmente, a sincronização de áudio, vídeo, mutação e chat é gerenciada em tempo real 
+   * através de ouvintes reativos do Firestore acting as roomState (onSnapshot).
+   * Em um ambiente de produção de ultra-baixa latência, o próprio Firestore (ou um WebSocket)
+   * servirá como o Canal de Sinalização (Signalling Channel) para estabelecer uma conexão P2P real:
+   * 
+   * Fluxo de Handshake para Conexão P2P com RTCPeerConnection:
+   * 1. Cada par inicializa seu canal: `const peerConnection = new RTCPeerConnection(iceServers);`
+   * 2. Anexa as faixas locais: `localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));`
+   * 3. O chamador cria um SDP Offer: `const offer = await peerConnection.createOffer();`
+   *    Define sua localDescription e persiste no Firestore: `await updateDoc(doc, { sdpOffer: offer.sdp });`
+   * 4. O destinatário recebe o evento, aceita a oferta: `await peerConnection.setRemoteDescription(new RTCSessionDescription(sdpOffer));`
+   *    Cria um SDP Answer e atualiza no Firestore: `await updateDoc(doc, { sdpAnswer: answer.sdp });`
+   * 5. Candidatos de rede (ICE Candidates, como endereços IP/portas e servidores STUN/TURN)
+   *    são salvos na subcoleção `/iceCandidates` e retransmitidos mutuamente até estabelecer a conexão direta.
+   *****************************************************************************************/
 
   // Sync state tracking from Firestore
   useEffect(() => {
@@ -568,10 +624,10 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-xl w-full bg-slate-900 border border-slate-800 p-10 rounded-3xl space-y-8 flex flex-col items-center shadow-2xl relative overflow-hidden"
         >
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 to-vitta-accent" />
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 to-vitta-accent animate-pulse" />
           
           <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 shadow-lg shadow-rose-500/10">
-            <VideoOff size={40} />
+            <VideoOff size={40} className="animate-pulse" />
           </div>
 
           <div className="space-y-4">
@@ -579,15 +635,30 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
               Atendimento de Telemedicina Encerrado
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
-              Esta consulta por vídeo foi finalizada com sucesso pelo médico profissional responsável. O prontuário e as receitas médicas já estão devidamente integrados ao seu perfil.
+              Esta consulta por vídeo foi finalizada com sucesso. O prontuário e as receitas médicas gerados já estão devidamente disponíveis em seus históricos e registros de saúde.
             </p>
+          </div>
+
+          <div className="w-full max-w-xs space-y-2">
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>Redirecionando automaticamente...</span>
+              <span className="text-vitta-accent font-bold font-mono">em {redirectCount}s</span>
+            </div>
+            <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-vitta-accent" 
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: 2.5, ease: "linear" }}
+              />
+            </div>
           </div>
 
           <button
             onClick={onLeave}
             className="w-full sm:w-auto px-8 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-2xl font-bold text-sm tracking-wide transition-all shadow-lg shadow-vitta-accent/20 flex items-center justify-center gap-2"
           >
-            Voltar para o Painel
+            Voltar para o Painel Agora
           </button>
         </motion.div>
       </div>
@@ -816,25 +887,25 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         </div>
 
         {/* BOTTOM CONTROLS BOARD */}
-        <footer className="h-20 shrink-0 bg-slate-950 border-t border-slate-800/80 flex items-center justify-center gap-6 px-10">
+        <footer className="h-20 shrink-0 bg-slate-950 border-t border-slate-800/80 flex items-center justify-center gap-3 sm:gap-6 px-3 sm:px-10 z-20">
           <button 
             onClick={() => setIsMuted(!isMuted)}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
               isMuted ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isMuted ? "Ativar Microfone" : "Silenciar Microfone"}
           >
-            {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
           </button>
 
           <button 
             onClick={() => setIsCamOff(!isCamOff)}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
               isCamOff ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isCamOff ? "Ativar Câmera" : "Desligar Câmera"}
           >
-            {isCamOff ? <VideoOff size={20} /> : <Video size={20} />}
+            {isCamOff ? <VideoOff size={18} /> : <Video size={18} />}
           </button>
 
           <button 
@@ -842,35 +913,51 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
               setIsScreenSharing(!isScreenSharing);
               addToast(isScreenSharing ? 'Compartilhamento de tela encerrado' : 'Compartilhamento de tela simulado iniciado', 'success');
             }}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${
               isScreenSharing ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             title={isScreenSharing ? "Parar Compartilhamento" : "Compartilhar Tela"}
           >
-            <Share2 size={20} />
+            <Share2 size={18} />
           </button>
 
-          <div className="w-px h-8 bg-slate-800 mx-2" />
+          {/* Botão de abrir/fechar chat no mobile */}
+          <button 
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex md:hidden items-center justify-center transition-all ${
+              isChatOpen ? 'bg-vitta-accent text-white shadow-lg animate-pulse' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+            title="Chat de Mensagens"
+          >
+            <MessageSquare size={18} />
+          </button>
+
+          <div className="w-px h-8 bg-slate-850 mx-1 sm:mx-2" />
 
           {/* End Consultation Button */}
           <button 
             onClick={handleHangUp}
-            className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-bold text-sm tracking-wide transition-all shadow-lg shadow-rose-600/20 flex items-center gap-2 animate-pulse"
+            className="px-4 sm:px-6 py-2 sm:py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm tracking-wide transition-all shadow-lg shadow-rose-600/20 flex items-center gap-1.5 sm:gap-2 animate-pulse"
             title="Encerrar consulta"
           >
-            <Phone size={18} className="rotate-[135deg]" />
-            {isProfessional ? 'Desconectar e Finalizar' : 'Sair da Chamada'}
+            <Phone className="size-[14px] sm:size-[18px] rotate-[135deg]" />
+            <span className="hidden sm:inline">{isProfessional ? 'Desconectar e Finalizar' : 'Sair da Chamada'}</span>
+            <span className="inline sm:hidden">{isProfessional ? 'Fim' : 'Sair'}</span>
           </button>
         </footer>
 
       </div>
 
-      {/* Communications & Clinical Workspace Drawer (Right Sidebar) */}
-      <div className="w-full md:w-96 shrink-0 bg-slate-950 flex flex-col h-full border-t md:border-t-0 border-slate-800">
+      {/* Communications & Clinical Workspace Drawer (Right Sidebar) (Issue #3 Responsividade - Gaveta Overlay) */}
+      <div 
+        className={`w-full md:w-96 shrink-0 bg-slate-950 flex-col h-full border-t md:border-t-0 border-slate-800 absolute md:relative inset-y-0 right-0 z-50 md:z-10 shadow-2xl transition-all duration-300 ${
+          isChatOpen ? 'flex' : 'hidden md:flex'
+        }`}
+      >
         
         {/* Navigation Tabs (Chat / Notes) */}
-        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
-          <div className="flex bg-slate-900 p-1 rounded-xl w-full">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex bg-slate-900 p-1 rounded-xl flex-1">
             <button className="flex-1 py-2 text-xs font-bold rounded-lg bg-slate-800 text-white flex items-center justify-center gap-1.5">
               <MessageSquare size={14} className="text-vitta-accent" />
               Conversas
@@ -881,6 +968,15 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
               </div>
             )}
           </div>
+          
+          <button 
+            type="button"
+            onClick={() => setIsChatOpen(false)}
+            className="md:hidden p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center border border-slate-800/85"
+            title="Fechar Chat"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Dynamic Panel content */}
