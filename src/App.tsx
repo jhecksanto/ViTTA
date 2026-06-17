@@ -738,6 +738,7 @@ const BookingModal = ({
   setActiveTab?: (tab: string) => void;
 }) => {
   const [modalTab, setModalTab] = useState<"profile" | "booking">("profile");
+  const { addToast } = useToast();
   const [isBooking, setIsBooking] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const tomorrow = new Date();
@@ -748,6 +749,20 @@ const BookingModal = ({
   const [modality, setModality] = useState<"presencial" | "telemedicine">(
     "presencial",
   );
+
+  const parseDiscountPercentage = (discountStr: string | undefined): number => {
+    if (!discountStr) return 0;
+    const match = discountStr.match(/(\d+)/);
+    if (match) {
+      return parseFloat(match[1]);
+    }
+    return 0;
+  };
+
+  const rawPriceNumeric = parseFloat((professional?.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+  const discountPct = parseDiscountPercentage(professional?.vittaHealthDiscount);
+  const discountAmount = (rawPriceNumeric * discountPct) / 100;
+  const finalConvenioPrice = rawPriceNumeric - discountAmount;
 
   useEffect(() => {
     if (professional) {
@@ -764,6 +779,12 @@ const BookingModal = ({
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"wallet" | "cash_presencial">("wallet");
+
+  useEffect(() => {
+    if (modality !== "presencial" && paymentMethod !== "wallet") {
+      setPaymentMethod("wallet");
+    }
+  }, [modality, paymentMethod]);
 
   useEffect(() => {
     if (!isOpen || !professional || !selectedDate) return;
@@ -851,8 +872,9 @@ const BookingModal = ({
   const handleConfirm = async () => {
     if (!user || !professional || !selectedTime) return;
 
-    const parsedPriceStr = professional.price || "R$ 150,00";
-    const priceNumeric = parseFloat(parsedPriceStr.replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+    // Use finalConvenioPrice computed at component-level
+    const priceNumeric = finalConvenioPrice; 
+    const formattedPriceStr = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNumeric);
 
     if (paymentMethod === "wallet") {
       const clientBalance = userData?.walletBalance || 0;
@@ -880,7 +902,7 @@ const BookingModal = ({
         time: selectedTime,
         status: "pending",
         modality,
-        price: parsedPriceStr,
+        price: formattedPriceStr,
         priceNumeric: priceNumeric,
         paymentMethod: paymentMethod,
         paymentStatus: payStatus,
@@ -905,11 +927,11 @@ const BookingModal = ({
           date: new Date().toISOString(),
         });
 
-        // Credit to professional
+        // Credit to professional (after subtracting platform fee)
         if (professional.userId) {
-          const profFeeRate = professional.feeRate || 0;
+          const profFeeRate = professional.feeRate !== undefined ? professional.feeRate : 0;
           const feeAmount = (priceNumeric * profFeeRate) / 100;
-          const netAmount = priceNumeric; // custody in-wallet
+          const netAmount = priceNumeric - feeAmount;
 
           await updateDoc(doc(db, "users", professional.userId), {
             walletBalance: increment(netAmount),
@@ -921,31 +943,39 @@ const BookingModal = ({
             type: "credit",
             amount: netAmount,
             title: `Recebimento - Consulta de ${userData?.name || user.displayName || user.email}`,
-            description: `Pago via Carteira Digital`,
+            description: `Pago via Carteira Digital (Desconto de Taxa Fee de ${profFeeRate}%)`,
             category: "Rendimento",
             date: new Date().toISOString(),
+            feeRatio: profFeeRate,
+            feeCharged: feeAmount,
           });
         }
       } else {
         // Paid in Cash Presencial (creates informational transactions for ledger calculation without virtual balance subtraction)
         if (professional.userId) {
+          const profFeeRate = professional.feeRate !== undefined ? professional.feeRate : 0;
+          const feeAmount = (priceNumeric * profFeeRate) / 100;
+          const netAmount = priceNumeric - feeAmount;
+
           await addDoc(collection(db, "transactions"), {
             userId: professional.userId,
             type: "credit",
-            amount: priceNumeric,
-            title: `Recebimento Presencial (Dinheiro) - Consulta de ${userData?.name || user.displayName || user.email}`,
-            description: `Pago presencialmente em dinheiro`,
+            amount: netAmount,
+            title: `Recebimento Presencial (Pagamento Presencial) - Consulta de ${userData?.name || user.displayName || user.email}`,
+            description: `Pago presencialmente (Desconto de Taxa Fee de ${profFeeRate}%)`,
             category: "Rendimento",
             date: new Date().toISOString(),
             isCash: true,
+            feeRatio: profFeeRate,
+            feeCharged: feeAmount,
           });
         }
         await addDoc(collection(db, "transactions"), {
           userId: user.uid,
           type: "debit",
           amount: priceNumeric,
-          title: `Consulta em Dinheiro - ${professional.name}`,
-          description: `Pago presencialmente em dinheiro`,
+          title: `Consulta em Pagamento Presencial - ${professional.name}`,
+          description: `Pago presencialmente no consultório`,
           category: "Consulta",
           date: new Date().toISOString(),
           isCash: true,
@@ -1265,16 +1295,33 @@ const BookingModal = ({
 
                 {/* Seção Forma de Pagamento */}
                 <div className="space-y-3 p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border mt-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">Valor do Atendimento</span>
-                    <span className="text-sm font-black text-vitta-green">{professional?.price || "R$ 150,00"}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">Valor do Atendimento</span>
+                      <span className="text-sm font-semibold text-vitta-text-muted line-through font-mono">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rawPriceNumeric)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm border-t border-vitta-border/40 pt-2 pb-1">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">Valor do Convênio</span>
+                        {discountPct > 0 && (
+                          <span className="text-[10px] text-vitta-green font-bold uppercase tracking-wide">
+                            Desconto ViTTA Health: {professional?.vittaHealthDiscount || `${discountPct}%`}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-base font-black text-vitta-green font-mono">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(finalConvenioPrice)}
+                      </span>
+                    </div>
                   </div>
                   
                   <div className="space-y-2 pt-2 border-t border-vitta-border/60">
                     <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 block mb-1">
                       Selecione a Forma de Pagamento
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={() => setPaymentMethod("wallet")}
@@ -1282,7 +1329,7 @@ const BookingModal = ({
                           paymentMethod === "wallet"
                             ? "bg-vitta-green/5 border-vitta-green text-vitta-text-primary"
                             : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:border-vitta-green/35"
-                        }`}
+                        } ${modality !== "presencial" ? "sm:col-span-2 text-center items-center" : ""}`}
                       >
                         <span className="font-bold">🎫 Carteira Digital</span>
                         <span className="text-[10px] text-vitta-text-muted">
@@ -1290,23 +1337,25 @@ const BookingModal = ({
                         </span>
                       </button>
                       
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("cash_presencial")}
-                        className={`p-3 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
-                          paymentMethod === "cash_presencial"
-                            ? "bg-vitta-amber/5 border-vitta-amber text-vitta-text-primary"
-                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:border-vitta-amber/35"
-                        }`}
-                      >
-                        <span className="font-bold font-sans">💵 Dinheiro</span>
-                        <span className="text-[10px] text-vitta-text-muted">Presencialmente no consultório</span>
-                      </button>
+                      {modality === "presencial" && (
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod("cash_presencial")}
+                          className={`p-3 rounded-xl border text-left text-xs transition-all flex flex-col gap-1 ${
+                            paymentMethod === "cash_presencial"
+                              ? "bg-vitta-amber/5 border-vitta-amber text-vitta-text-primary"
+                              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:border-vitta-amber/35"
+                          }`}
+                        >
+                          <span className="font-bold font-sans">💵 Pagamento Presencial</span>
+                          <span className="text-[10px] text-vitta-text-muted">Presencialmente no consultório</span>
+                        </button>
+                      )}
                     </div>
                     
-                    {paymentMethod === "wallet" && (userData?.walletBalance || 0) < (parseFloat((professional?.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".")) || 0) && (
+                    {paymentMethod === "wallet" && (userData?.walletBalance || 0) < finalConvenioPrice && (
                       <p className="text-[10px] font-bold text-vitta-danger mt-1">
-                        ⚠️ Saldo insuficiente na sua carteira ViTTA. Por favor, adicione fundos ou escolha pagamento em dinheiro.
+                        ⚠️ Saldo insuficiente na sua carteira ViTTA. Por favor, adicione fundos{modality === "presencial" ? " ou escolha Pagamento Presencial." : "."}
                       </p>
                     )}
                   </div>
@@ -8910,6 +8959,7 @@ const ProfessionalsManagementView = () => {
     bairro: "",
     localidade: "",
     uf: "",
+    feeRate: 0,
   });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -9150,6 +9200,40 @@ const ProfessionalsManagementView = () => {
       const collectionName =
         type === "professional" ? "professionals" : "categories";
       await setDoc(doc(db, collectionName, id), data, { merge: true });
+
+      // Sync feeRate to matching user profile documents (mirroring)
+      if (type === "professional") {
+        const feeRateVal = data.feeRate !== undefined ? Number(data.feeRate) : 0;
+        const email = data.email || "";
+
+        if (email) {
+          try {
+            const q = query(
+              collection(db, "users"),
+              where("email", "==", email.toLowerCase().trim())
+            );
+            const snap = await getDocs(q);
+            snap.forEach(async (userDoc) => {
+              await updateDoc(doc(db, "users", userDoc.id), {
+                feeRate: feeRateVal,
+              });
+            });
+          } catch (e) {
+            console.error("Error syncing feeRate by email:", e);
+          }
+        }
+
+        if (editingItem.userId) {
+          try {
+            await updateDoc(doc(db, "users", editingItem.userId), {
+              feeRate: feeRateVal,
+            });
+          } catch (e) {
+            console.error("Error syncing feeRate by userId:", e);
+          }
+        }
+      }
+
       await logAdminAction(
         `UPDATE_${type.toUpperCase()}`,
         `Editou o ${type === "professional" ? "profissional" : "categoria"}: ${editingItem.name}`,
@@ -9176,10 +9260,14 @@ const ProfessionalsManagementView = () => {
     e.preventDefault();
     try {
       if (isCreating === "professional") {
+        const email = newItem.email || "";
+        const feeRateVal = newItem.feeRate !== undefined ? Number(newItem.feeRate) : 0;
+
         await addDoc(collection(db, "professionals"), {
           name: newItem.name,
           specialty: newItem.specialty,
           vittaHealthDiscount: newItem.vittaHealthDiscount || "0%",
+          feeRate: feeRateVal,
           registrationNumber: newItem.registrationNumber,
           availableDays: newItem.availableDays,
           price: newItem.price,
@@ -9189,7 +9277,7 @@ const ProfessionalsManagementView = () => {
           imageUrl:
             newItem.imageUrl || "https://picsum.photos/seed/prof/400/300",
           whatsapp: newItem.whatsapp || "",
-          email: newItem.email || "",
+          email: email,
           cep: newItem.cep || "",
           logradouro: newItem.logradouro || "",
           numero: newItem.numero || "",
@@ -9199,6 +9287,25 @@ const ProfessionalsManagementView = () => {
           uf: newItem.uf || "",
           createdAt: new Date().toISOString(),
         });
+
+        // Mirror/Sync feeRate to the Users table (both professional and conveniado roles matching this email)
+        if (email) {
+          try {
+            const q = query(
+              collection(db, "users"),
+              where("email", "==", email.toLowerCase().trim())
+            );
+            const snap = await getDocs(q);
+            snap.forEach(async (userDoc) => {
+              await updateDoc(doc(db, "users", userDoc.id), {
+                feeRate: feeRateVal,
+              });
+            });
+          } catch (e) {
+            console.error("Error syncing feeRate on create:", e);
+          }
+        }
+
         await logAdminAction(
           "CREATE_PROFESSIONAL",
           `Criou o profissional: ${newItem.name}`,
@@ -9234,6 +9341,7 @@ const ProfessionalsManagementView = () => {
         bairro: "",
         localidade: "",
         uf: "",
+        feeRate: 0,
       });
       addToast(
         `${isCreating === "professional" ? "Profissional" : "Categoria"} criado com sucesso.`,
@@ -9415,6 +9523,37 @@ const ProfessionalsManagementView = () => {
                                 vittaHealthDiscount: e.target.value,
                               })
                         }
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        Taxa Fee (%)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="Ex: 10"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={
+                          editingItem
+                            ? (editingItem.feeRate !== undefined ? editingItem.feeRate : "")
+                            : (newItem.feeRate !== undefined ? newItem.feeRate : "")
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          const rateVal = isNaN(val) ? 0 : val;
+                          editingItem
+                            ? setEditingItem({
+                                ...editingItem,
+                                feeRate: rateVal,
+                              })
+                            : setNewItem({
+                                ...newItem,
+                                feeRate: rateVal,
+                              });
+                        }}
                         className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
                     </div>
