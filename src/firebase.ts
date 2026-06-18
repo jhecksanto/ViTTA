@@ -19,8 +19,8 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Enable offline persistence
-if (typeof window !== 'undefined') {
+// Enable offline persistence (skip if running in a sandboxed iframe to prevent lock errors)
+if (typeof window !== 'undefined' && window.self === window.top) {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
       console.warn('Persistence failed-precondition: multiple tabs open?');

@@ -1,5 +1,7 @@
 // Force refresh - 2026-04-07 23:32
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import healthIcon from "./assets/images/category_health_icon_1781741323843.jpg";
+import pharmacyIcon from "./assets/images/category_pharmacy_icon_1781741335670.jpg";
 import {
   LayoutDashboard,
   Calendar,
@@ -20492,12 +20494,14 @@ export default function App() {
           icon: "Heart",
           color: "bg-vitta-danger",
           description: "Encontre profissionais de saúde",
+          imageUrl: healthIcon,
         },
         {
           name: "Farmácias",
           icon: "Store",
           color: "bg-vitta-green",
           description: "Descontos exclusivos para afiliados",
+          imageUrl: pharmacyIcon,
         },
         {
           name: "Óticas",

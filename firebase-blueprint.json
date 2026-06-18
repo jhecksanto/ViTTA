@@ -361,6 +361,25 @@
         "nextBillingDate": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "mpSubscriptionId", "planId", "status"]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "Professional or Conveniado fund withdrawal request",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userRole": { "type": "string" },
+        "pixKey": { "type": "string" },
+        "amount": { "type": "number" },
+        "feeRate": { "type": "number" },
+        "feeAmount": { "type": "number" },
+        "netAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -447,6 +466,10 @@
     "/user_subscriptions/{subId}": {
       "schema": "UserSubscription",
       "description": "Individual user subscriptions"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "Withdrawal",
+      "description": "Withdrawal requests of professionals and partners"
     }
   }
 }
