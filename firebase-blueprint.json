@@ -187,9 +187,25 @@
       "properties": {
         "name": { "type": "string" },
         "slug": { "type": "string" },
-        "type": { "type": "string", "enum": ["professional", "partner"] }
+        "type": { "type": "string", "enum": ["professional", "partner", "liberal"] }
       },
       "required": ["name", "slug", "type"]
+    },
+    "LiberalProfessional": {
+      "title": "Liberal Professional",
+      "description": "Liberal professional registered (e.g. cabeleireiros, Uber, taxista, motoboy)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category"]
     },
     "RadioConfig": {
       "title": "RadioConfig",
@@ -425,6 +441,10 @@
     "/categories/{categoryId}": {
       "schema": "Category",
       "description": "System categories"
+    },
+    "/liberal_professionals/{id}": {
+      "schema": "LiberalProfessional",
+      "description": "List of liberal professionals"
     },
     "/exams/{examId}": {
       "schema": "Exam",

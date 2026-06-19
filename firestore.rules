@@ -92,7 +92,14 @@ service cloud.firestore {
     
     match /categories/{categoryId} {
       allow read: if true; // Public list
-      allow write: if isAdmin();
+      allow create: if isAuthenticated() && incoming().type == "liberal";
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.type == "liberal");
+    }
+    
+    match /liberal_professionals/{id} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || request.auth.uid != null));
     }
     
     match /exams/{examId} {

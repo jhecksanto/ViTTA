@@ -122,6 +122,8 @@ import {
   ArrowUp,
   ArrowDown,
   RefreshCw,
+  Briefcase,
+  UserPlus,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { motion, AnimatePresence } from "motion/react";
@@ -195,6 +197,7 @@ import AuditLogsList from "./components/Admin/AuditLogsList";
 import SubscriptionManagementView from "./components/Admin/SubscriptionManagementView";
 import AdminAnalytics from "./components/Admin/AnalyticsView";
 import { AdminVoucherManagementView } from "./components/Admin/AdminVoucherManagementView";
+import { AdminLiberalConfigView } from "./components/Admin/AdminLiberalConfigView";
 import NotificationCenter from "./components/NotificationCenter";
 import HelpCenter from "./components/HelpCenter";
 import ReviewModal from "./components/ReviewModal";
@@ -7370,6 +7373,7 @@ const AdminView = ({ user }: { user: any }) => {
     | "content"
     | "medical-panel"
     | "vouchers-management"
+    | "liberal-config"
   >("overview");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -7770,6 +7774,17 @@ const AdminView = ({ user }: { user: any }) => {
           <Ticket size={18} />
           Gestão de Vouchers
         </button>
+        <button
+          onClick={() => setSubTab("liberal-config")}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === "liberal-config"
+              ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20"
+              : "bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border"
+          }`}
+        >
+          <Briefcase size={18} />
+          Configurações Liberais
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -8107,6 +8122,7 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === "audit-logs" && <AuditLogsList />}
           {subTab === "subscriptions" && <SubscriptionManagementView />}
           {subTab === "vouchers-management" && <AdminVoucherManagementView />}
+          {subTab === "liberal-config" && <AdminLiberalConfigView />}
         </motion.div>
       </AnimatePresence>
 
@@ -10441,13 +10457,17 @@ const PartnersView = ({
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [savingsList, setSavingsList] = useState<any[]>([]);
   
+  const [liberalProfessionals, setLiberalProfessionals] = useState<any[]>([]);
+  const [liberalCategories, setLiberalCategories] = useState<any[]>([]);
+  const [loadingLiberal, setLoadingLiberal] = useState(true);
+
   const [loading, setLoading] = useState(true);
   const [loadingProfs, setLoadingProfs] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   
-  // Tab handling: "empresas" (partners/establishments), "profissionais" (health professionals), "categorias" (all categories)
-  const [activeSubTab, setActiveSubTab] = useState<"empresas" | "profissionais" | "categorias">("empresas");
+  // Tab handling: "empresas" (partners/establishments), "profissionais" (health professionals), "vitta-health" (ViTTA Health professionals), "profissionais-liberais" (liberal professionals), "categorias" (all categories)
+  const [activeSubTab, setActiveSubTab] = useState<"empresas" | "profissionais" | "vitta-health" | "categorias" | "profissionais-liberais">("empresas");
   
   // Professionals Specialty selection
   const [selectedSpecialty, setSelectedSpecialty] = useState("Todos");
@@ -10456,6 +10476,22 @@ const PartnersView = ({
   const [selectedProfessional, setSelectedProfessional] = useState<any>(null);
   const [showSavingsHistory, setShowSavingsHistory] = useState(false);
   const [showAddSavings, setShowAddSavings] = useState(false);
+
+  // Liberal subtabs and forms
+  const [showAddLiberalCategory, setShowAddLiberalCategory] = useState(false);
+  const [newLiberalCatName, setNewLiberalCatName] = useState("");
+  const [isSubmittingLiberalCat, setIsSubmittingLiberalCat] = useState(false);
+
+  const [showAddLiberalProf, setShowAddLiberalProf] = useState(false);
+  const [newLiberalProfName, setNewLiberalProfName] = useState("");
+  const [newLiberalProfCategory, setNewLiberalProfCategory] = useState("");
+  const [newLiberalProfPhone, setNewLiberalProfPhone] = useState("");
+  const [newLiberalProfCity, setNewLiberalProfCity] = useState("");
+  const [newLiberalProfDesc, setNewLiberalProfDesc] = useState("");
+  const [newLiberalProfImage, setNewLiberalProfImage] = useState("");
+  const [isSubmittingLiberalProf, setIsSubmittingLiberalProf] = useState(false);
+
+  const [selectedLiberalCategory, setSelectedLiberalCategory] = useState("Todos");
   
   // Custom manual savings logging fields
   const [newSavingTitle, setNewSavingTitle] = useState("");
@@ -10505,6 +10541,31 @@ const PartnersView = ({
       }
     );
 
+    const unsubscribeLiberalCategories = onSnapshot(
+      query(collection(db, "categories"), where("type", "==", "liberal")),
+      (snapshot) => {
+        setLiberalCategories(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        );
+      },
+      (error) => {
+        console.error("Error fetching liberal categories", error);
+      }
+    );
+
+    const unsubscribeLiberalProfs = onSnapshot(
+      collection(db, "liberal_professionals"),
+      (snapshot) => {
+        setLiberalProfessionals(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        );
+        setLoadingLiberal(false);
+      },
+      (error) => {
+        console.error("Error fetching liberal professionals", error);
+      }
+    );
+
     let unsubscribeSavings = () => {};
     if (user?.uid) {
       unsubscribeSavings = onSnapshot(
@@ -10524,6 +10585,8 @@ const PartnersView = ({
       unsubscribePartners();
       unsubscribeCategories();
       unsubscribeProfs();
+      unsubscribeLiberalCategories();
+      unsubscribeLiberalProfs();
       unsubscribeSavings();
     };
   }, [user]);
@@ -10573,6 +10636,24 @@ const PartnersView = ({
       return matchesSearch && matchesSpecialty;
     });
   }, [professionals, searchQuery, selectedSpecialty]);
+
+  const filteredLiberalProfessionals = useMemo(() => {
+    return liberalProfessionals.filter((prof) => {
+      const matchesSearch =
+        (prof.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (prof.description || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (prof.category || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (prof.city || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory =
+        selectedLiberalCategory === "Todos" || prof.category === selectedLiberalCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [liberalProfessionals, searchQuery, selectedLiberalCategory]);
+
+  const liberalCategoriesList = useMemo(() => {
+    const list = new Set(liberalCategories.map((c) => c.name).filter(Boolean));
+    return ["Todos", ...Array.from(list)];
+  }, [liberalCategories]);
 
   const getPartnersCount = (categoryName: string) => {
     return partners.filter((p) => p.category === categoryName).length;
@@ -10658,6 +10739,83 @@ const PartnersView = ({
     } catch (err) {
       console.error(err);
       addToast("Erro ao excluir registro.", "error");
+    }
+  };
+
+  const handleAddLiberalCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLiberalCatName.trim()) {
+      addToast("O nome da categoria é obrigatório.", "error");
+      return;
+    }
+    setIsSubmittingLiberalCat(true);
+    try {
+      const slug = newLiberalCatName.trim().toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/[^\w\-]+/g, "")
+        .replace(/\-\-+/g, "-");
+      
+      await addDoc(collection(db, "categories"), {
+        name: newLiberalCatName.trim(),
+        slug,
+        type: "liberal",
+        createdAt: Timestamp.now(),
+      });
+      addToast("Categoria de profissional liberal criada com sucesso!", "success");
+      setNewLiberalCatName("");
+      setShowAddLiberalCategory(false);
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao criar categoria.", "error");
+    } finally {
+      setIsSubmittingLiberalCat(false);
+    }
+  };
+
+  const handleAddLiberalProf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLiberalProfName.trim() || !newLiberalProfCategory) {
+      addToast("Nome e Categoria são obrigatórios.", "error");
+      return;
+    }
+    setIsSubmittingLiberalProf(true);
+    try {
+      await addDoc(collection(db, "liberal_professionals"), {
+        name: newLiberalProfName.trim(),
+        category: newLiberalProfCategory,
+        phone: newLiberalProfPhone.trim(),
+        city: newLiberalProfCity.trim(),
+        description: newLiberalProfDesc.trim(),
+        imageUrl: newLiberalProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60",
+        userId: user?.uid || "",
+        createdAt: Timestamp.now(),
+      });
+      addToast("Profissional Liberal cadastrado com sucesso!", "success");
+      setNewLiberalProfName("");
+      setNewLiberalProfCategory("");
+      setNewLiberalProfPhone("");
+      setNewLiberalProfCity("");
+      setNewLiberalProfDesc("");
+      setNewLiberalProfImage("");
+      setShowAddLiberalProf(false);
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao cadastrar profissional liberal.", "error");
+    } finally {
+      setIsSubmittingLiberalProf(false);
+    }
+  };
+
+  const handleDeleteLiberalProf = async (id: string, name: string) => {
+    if (!window.confirm(`Deseja realmente excluir o profissional liberal: ${name}?`)) return;
+    try {
+      await deleteDoc(doc(db, "liberal_professionals", id));
+      addToast("Profissional liberal removido com sucesso.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao remover profissional.", "error");
     }
   };
 
@@ -10810,15 +10968,15 @@ const PartnersView = ({
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
       </section>
 
-      {/* Tabs Menu (Empresas, Profissionais, Categorias) */}
+      {/* Tabs Menu (Empresas, Profissionais de Saúde, ViTTA Health, Profissionais Liberais, Categorias) */}
       <div className="border-b border-vitta-border pb-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-        <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border grow md:grow-0">
+        <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border grow md:grow-0 overflow-x-auto no-scrollbar max-w-full">
           <button
             onClick={() => {
               setActiveSubTab("empresas");
               setSelectedCategory(null);
             }}
-            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap cursor-pointer ${
               activeSubTab === "empresas"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
@@ -10832,13 +10990,41 @@ const PartnersView = ({
               setActiveSubTab("profissionais");
               setSelectedCategory(null);
             }}
-            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 ${
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 cursor-pointer ${
               activeSubTab === "profissionais"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
             }`}
           >
-            Profissionais
+            Profissionais de Saúde
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveSubTab("vitta-health");
+              setSelectedCategory(null);
+            }}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
+              activeSubTab === "vitta-health"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            ViTTA Health
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab("profissionais-liberais");
+              setSelectedCategory(null);
+            }}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
+              activeSubTab === "profissionais-liberais"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            Profissionais Liberais
           </button>
           
           <button
@@ -10846,7 +11032,7 @@ const PartnersView = ({
               setActiveSubTab("categorias");
               setSelectedCategory(null);
             }}
-            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap cursor-pointer ${
               activeSubTab === "categorias"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
@@ -10861,7 +11047,9 @@ const PartnersView = ({
           <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">Visualizando</span>
           <p className="text-sm font-bold text-vitta-text-primary">
             {activeSubTab === "empresas" && "Todos os Parceiros & Empresas"}
-            {activeSubTab === "profissionais" && "Corpo Médico ViTTA Health"}
+            {activeSubTab === "profissionais" && "Corpo Médico Credenciado"}
+            {activeSubTab === "vitta-health" && "Membros ViTTA Health"}
+            {activeSubTab === "profissionais-liberais" && "Profissionais Liberais cadastrados"}
             {activeSubTab === "categorias" && "Lista de Categorias de Benefício"}
           </p>
         </div>
@@ -10878,8 +11066,10 @@ const PartnersView = ({
           placeholder={
             activeSubTab === "empresas"
               ? "Buscar empresas, farmácias, laboratórios parceiros..."
-              : activeSubTab === "profissionais"
+              : activeSubTab === "profissionais" || activeSubTab === "vitta-health"
               ? "Buscar médicos por nome ou especialidade..."
+              : activeSubTab === "profissionais-liberais"
+              ? "Buscar profissionais liberais (ex: cabeleireiro, Uber, taxista)..."
               : "Buscar categorias de convênios..."
           }
           value={searchQuery}
@@ -11090,6 +11280,383 @@ const PartnersView = ({
               <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
               <p className="text-vitta-text-secondary font-medium">
                 Nenhum médico ou profissional de saúde correspondente encontrado.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- SUBTAB: VITTA HEALTH (TODOS OS PROFISSIONAIS SEGUNDO REQUISITO) --- */}
+      {activeSubTab === "vitta-health" && (
+        <section className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-vitta-text-primary">
+              Corpo Médico ViTTA Health
+            </h2>
+            <p className="text-vitta-text-secondary">
+              Todos os profissionais de saúde integrados à rede do ecossistema ViTTA Health
+            </p>
+          </div>
+
+          {loadingProfs ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-64" />
+              ))}
+            </div>
+          ) : professionals.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {professionals.map((prof) => {
+                const priceMatch = (prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+                const rawPrice = parseFloat(priceMatch) || 150;
+                
+                const discountMatch = (prof.vittaHealthDiscount || "20%").match(/(\d+)/);
+                const discountPct = discountMatch ? parseFloat(discountMatch[1]) : 20;
+                
+                const savingsVal = (rawPrice * discountPct) / 100;
+                const paidVal = rawPrice - savingsVal;
+
+                return (
+                  <motion.div
+                    key={prof.id}
+                    whileHover={{ y: -4 }}
+                    className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm flex flex-col justify-between space-y-4"
+                  >
+                    <div>
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={prof.imageUrl || "https://picsum.photos/seed/doc/120/120"}
+                          alt={prof.name}
+                          className="w-16 h-16 rounded-2xl object-cover border border-vitta-border"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[9px] font-black text-white uppercase bg-vitta-accent px-2 py-0.5 rounded-md">
+                            {prof.specialty}
+                          </span>
+                          <h3 className="font-bold text-base text-vitta-text-primary mt-1 truncate">
+                            {prof.name}
+                          </h3>
+                          <div className="flex items-center gap-1 text-vitta-green mt-0.5 text-xs font-bold">
+                            <Tag size={12} />
+                            Desconto ViTTA Health {prof.vittaHealthDiscount || "20%"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-vitta-text-secondary line-clamp-2 mt-4 min-h-[2rem]">
+                        {prof.bio || `Especialista experiente em ${prof.specialty}. Atendimento humanizado na rede ViTTA Health.`}
+                      </p>
+
+                      <div className="border-t border-vitta-border pt-3 mt-4 flex justify-between items-center bg-vitta-surface-2 p-2.5 rounded-xl">
+                        <div>
+                          <span className="text-[10px] text-vitta-text-muted">Valor ViTTA Health</span>
+                          <p className="text-sm font-black text-vitta-accent font-mono">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(paidVal)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-vitta-text-muted">Valor normal</span>
+                          <p className="text-xs font-bold text-vitta-text-secondary line-through font-mono">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rawPrice)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedProfessional(prof)}
+                      className="w-full py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Info size={14} /> Detalhes do Profissional
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-vitta-surface rounded-[2rem] border border-dashed border-vitta-border">
+              <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="text-vitta-text-secondary font-medium">
+                Nenhum médico ViTTA Health disponível no momento.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- SUBTAB: PROFISSIONAIS LIBERAIS (CADASTRO DE CATEGORIAS E PROFISSIONAIS) --- */}
+      {activeSubTab === "profissionais-liberais" && (
+        <section className="space-y-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm">
+            <div>
+              <h2 className="text-2xl font-bold text-vitta-text-primary">
+                Profissionais Liberais
+              </h2>
+              <p className="text-vitta-text-secondary">
+                Encontre serviços de apoio (Ex: cabeleireiros, taxistas, uber, motoboys) credenciados ou cadastre um novo profissional/categoria!
+              </p>
+            </div>
+            
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  setShowAddLiberalCategory(true);
+                  setShowAddLiberalProf(false);
+                }}
+                className="px-4 py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold border border-vitta-border flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus size={14} /> Cadastrar Categoria
+              </button>
+              <button
+                onClick={() => {
+                  setShowAddLiberalProf(true);
+                  setShowAddLiberalCategory(false);
+                }}
+                className="px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1.5 cursor-pointer"
+              >
+                <UserPlus size={14} /> Cadastrar Profissional
+              </button>
+            </div>
+          </div>
+
+          {/* Form: Add Liberal Category */}
+          {showAddLiberalCategory && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="p-6 bg-vitta-surface-2 border border-vitta-border rounded-2xl mb-6 relative"
+            >
+              <h3 className="text-lg font-bold text-vitta-text-primary mb-4 flex items-center gap-2">
+                <Plus size={20} className="text-vitta-accent" />
+                Cadastrar Categoria de Profissional Liberal
+              </h3>
+              <form onSubmit={handleAddLiberalCategory} className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 space-y-2">
+                  <label className="text-xs font-bold text-vitta-text-secondary">Nome da Categoria (ex: Cabeleireiro, Uber, Taxista, Motoboy)</label>
+                  <input
+                    type="text"
+                    value={newLiberalCatName}
+                    onChange={(e) => setNewLiberalCatName(e.target.value)}
+                    placeholder="Ex: Cabeleireiro"
+                    className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingLiberalCat}
+                    className="px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-sm font-bold shadow-lg shadow-vitta-accent/20 transition-all disabled:opacity-50 whitespace-nowrap cursor-pointer"
+                  >
+                    {isSubmittingLiberalCat ? "Gravando..." : "Salvar Categoria"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLiberalCategory(false)}
+                    className="px-6 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+
+          {/* Form: Add Liberal Professional */}
+          {showAddLiberalProf && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="p-6 bg-vitta-surface-2 border border-vitta-border rounded-2xl mb-6"
+            >
+              <h3 className="text-lg font-bold text-vitta-text-primary mb-4 flex items-center gap-2">
+                <UserPlus size={20} className="text-vitta-accent" />
+                Cadastrar Novo Profissional Liberal
+              </h3>
+              <form onSubmit={handleAddLiberalProf} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Nome Completo / Serviço</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfName}
+                      onChange={(e) => setNewLiberalProfName(e.target.value)}
+                      placeholder="Ex: João da Silva - Taxista"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Categoria</label>
+                    <select
+                      value={newLiberalProfCategory}
+                      onChange={(e) => setNewLiberalProfCategory(e.target.value)}
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    >
+                      <option value="">Selecione uma Categoria</option>
+                      {liberalCategories.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Whatsapp / Telefone</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfPhone}
+                      onChange={(e) => setNewLiberalProfPhone(e.target.value)}
+                      placeholder="Ex: (28) 99999-9999"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Cidade / Região de Atuação</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfCity}
+                      onChange={(e) => setNewLiberalProfCity(e.target.value)}
+                      placeholder="Ex: Cachoeiro de Itapemirim - ES"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-vitta-text-secondary">Link da Imagem / Foto (Opcional)</label>
+                  <input
+                    type="text"
+                    value={newLiberalProfImage}
+                    onChange={(e) => setNewLiberalProfImage(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-vitta-text-secondary">Descrição dos Serviços / Detalhes</label>
+                  <textarea
+                    value={newLiberalProfDesc}
+                    onChange={(e) => setNewLiberalProfDesc(e.target.value)}
+                    placeholder="Fale um pouco sobre o serviço, diferenciais, descontos oferecidos..."
+                    rows={3}
+                    className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingLiberalProf}
+                    className="px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-sm font-bold shadow-lg shadow-vitta-accent/20 transition-all disabled:opacity-50 whitespace-nowrap cursor-pointer"
+                  >
+                    {isSubmittingLiberalProf ? "Salvando..." : "Cadastrar Profissional"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLiberalProf(false)}
+                    className="px-6 py-3 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+
+          {/* Liberal Categories selectors filter tags */}
+          {liberalCategoriesList.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {liberalCategoriesList.map((catName) => (
+                <button
+                  key={catName}
+                  onClick={() => setSelectedLiberalCategory(catName)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedLiberalCategory === catName
+                      ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/15"
+                      : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border border border-vitta-border/40"
+                  }`}
+                >
+                  {catName}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Liberal Professionals List Grid */}
+          {loadingLiberal ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-64" />
+              ))}
+            </div>
+          ) : filteredLiberalProfessionals.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLiberalProfessionals.map((prof) => (
+                <motion.div
+                  key={prof.id}
+                  whileHover={{ y: -4 }}
+                  className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm flex flex-col justify-between space-y-4 relative overflow-hidden"
+                >
+                  <div>
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={prof.imageUrl || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60"}
+                        alt={prof.name}
+                        className="w-16 h-16 rounded-2xl object-cover border border-vitta-border"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-black text-vitta-accent uppercase bg-vitta-accent/10 px-2 py-0.5 rounded-md">
+                          {prof.category}
+                        </span>
+                        <h3 className="font-bold text-base text-vitta-text-primary mt-1 truncate">
+                          {prof.name}
+                        </h3>
+                        <div className="flex items-center gap-1 text-vitta-text-secondary mt-1 text-xs">
+                          <MapPin size={12} />
+                          <span>{prof.city || "Região não informada"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-vitta-text-secondary line-clamp-3 mt-4 min-h-[3rem]">
+                      {prof.description || "Nenhum detalhe adicional fornecido pelo profissional liberal."}
+                    </p>
+
+                    <div className="border-t border-vitta-border pt-3 mt-4 flex items-center justify-between text-xs text-vitta-text-secondary">
+                      <span>Contato Direto</span>
+                      <span className="font-bold text-vitta-text-primary">{prof.phone || "Não informado"}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {prof.phone && (
+                      <a
+                        href={`https://wa.me/${prof.phone.replace(/\D/g, "")}?text=Olá!%20Encontrei%20você%20na%20plataforma%20de%20Profissionais%20Liberais%20ViTTA`}
+                        target="_blank"
+                        referrerPolicy="no-referrer"
+                        className="flex-1 py-2.5 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Phone size={14} /> Contatar no WhatsApp
+                      </a>
+                    )}
+                    {user && (user.uid === prof.userId || user.email === "admin@vitta.club" || user.email === "suporte@vitta.club") && (
+                      <button
+                        onClick={() => handleDeleteLiberalProf(prof.id, prof.name)}
+                        className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors border border-red-200 cursor-pointer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-vitta-surface rounded-[2rem] border border-dashed border-vitta-border">
+              <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="text-vitta-text-secondary font-medium">
+                Nenhum profissional liberal correspondente cadastrado. Se você é um profissional de apoio ou serviço, clique em "Cadastrar Profissional" acima para se registrar gratuitamente!
               </p>
             </div>
           )}
@@ -16522,6 +17089,8 @@ const UsersView = () => {
         return "Profissional";
       case "conveniado":
         return "Conveniado";
+      case "liberal":
+        return "Profissional Liberal";
       case "user":
       default:
         return "Cliente/Paciente";
@@ -16536,6 +17105,8 @@ const UsersView = () => {
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
       case "conveniado":
         return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+      case "liberal":
+        return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400";
       case "user":
       default:
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
@@ -16812,6 +17383,7 @@ const UsersView = () => {
                     <option value="user">Cliente/Paciente</option>
                     <option value="professional">Profissional</option>
                     <option value="conveniado">Conveniado</option>
+                    <option value="liberal">Profissional Liberal</option>
                     <option value="admin">Admin Master</option>
                   </select>
                 </div>
@@ -16967,6 +17539,7 @@ const UsersView = () => {
                       <option value="user">Cliente/Paciente</option>
                       <option value="professional">Profissional</option>
                       <option value="conveniado">Conveniado</option>
+                      <option value="liberal">Profissional Liberal</option>
                       <option value="admin">Admin Master</option>
                     </select>
                   </div>
