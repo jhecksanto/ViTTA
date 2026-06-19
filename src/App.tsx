@@ -8971,7 +8971,6 @@ const ProfessionalsManagementView = () => {
   const [newItem, setNewItem] = useState({
     name: "",
     specialty: "Médico",
-    category: "Saúde",
     vittaHealthDiscount: "",
     registrationNumber: "",
     availableDays: "",
@@ -9294,7 +9293,6 @@ const ProfessionalsManagementView = () => {
         await addDoc(collection(db, "professionals"), {
           name: newItem.name,
           specialty: newItem.specialty,
-          category: newItem.category || "Saúde",
           vittaHealthDiscount: newItem.vittaHealthDiscount || "0%",
           feeRate: feeRateVal,
           registrationNumber: newItem.registrationNumber,
@@ -9355,7 +9353,6 @@ const ProfessionalsManagementView = () => {
       setNewItem({
         name: "",
         specialty: "Médico",
-        category: "Saúde",
         vittaHealthDiscount: "",
         registrationNumber: "",
         availableDays: "",
@@ -9529,36 +9526,6 @@ const ProfessionalsManagementView = () => {
                         }
                         className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Categoria do Profissional
-                      </label>
-                      <select
-                        value={
-                          editingItem
-                            ? editingItem.category || "Saúde"
-                            : newItem.category || "Saúde"
-                        }
-                        onChange={(e) =>
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                category: e.target.value,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                category: e.target.value,
-                              })
-                        }
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary outline-none"
-                      >
-                        <option value="Saúde">Saúde</option>
-                        <option value="Comercial">Comercial</option>
-                        <option value="Estética">Estética</option>
-                        <option value="Bem-Estar">Bem-Estar</option>
-                        <option value="Outros">Outros</option>
-                      </select>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
@@ -10479,8 +10446,8 @@ const PartnersView = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   
-  // Tab handling: "empresas" (partners/establishments), "vitta-health" (ViTTA Health - Saúde), "profissionais" (other professionals), "categorias" (all categories)
-  const [activeSubTab, setActiveSubTab] = useState<"empresas" | "vitta-health" | "profissionais" | "categorias">("empresas");
+  // Tab handling: "empresas" (partners/establishments), "profissionais" (health professionals), "categorias" (all categories)
+  const [activeSubTab, setActiveSubTab] = useState<"empresas" | "profissionais" | "categorias">("empresas");
   
   // Professionals Specialty selection
   const [selectedSpecialty, setSelectedSpecialty] = useState("Todos");
@@ -10575,15 +10542,9 @@ const PartnersView = ({
   }, [sortedSavings]);
 
   const specialtiesList = useMemo(() => {
-    const baseProfs = professionals.filter((p) => {
-      const isHealth = (p.category || "Saúde") === "Saúde";
-      if (activeSubTab === "vitta-health") return isHealth;
-      if (activeSubTab === "profissionais") return !isHealth;
-      return true;
-    });
-    const specs = new Set(baseProfs.map((p) => p.specialty).filter(Boolean));
+    const specs = new Set(professionals.map((p) => p.specialty).filter(Boolean));
     return ["Todos", ...Array.from(specs)];
-  }, [professionals, activeSubTab]);
+  }, [professionals]);
 
   const filteredPartners = useMemo(() => {
     return partners.filter((partner) => {
@@ -10603,13 +10564,7 @@ const PartnersView = ({
   }, [categories, searchQuery]);
 
   const filteredProfessionals = useMemo(() => {
-    const baseProfs = professionals.filter((p) => {
-      const isHealth = (p.category || "Saúde") === "Saúde";
-      if (activeSubTab === "vitta-health") return isHealth;
-      if (activeSubTab === "profissionais") return !isHealth;
-      return true;
-    });
-    return baseProfs.filter((prof) => {
+    return professionals.filter((prof) => {
       const matchesSearch =
         (prof.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (prof.specialty || "").toLowerCase().includes(searchQuery.toLowerCase());
@@ -10617,7 +10572,7 @@ const PartnersView = ({
         selectedSpecialty === "Todos" || prof.specialty === selectedSpecialty;
       return matchesSearch && matchesSpecialty;
     });
-  }, [professionals, searchQuery, selectedSpecialty, activeSubTab]);
+  }, [professionals, searchQuery, selectedSpecialty]);
 
   const getPartnersCount = (categoryName: string) => {
     return partners.filter((p) => p.category === categoryName).length;
@@ -10855,7 +10810,7 @@ const PartnersView = ({
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
       </section>
 
-      {/* Tabs Menu (Empresas, ViTTA Health, Profissionais, Categorias) */}
+      {/* Tabs Menu (Empresas, Profissionais, Categorias) */}
       <div className="border-b border-vitta-border pb-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border grow md:grow-0">
           <button
@@ -10874,26 +10829,10 @@ const PartnersView = ({
           
           <button
             onClick={() => {
-              setActiveSubTab("vitta-health");
-              setSelectedCategory(null);
-              setSelectedSpecialty("Todos");
-            }}
-            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 ${
-              activeSubTab === "vitta-health"
-                ? "bg-vitta-surface text-vitta-accent shadow-sm"
-                : "text-vitta-text-secondary hover:text-vitta-text-primary"
-            }`}
-          >
-            ViTTA Health
-          </button>
-          
-          <button
-            onClick={() => {
               setActiveSubTab("profissionais");
               setSelectedCategory(null);
-              setSelectedSpecialty("Todos");
             }}
-            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 ${
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 ${
               activeSubTab === "profissionais"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
@@ -10922,8 +10861,7 @@ const PartnersView = ({
           <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">Visualizando</span>
           <p className="text-sm font-bold text-vitta-text-primary">
             {activeSubTab === "empresas" && "Todos os Parceiros & Empresas"}
-            {activeSubTab === "vitta-health" && "Corpo Médico ViTTA Health"}
-            {activeSubTab === "profissionais" && "Outros Especialistas Credenciados"}
+            {activeSubTab === "profissionais" && "Corpo Médico ViTTA Health"}
             {activeSubTab === "categorias" && "Lista de Categorias de Benefício"}
           </p>
         </div>
@@ -10940,10 +10878,8 @@ const PartnersView = ({
           placeholder={
             activeSubTab === "empresas"
               ? "Buscar empresas, farmácias, laboratórios parceiros..."
-              : activeSubTab === "vitta-health"
-              ? "Buscar médicos por nome ou especialidade..."
               : activeSubTab === "profissionais"
-              ? "Buscar profissionais e especialistas por nome..."
+              ? "Buscar médicos por nome ou especialidade..."
               : "Buscar categorias de convênios..."
           }
           value={searchQuery}
@@ -11043,17 +10979,15 @@ const PartnersView = ({
       )}
 
       {/* --- SUBTAB: PROFISSIONAIS CREDENCIADOS --- */}
-      {(activeSubTab === "profissionais" || activeSubTab === "vitta-health") && (
+      {activeSubTab === "profissionais" && (
         <section className="space-y-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
             <div>
               <h2 className="text-2xl font-bold text-vitta-text-primary">
-                {filteredProfessionals.length} {activeSubTab === "vitta-health" ? "Profissionais de Saúde" : "Profissionais"} Disponíveis
+                {filteredProfessionals.length} Profissionais Disponíveis
               </h2>
               <p className="text-vitta-text-secondary">
-                {activeSubTab === "vitta-health" 
-                  ? "Atendimento presencial e telemedicina com valores de convênio" 
-                  : "Outras especialidades credenciadas no convênio"}
+                Atendimento presencial e telemedicina com valores de convênio
               </p>
             </div>
             
@@ -11155,9 +11089,7 @@ const PartnersView = ({
             <div className="p-12 text-center bg-vitta-surface rounded-[2rem] border border-dashed border-vitta-border">
               <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
               <p className="text-vitta-text-secondary font-medium">
-                {activeSubTab === "vitta-health"
-                  ? "Nenhum médico ou profissional de saúde correspondente encontrado."
-                  : "Nenhum profissional correspondente encontrado."}
+                Nenhum médico ou profissional de saúde correspondente encontrado.
               </p>
             </div>
           )}
