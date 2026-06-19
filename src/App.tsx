@@ -268,7 +268,16 @@ export function handleFirestoreError(
     path,
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  // Throw for critical mutations so catch blocks can handle failures.
+  // Avoid throwing for standard queries/snapshots to prevent unhandled React/background runtime crashes.
+  if (
+    operationType === OperationType.CREATE ||
+    operationType === OperationType.UPDATE ||
+    operationType === OperationType.DELETE ||
+    operationType === OperationType.WRITE
+  ) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
 
 const formatDateForDisplay = (
@@ -314,20 +323,6 @@ const logAdminAction = async (
     console.error("Error logging admin action:", err);
   }
 };
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, "test", "connection"));
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes("the client is offline")
-    ) {
-      console.error("Please check your Firebase configuration. ");
-    }
-  }
-}
-testConnection();
 
 const ConfirmModal = ({
   isOpen,
