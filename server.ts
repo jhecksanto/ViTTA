@@ -373,6 +373,10 @@ async function startServer() {
       const result = await plan.search({}); // Get list of plans
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error fetching MP plans:", error);
       res.status(500).json({ error: error.message || "Failed to fetch plans" });
     }
@@ -396,6 +400,10 @@ async function startServer() {
       });
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error creating MP plan:", error);
       res.status(500).json({ error: error.message || "Failed to create plan" });
     }
@@ -410,6 +418,10 @@ async function startServer() {
       const result = await plan.get({ preApprovalPlanId: req.params.id });
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error fetching MP plan:", error);
       res.status(500).json({ error: error.message || "Failed to fetch plan" });
     }
@@ -427,6 +439,10 @@ async function startServer() {
       } as any);
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error updating MP plan:", error);
       res.status(500).json({ error: error.message || "Failed to update plan" });
     }
@@ -452,6 +468,10 @@ async function startServer() {
       });
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error creating subscription:", error);
       res.status(500).json({ error: error.message || "Failed to create subscription" });
     }
@@ -482,6 +502,10 @@ async function startServer() {
       });
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error creating PIX payment:", error);
       res.status(500).json({ error: error.message || "Failed to create Pix payment" });
     }
@@ -496,6 +520,10 @@ async function startServer() {
       const result = await payment.get({ id: req.params.id });
       res.json(result);
     } catch (error: any) {
+      if (error?.status === 401 || (error?.message && error.message.toLowerCase().includes("unauthorized"))) {
+        console.warn("Mercado Pago: Unauthorized (401)");
+        return res.status(401).json({ error: "Token do Mercado Pago inválido ou não autorizado nas Configurações do App" });
+      }
       console.error("Error fetching payment:", error);
       res.status(500).json({ error: error.message || "Failed to fetch payment" });
     }

@@ -1016,6 +1016,22 @@ const BookingModal = ({
         createdAt: Timestamp.now(),
       });
 
+      // 1.2 Save savings to economies
+      const savingsAmount = rawPriceNumeric - priceNumeric;
+      if (savingsAmount > 0) {
+        await addDoc(collection(db, "economies"), {
+          userId: user.uid,
+          title: `Consulta com ${professional.name}`,
+          description: `Serviço de ${professional.specialty} (${modality === "telemedicine" ? "Telemedicina" : "Presencial"})`,
+          originalPrice: rawPriceNumeric,
+          paidPrice: priceNumeric,
+          savedAmount: savingsAmount,
+          type: "appointment",
+          referenceId: aptRef.id,
+          createdAt: Timestamp.now(),
+        });
+      }
+
       // 2. Open WhatsApp - Dirigido pelo campo cadastrado no profissional ou fallback geral
       const phoneNumber = professional.whatsapp
         ? professional.whatsapp.replace(/\D/g, "")
@@ -10410,11 +10426,34 @@ const PartnersView = ({
   setActiveTab?: (tab: string) => void;
   user?: any;
 }) => {
+  const { addToast } = useToast();
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [professionals, setProfessionals] = useState<any[]>([]);
+  const [savingsList, setSavingsList] = useState<any[]>([]);
+  
   const [loading, setLoading] = useState(true);
+  const [loadingProfs, setLoadingProfs] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  
+  // Tab handling: "empresas" (partners/establishments), "profissionais" (health professionals), "categorias" (all categories)
+  const [activeSubTab, setActiveSubTab] = useState<"empresas" | "profissionais" | "categorias">("empresas");
+  
+  // Professionals Specialty selection
+  const [selectedSpecialty, setSelectedSpecialty] = useState("Todos");
+  
+  // Modals
+  const [selectedProfessional, setSelectedProfessional] = useState<any>(null);
+  const [showSavingsHistory, setShowSavingsHistory] = useState(false);
+  const [showAddSavings, setShowAddSavings] = useState(false);
+  
+  // Custom manual savings logging fields
+  const [newSavingTitle, setNewSavingTitle] = useState("");
+  const [newSavingDesc, setNewSavingDesc] = useState("");
+  const [newSavingOrigPrice, setNewSavingOrigPrice] = useState("");
+  const [newSavingPaidPrice, setNewSavingPaidPrice] = useState("");
+  const [isSubmittingSaving, setIsSubmittingSaving] = useState(false);
 
   useEffect(() => {
     const unsubscribePartners = onSnapshot(
@@ -10444,21 +10483,63 @@ const PartnersView = ({
       },
     );
 
+    const unsubscribeProfs = onSnapshot(
+      collection(db, "professionals"),
+      (snapshot) => {
+        setProfessionals(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        );
+        setLoadingProfs(false);
+      },
+      (error) => {
+        console.error("Error fetching professionals for convênios", error);
+      }
+    );
+
+    let unsubscribeSavings = () => {};
+    if (user?.uid) {
+      unsubscribeSavings = onSnapshot(
+        query(collection(db, "economies"), where("userId", "==", user.uid)),
+        (snapshot) => {
+          setSavingsList(
+            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+          );
+        },
+        (error) => {
+          console.error("Error fetching economies", error);
+        }
+      );
+    }
+
     return () => {
       unsubscribePartners();
       unsubscribeCategories();
+      unsubscribeProfs();
+      unsubscribeSavings();
     };
-  }, []);
+  }, [user]);
 
-  const filteredCategories = useMemo(() => {
-    return categories.filter((cat) =>
-      cat.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [categories, searchQuery]);
+  // Derived query values
+  const sortedSavings = useMemo(() => {
+    return [...savingsList].sort((a, b) => {
+      const t1 = a.createdAt?.seconds || 0;
+      const t2 = b.createdAt?.seconds || 0;
+      return t2 - t1;
+    });
+  }, [savingsList]);
+
+  const totalSaved = useMemo(() => {
+    return sortedSavings.reduce((acc, curr) => acc + (parseFloat(curr.savedAmount) || 0), 0);
+  }, [sortedSavings]);
+
+  const specialtiesList = useMemo(() => {
+    const specs = new Set(professionals.map((p) => p.specialty).filter(Boolean));
+    return ["Todos", ...Array.from(specs)];
+  }, [professionals]);
 
   const filteredPartners = useMemo(() => {
     return partners.filter((partner) => {
-      const matchesSearch = partner.name
+      const matchesSearch = (partner.name || "")
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
       const matchesCategory =
@@ -10467,16 +10548,108 @@ const PartnersView = ({
     });
   }, [partners, searchQuery, selectedCategory]);
 
+  const filteredCategories = useMemo(() => {
+    return categories.filter((cat) =>
+      (cat.name || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [categories, searchQuery]);
+
+  const filteredProfessionals = useMemo(() => {
+    return professionals.filter((prof) => {
+      const matchesSearch =
+        (prof.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (prof.specialty || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSpecialty =
+        selectedSpecialty === "Todos" || prof.specialty === selectedSpecialty;
+      return matchesSearch && matchesSpecialty;
+    });
+  }, [professionals, searchQuery, selectedSpecialty]);
+
   const getPartnersCount = (categoryName: string) => {
     return partners.filter((p) => p.category === categoryName).length;
   };
 
-  const handleGetDiscount = (partner: any) => {
+  const handleGetDiscount = async (partner: any) => {
     if (!user) return;
     const phoneNumber = "5528999881386";
     const message = `Olá! Sou afiliado ViTTA e gostaria de obter o desconto no parceiro.\n\n*Meus dados:*\nNome: ${user.displayName || "Usuário"}\nEmail: ${user.email}\n\n*Parceiro:*\nNome: ${partner.name}\nDesconto: ${partner.discount}`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
+
+    // Automatically record an estimated economy of R$ 25,00 if they get partner discount!
+    const estimatedSaved = 25; 
+    try {
+      await addDoc(collection(db, "economies"), {
+        userId: user.uid,
+        title: `Cupom em ${partner.name}`,
+        description: `Desconto de ${partner.discount}`,
+        originalPrice: 100,
+        paidPrice: 75,
+        savedAmount: estimatedSaved,
+        type: "partner_coupon",
+        createdAt: Timestamp.now(),
+      });
+      addToast("Cupom gerado e cupom de economia de R$ 25,00 somado!", "success");
+    } catch (err) {
+      console.error("Error logging partner discount", err);
+    }
+  };
+
+  const handleAddSavingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const title = newSavingTitle.trim();
+    const desc = newSavingDesc.trim();
+    const orig = parseFloat(newSavingOrigPrice);
+    const paid = parseFloat(newSavingPaidPrice);
+
+    if (!title || isNaN(orig) || isNaN(paid)) {
+      addToast("Preencha todos os campos obrigatórios com valores válidos.", "error");
+      return;
+    }
+
+    const saved = orig - paid;
+    if (saved < 0) {
+      addToast("O valor pago não pode ser maior que o valor normal.", "error");
+      return;
+    }
+
+    setIsSubmittingSaving(true);
+    try {
+      await addDoc(collection(db, "economies"), {
+        userId: user.uid,
+        title,
+        description: desc || "Desconto registrado manualmente",
+        originalPrice: orig,
+        paidPrice: paid,
+        savedAmount: saved,
+        type: "manual",
+        createdAt: Timestamp.now(),
+      });
+      addToast("Economia registrada com sucesso!", "success");
+      // Reset
+      setNewSavingTitle("");
+      setNewSavingDesc("");
+      setNewSavingOrigPrice("");
+      setNewSavingPaidPrice("");
+      setShowAddSavings(false);
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao registrar economia.", "error");
+    } finally {
+      setIsSubmittingSaving(false);
+    }
+  };
+
+  const handleDeleteSaving = async (id: string) => {
+    if (!window.confirm("Deseja realmente excluir este registro de economia?")) return;
+    try {
+      await deleteDoc(doc(db, "economies", id));
+      addToast("Registro de economia removido com sucesso.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao excluir registro.", "error");
+    }
   };
 
   if (selectedCategory) {
@@ -10552,7 +10725,10 @@ const PartnersView = ({
                   >
                     Obter Desconto
                   </button>
-                  <button className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors">
+                  <button
+                    onClick={() => addToast(`Desconto: ${partner.discount}`, "info")}
+                    className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors cursor-pointer"
+                  >
                     <Info size={20} />
                   </button>
                 </div>
@@ -10573,81 +10749,116 @@ const PartnersView = ({
 
   return (
     <div className="space-y-10">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-purple rounded-[2.5rem] p-10 lg:p-16 text-white shadow-xl shadow-vitta-accent/20">
-        <div className="relative z-10 max-w-2xl">
-          <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-8">
-            <Store size={32} />
-          </div>
-          <h1 className="text-4xl lg:text-5xl font-bold mb-4 tracking-tight">
-            Convênios ViTTA
-          </h1>
-          <p className="text-lg text-vitta-surface opacity-90 leading-relaxed">
-            Descontos exclusivos em centenas de estabelecimentos parceiros em
-            diversas categorias.
-          </p>
-        </div>
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
-      </section>
-
-      {/* ViTTA Health Section */}
-      <section className="bg-vitta-green-bg rounded-[2.5rem] p-8 border border-vitta-green/30">
-        <div className="flex flex-col md:flex-row items-center gap-8">
-          <div className="w-24 h-24 bg-vitta-green rounded-3xl flex items-center justify-center shadow-lg shadow-vitta-green/20 flex-shrink-0">
-            <Stethoscope size={48} className="text-white" />
-          </div>
-          <div className="flex-1 text-center md:text-left space-y-2">
-            <h2 className="text-2xl font-bold text-vitta-text-primary">
-              ViTTA Health
-            </h2>
-            <p className="text-vitta-text-secondary">
-              Acesse nossa rede exclusiva de profissionais de saúde com
-              descontos especiais para afiliados ViTTA.
+      {/* Hero / Header Section with Dynamic Savings Widget */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-purple rounded-[2.5rem] p-8 lg:p-12 text-white shadow-xl shadow-vitta-accent/20">
+        <div className="relative z-10 flex flex-col lg:flex-row gap-8 justify-between items-start lg:items-center">
+          <div className="max-w-2xl">
+            <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6">
+              <Store size={28} />
+            </div>
+            <h1 className="text-3xl lg:text-4xl font-bold mb-3 tracking-tight">
+              Convênios & Parcerias ViTTA
+            </h1>
+            <p className="text-sm lg:text-base text-vitta-surface opacity-90 leading-relaxed max-w-lg">
+              Descontos exclusivos em centenas de estabelecimentos e profissionais médicos credenciados para beneficiários do ecossistema ViTTA.
             </p>
           </div>
+
+          {/* Dynamic Money Saver widget */}
+          <div className="w-full lg:w-80 bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-black tracking-widest text-vitta-surface uppercase opacity-75">Sua Economia</span>
+                <p className="text-3xl font-black font-mono tracking-tight text-white mt-1">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalSaved)}
+                </p>
+              </div>
+              <div className="w-10 h-10 bg-vitta-green rounded-2xl flex items-center justify-center text-white shrink-0">
+                <ShieldCheck size={20} />
+              </div>
+            </div>
+            <p className="text-xs text-white/80 mt-2">
+              Economizados utilizando o sistema ViTTA.
+            </p>
+            <div className="flex gap-2 mt-4 pt-3 border-t border-white/10">
+              <button
+                onClick={() => setShowSavingsHistory(true)}
+                className="flex-1 py-1.5 bg-white text-vitta-accent text-xs font-black rounded-lg text-center hover:bg-white/90 transition-all shadow-sm"
+              >
+                Detalhes
+              </button>
+              <button
+                onClick={() => setShowAddSavings(true)}
+                className="px-2.5 py-1.5 bg-white/20 text-white hover:bg-white/30 rounded-lg text-xs font-black flex items-center gap-1 border border-white/10 transition-all"
+              >
+                <Plus size={14} /> Registrar
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* Decorative background bubbles */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
+      </section>
+
+      {/* Tabs Menu (Empresas, Profissionais, Categorias) */}
+      <div className="border-b border-vitta-border pb-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+        <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border grow md:grow-0">
           <button
-            onClick={() => setActiveTab?.("professionals")}
-            className="px-8 py-4 bg-vitta-green text-white rounded-2xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 whitespace-nowrap"
+            onClick={() => {
+              setActiveSubTab("empresas");
+              setSelectedCategory(null);
+            }}
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${
+              activeSubTab === "empresas"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
           >
-            Ver Profissionais
+            Empresas
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveSubTab("profissionais");
+              setSelectedCategory(null);
+            }}
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 ${
+              activeSubTab === "profissionais"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            Profissionais
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveSubTab("categorias");
+              setSelectedCategory(null);
+            }}
+            className={`px-6 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap ${
+              activeSubTab === "categorias"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            Categorias
           </button>
         </div>
-      </section>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[
-          {
-            label: "Categorias Disponíveis",
-            value: categories.length,
-            color: "text-vitta-green",
-          },
-          {
-            label: "Estabelecimentos Parceiros",
-            value: partners.length + "+",
-            color: "text-vitta-accent",
-          },
-          {
-            label: "De Desconto para Afiliados",
-            value: "Até 50%",
-            color: "text-vitta-danger",
-          },
-        ].map((stat, i) => (
-          <div
-            key={i}
-            className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm text-center space-y-1"
-          >
-            <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
-            <p className="text-xs font-bold text-vitta-text-muted uppercase tracking-widest">
-              {stat.label}
-            </p>
-          </div>
-        ))}
+        {/* Dynamic Context Header for subtab */}
+        <div className="text-right hidden md:block">
+          <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">Visualizando</span>
+          <p className="text-sm font-bold text-vitta-text-primary">
+            {activeSubTab === "empresas" && "Todos os Parceiros & Empresas"}
+            {activeSubTab === "profissionais" && "Corpo Médico ViTTA Health"}
+            {activeSubTab === "categorias" && "Lista de Categorias de Benefício"}
+          </p>
+        </div>
       </div>
 
-      {/* Search Bar */}
+      {/* Global Query Search Input */}
       <div className="relative">
         <Search
           className="absolute left-6 top-1/2 -translate-y-1/2 text-vitta-text-muted"
@@ -10655,84 +10866,634 @@ const PartnersView = ({
         />
         <input
           type="text"
-          placeholder="Buscar categoria de convênio..."
+          placeholder={
+            activeSubTab === "empresas"
+              ? "Buscar empresas, farmácias, laboratórios parceiros..."
+              : activeSubTab === "profissionais"
+              ? "Buscar médicos por nome ou especialidade..."
+              : "Buscar categorias de convênios..."
+          }
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-14 pr-6 py-5 bg-vitta-surface border border-vitta-border rounded-xl text-lg shadow-sm focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
+          className="w-full pl-14 pr-6 py-4.5 bg-vitta-surface border border-vitta-border rounded-[1.25rem] text-base lg:text-lg shadow-sm focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
         />
       </div>
 
-      {/* Categories Grid */}
-      <section className="space-y-6">
-        <div className="flex items-end justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-vitta-text-primary">
-              {filteredCategories.length} Categorias
-            </h2>
-            <p className="text-vitta-text-secondary">
-              Explore todos os convênios disponíveis para afiliados ViTTA
-            </p>
+      {/* --- SUBTAB: EMPRESAS PARCEIRAS --- */}
+      {activeSubTab === "empresas" && (
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-vitta-text-primary">
+                {filteredPartners.length} Empresas Conveniadas
+              </h2>
+              <p className="text-vitta-text-secondary">
+                Obtenha descontos exclusivos de forma imediata
+              </p>
+            </div>
           </div>
-        </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <Skeleton key={index} className="h-48" />
-            ))}
-          </div>
-        ) : filteredCategories.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {filteredCategories.map((cat) => (
-              <motion.div
-                key={cat.id}
-                whileHover={{ y: -8 }}
-                onClick={() => setSelectedCategory(cat)}
-                className="group cursor-pointer bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col h-full"
-              >
-                <div
-                  className={`h-32 ${cat.color || "bg-vitta-text-muted"} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500 overflow-hidden`}
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-64" />
+              ))}
+            </div>
+          ) : filteredPartners.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredPartners.map((partner) => (
+                <motion.div
+                  key={partner.id}
+                  whileHover={{ y: -4 }}
+                  className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-4 relative overflow-hidden flex flex-col justify-between"
                 >
-                  {cat.imageUrl ? (
-                    <img
-                      src={cat.imageUrl}
-                      alt={cat.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    getIcon(cat.icon)
-                  )}
-                  <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
-                    {getPartnersCount(cat.name)} parceiros
+                  <div>
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={partner.imageUrl || "https://picsum.photos/seed/partner/100/100"}
+                        alt={partner.name}
+                        className="w-16 h-16 rounded-2xl object-cover border border-vitta-border"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-black uppercase text-vitta-text-secondary bg-vitta-surface-2 px-2 py-0.5 rounded-md">
+                          {partner.category || "Parceria"}
+                        </span>
+                        <h3 className="font-bold text-lg text-vitta-text-primary truncate mt-1">
+                          {partner.name}
+                        </h3>
+                        <p className="text-sm text-vitta-green font-bold">
+                          {partner.discount} OFF
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-4 border-t border-vitta-border space-y-2">
+                      <div className="flex items-start gap-2 text-xs text-vitta-text-secondary">
+                        <MapPin size={14} className="mt-0.5 flex-shrink-0" />
+                        <span>{partner.address || "Todo território nacional/Online"}</span>
+                      </div>
+                      {partner.phone && (
+                        <div className="flex items-center gap-2 text-xs text-vitta-text-secondary">
+                          <Phone size={14} className="flex-shrink-0" />
+                          <span>{partner.phone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-4">
+                    <button
+                      onClick={() => handleGetDiscount(partner)}
+                      className="flex-1 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg"
+                    >
+                      Obter Desconto
+                    </button>
+                    <button
+                      onClick={() => addToast(`Desconto do convênio: ${partner.discount}`, "info")}
+                      className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors border border-vitta-border"
+                    >
+                      <Info size={18} />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-vitta-surface rounded-[2rem] border border-dashed border-vitta-border">
+              <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="text-vitta-text-secondary font-medium">
+                Nenhum parceiro encontrado para sua busca.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- SUBTAB: PROFISSIONAIS CREDENCIADOS --- */}
+      {activeSubTab === "profissionais" && (
+        <section className="space-y-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-vitta-text-primary">
+                {filteredProfessionals.length} Profissionais Disponíveis
+              </h2>
+              <p className="text-vitta-text-secondary">
+                Atendimento presencial e telemedicina com valores de convênio
+              </p>
+            </div>
+            
+            {/* Specialties Filter bar */}
+            <div className="flex gap-2 max-w-full overflow-x-auto no-scrollbar pb-1">
+              {specialtiesList.map((spec) => (
+                <button
+                  key={spec}
+                  onClick={() => setSelectedSpecialty(spec)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedSpecialty === spec
+                      ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/15"
+                      : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border border border-vitta-border/40"
+                  }`}
+                >
+                  {spec}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingProfs ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-64" />
+              ))}
+            </div>
+          ) : filteredProfessionals.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProfessionals.map((prof) => {
+                const priceMatch = (prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+                const rawPrice = parseFloat(priceMatch) || 150;
+                
+                const discountMatch = (prof.vittaHealthDiscount || "20%").match(/(\d+)/);
+                const discountPct = discountMatch ? parseFloat(discountMatch[1]) : 20;
+                
+                const savingsVal = (rawPrice * discountPct) / 100;
+                const paidVal = rawPrice - savingsVal;
+
+                return (
+                  <motion.div
+                    key={prof.id}
+                    whileHover={{ y: -4 }}
+                    className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm flex flex-col justify-between space-y-4"
+                  >
+                    <div>
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={prof.imageUrl || "https://picsum.photos/seed/doc/120/120"}
+                          alt={prof.name}
+                          className="w-16 h-16 rounded-2xl object-cover border border-vitta-border"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[9px] font-black text-vitta-accent uppercase bg-vitta-accent/10 px-2 py-0.5 rounded-md">
+                            {prof.specialty}
+                          </span>
+                          <h3 className="font-bold text-base text-vitta-text-primary mt-1 truncate">
+                            {prof.name}
+                          </h3>
+                          <div className="flex items-center gap-1 text-vitta-green mt-0.5 text-xs font-bold">
+                            <Tag size={12} />
+                            Desconto Convênio {prof.vittaHealthDiscount || "20%"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Brief description in cards */}
+                      <p className="text-xs text-vitta-text-secondary line-clamp-2 mt-4 min-h-[2rem]">
+                        {prof.bio || `Especialista experiente em ${prof.specialty}. Atendimento humanizado e focado no seu bem-estar.`}
+                      </p>
+
+                      <div className="border-t border-vitta-border pt-3 mt-4 flex justify-between items-center bg-vitta-surface-2 p-2.5 rounded-xl">
+                        <div>
+                          <span className="text-[10px] text-vitta-text-muted">Conveniado paga</span>
+                          <p className="text-sm font-black text-vitta-green font-mono">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(paidVal)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-vitta-text-muted">Valor normal</span>
+                          <p className="text-xs font-bold text-vitta-text-secondary line-through font-mono">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rawPrice)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedProfessional(prof)}
+                      className="w-full py-2.5 border border-vitta-accent text-vitta-accent rounded-xl text-xs font-bold hover:bg-vitta-accent hover:text-white transition-all text-center flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <Info size={14} /> Detalhes do Profissional
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-vitta-surface rounded-[2rem] border border-dashed border-vitta-border">
+              <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="text-vitta-text-secondary font-medium">
+                Nenhum médico ou profissional de saúde correspondente encontrado.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- SUBTAB: CATEGORIAS DE CONVÊNIOS --- */}
+      {activeSubTab === "categorias" && (
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-vitta-text-primary">
+                {filteredCategories.length} Categorias de Parcerias
+              </h2>
+              <p className="text-vitta-text-secondary">
+                Navegue pelas categorias de estabelecimentos conveniados
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-48" />
+              ))}
+            </div>
+          ) : filteredCategories.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredCategories.map((cat) => (
+                <motion.div
+                  key={cat.id}
+                  whileHover={{ y: -8 }}
+                  onClick={() => setSelectedCategory(cat)}
+                  className="group cursor-pointer bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col h-full"
+                >
+                  <div
+                    className={`h-32 ${cat.color || "bg-vitta-text-muted"} relative flex items-center justify-center transition-transform group-hover:scale-105 duration-500 overflow-hidden`}
+                  >
+                    {cat.imageUrl ? (
+                      <img
+                        src={cat.imageUrl}
+                        alt={cat.name}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      getIcon(cat.icon)
+                    )}
+                    <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
+                      {getPartnersCount(cat.name)} parceiros
+                    </div>
+                  </div>
+                  <div className="p-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-lg text-vitta-text-primary mb-1">
+                        {cat.name}
+                      </h3>
+                      <p className="text-xs text-vitta-text-secondary line-clamp-2">
+                        {cat.description || "Descontos exclusivos para afiliados"}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-vitta-accent font-bold uppercase mt-4 block group-hover:underline">
+                      Ver Estabelecimentos →
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-vitta-surface rounded-xl border border-dashed border-vitta-border">
+              <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
+              <p className="text-vitta-text-secondary font-medium">
+                Nenhuma categoria correspondente encontrada.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- MODAL DETALHES DO PROFISSIONAL --- */}
+      {selectedProfessional && (() => {
+        const priceMatch = (selectedProfessional.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+        const rawPriceValue = parseFloat(priceMatch) || 150;
+        
+        const discMatch = (selectedProfessional.vittaHealthDiscount || "20%").match(/(\d+)/);
+        const discPct = discMatch ? parseFloat(discMatch[1]) : 20;
+        
+        const computedSavings = (rawPriceValue * discPct) / 100;
+        const finalPriceValue = rawPriceValue - computedSavings;
+
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in animate-duration-200">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-vitta-surface border border-vitta-border rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative"
+            >
+              <button
+                onClick={() => setSelectedProfessional(null)}
+                className="absolute top-4 right-4 p-2.5 rounded-full bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border hover:text-vitta-text-primary transition-colors z-10 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="p-8 space-y-6">
+                <div className="flex items-start gap-5">
+                  <img
+                    src={selectedProfessional.imageUrl || "https://picsum.photos/seed/doc/150/150"}
+                    alt={selectedProfessional.name}
+                    className="w-20 h-20 rounded-full object-cover border-2 border-vitta-accent shrink-0"
+                  />
+                  <div>
+                    <span className="px-3 py-1 text-xs font-black bg-vitta-accent/15 text-vitta-accent rounded-lg uppercase">
+                      {selectedProfessional.specialty}
+                    </span>
+                    <h2 className="text-2xl font-black text-vitta-text-primary mt-2">
+                      {selectedProfessional.name}
+                    </h2>
+                    <div className="flex items-center gap-1 text-vitta-amber mt-1 text-sm font-bold">
+                      <Star size={14} fill="currentColor" />
+                      <span>{selectedProfessional.rating || "5.0"} (84 avaliações)</span>
+                    </div>
                   </div>
                 </div>
-                <div className="p-6 flex-1 flex flex-col">
-                  <h3 className="font-bold text-lg text-vitta-text-primary mb-1">
-                    {cat.name}
-                  </h3>
-                  <p className="text-xs text-vitta-text-secondary line-clamp-2">
-                    {cat.description || "Descontos exclusivos para afiliados"}
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-black text-vitta-text-secondary uppercase tracking-widest">Sobre o Médico</h4>
+                  <p className="text-sm text-vitta-text-primary leading-relaxed bg-vitta-surface-2 p-4 rounded-2xl text-justify border border-vitta-border/40 font-medium">
+                    {selectedProfessional.bio || `${selectedProfessional.name} é especialista em ${selectedProfessional.specialty} no ecossistema ViTTA Health. Dedica-se a oferecer tratamentos modernos e soluções eficazes para garantir uma excelente saúde para você e sua família.`}
                   </p>
                 </div>
-              </motion.div>
-            ))}
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-black text-vitta-text-secondary uppercase tracking-widest">Tabela de Preços do Convênio</h4>
+                  
+                  <div className="bg-gradient-to-br from-vitta-green/5 to-vitta-green/10 border border-vitta-green/30 rounded-2xl p-5 space-y-3">
+                    <div className="flex justify-between items-center border-b border-vitta-green/20 pb-2">
+                      <span className="text-sm text-vitta-text-secondary font-medium">Valor Normal da Consulta</span>
+                      <span className="text-base font-bold text-vitta-text-muted line-through font-mono">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(rawPriceValue)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="text-sm text-vitta-text-primary font-black block">Valor do Conveniado</span>
+                        <span className="text-[10px] text-vitta-green font-black uppercase tracking-wider block mt-0.5">
+                          Economia de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(computedSavings)} ({discPct}% de desconto)
+                        </span>
+                      </div>
+                      <span className="text-2xl font-black text-vitta-green font-mono">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(finalPriceValue)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-2">
+                  <button
+                    onClick={() => {
+                      setSelectedProfessional(null);
+                      if (setActiveTab) {
+                        setActiveTab("appointments");
+                      } else {
+                        addToast("Redirecione para a aba 'Consultas' para agendar.", "info");
+                      }
+                    }}
+                    className="flex-1 py-4 bg-vitta-green text-white font-black rounded-2xl hover:bg-vitta-green/90 shadow-lg shadow-vitta-green/15 text-center text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Calendar size={18} /> Agendar Consulta
+                  </button>
+                  
+                  {selectedProfessional.whatsapp && (
+                    <a
+                      href={`https://wa.me/${selectedProfessional.whatsapp.replace(/\D/g, "")}?text=Ola%21%20Sou%20conveniado%20ViTTA%20e%20gostaria%20de%20tirar%20duvidas`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-4 bg-vitta-surface-2 text-vitta-text-secondary rounded-2xl hover:bg-vitta-border hover:text-vitta-text-primary border border-vitta-border flex items-center justify-center transition-colors shrink-0"
+                    >
+                      <Phone size={18} />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </div>
-        ) : (
-          <div className="p-12 text-center bg-vitta-surface rounded-xl border border-dashed border-vitta-border">
-            <Search size={48} className="mx-auto text-vitta-text-muted mb-4" />
-            <p className="text-vitta-text-secondary font-medium">
-              Nenhuma categoria encontrada para sua busca.
-            </p>
-            <button
-              onClick={() => setSearchQuery("")}
-              className="mt-4 text-vitta-accent font-bold hover:underline"
-            >
-              Limpar busca
-            </button>
-          </div>
-        )}
-      </section>
+        );
+      })()}
+
+      {/* --- SAVINGS DETAILED REPORT MODAL --- */}
+      {showSavingsHistory && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-vitta-surface border border-vitta-border rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]"
+          >
+            {/* Modal Header */}
+            <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-vitta-green rounded-xl text-white">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-vitta-text-primary">ViTTA Economia</h3>
+                  <p className="text-xs text-vitta-text-secondary">Extrato completo de suas economias registradas</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSavingsHistory(false)}
+                className="p-2 rounded-full hover:bg-vitta-border text-vitta-text-secondary transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Box showing total overall */}
+              <div className="bg-vitta-accent/10 border border-vitta-accent/20 rounded-2xl p-5 text-center">
+                <span className="text-xs font-bold text-vitta-accent uppercase tracking-widest block font-sans">Total de Recursos Preservados</span>
+                <p className="text-3xl lg:text-4xl font-black text-vitta-accent font-mono mt-1">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalSaved)}
+                </p>
+                <p className="text-[10px] text-vitta-text-secondary mt-1">
+                  Através de {sortedSavings.length} conexões e cupons do ecossistema de saúde e bem-estar ViTTA.
+                </p>
+              </div>
+
+              {/* Economy list */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest">Histórico de Descontos</h4>
+                
+                {sortedSavings.length === 0 ? (
+                  <div className="text-center p-8 border border-dashed border-vitta-border rounded-2xl">
+                    <p className="text-sm text-vitta-text-secondary">Nenhum cupom ou desconto economizado registrado para você ainda.</p>
+                    <p className="text-xs text-vitta-text-muted mt-1">Agende novas consultas ou registre compras manuais para ver sua economia subir!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sortedSavings.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-vitta-surface-2 border border-vitta-border/60 rounded-xl p-4 flex justify-between items-center gap-4 hover:border-vitta-green/30 transition-all font-semibold"
+                      >
+                        <div className="flex-1 min-w-0 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                              item.type === "appointment" ? "bg-vitta-accent/15 text-vitta-accent" : "bg-vitta-green/15 text-vitta-green"
+                            }`}>
+                              {item.type === "appointment" ? "Consulta" : item.type === "partner_coupon" ? "Cupom Parceiro" : "Economia Direta"}
+                            </span>
+                            <span className="text-[10px] text-vitta-text-muted">
+                              {item.createdAt?.seconds ? new Date(item.createdAt.seconds * 1000).toLocaleDateString("pt-BR") : "Hoje"}
+                            </span>
+                          </div>
+                          
+                          <h5 className="font-extrabold text-sm text-vitta-text-primary mt-1.5 truncate">
+                            {item.title}
+                          </h5>
+                          <p className="text-xs text-vitta-text-muted mt-0.5 truncate">
+                            {item.description}
+                          </p>
+                        </div>
+                        
+                        {/* Saving price metrics */}
+                        <div className="text-right flex items-center gap-4 shrink-0">
+                          <div>
+                            <span className="text-[9px] text-vitta-text-secondary font-bold block">Você Economizou</span>
+                            <span className="text-sm font-black font-mono text-vitta-green block">
+                              + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.savedAmount)}
+                            </span>
+                            <span className="text-[10px] text-vitta-text-muted block line-through">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(item.originalPrice || 0)}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteSaving(item.id)}
+                            className="p-2 bg-vitta-surface text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-lg transition-all border border-vitta-border/30 cursor-pointer"
+                            title="Remover do Histórico"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-vitta-surface-2 border-t border-vitta-border text-right shrink-0">
+              <button
+                onClick={() => setShowSavingsHistory(false)}
+                className="px-6 py-2 bg-vitta-accent text-white font-bold text-xs rounded-xl hover:bg-vitta-accent/90 transition-all shadow cursor-pointer"
+              >
+                Fechar Extrato
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* --- ADD CUSTOM SAVING FORM MODAL --- */}
+      {showAddSavings && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-vitta-surface border border-vitta-border rounded-3xl max-w-md w-full shadow-2xl relative overflow-hidden"
+          >
+            <div className="p-6 border-b border-vitta-border bg-vitta-surface-2 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Wallet className="text-vitta-green" size={20} />
+                <h3 className="font-extrabold text-lg text-vitta-text-primary">Registrar Economia</h3>
+              </div>
+              <button
+                onClick={() => setShowAddSavings(false)}
+                className="p-1 px-2.5 rounded-full hover:bg-vitta-border text-vitta-text-secondary cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddSavingSubmit} className="p-6 space-y-4">
+              <p className="text-xs text-vitta-text-secondary leading-relaxed bg-vitta-green-bg p-3.5 rounded-xl border border-vitta-green/20">
+                Logue novos descontos que você conquistou utilizando o aplicativo (ex: em vacinas, exames conveniados ou remédios) para totalizar toda sua economia em um só lugar.
+              </p>
+
+              <div>
+                <label className="text-xs font-extrabold text-vitta-text-primary uppercase block mb-1">Título do Evento *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Compra Desconto Drogaria ViTTA"
+                  value={newSavingTitle}
+                  onChange={(e) => setNewSavingTitle(e.target.value)}
+                  className="w-full bg-vitta-surface-2 border border-vitta-border p-3 rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-vitta-text-primary uppercase block mb-1">Descrição / Cupom</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 30% De Desconto em antialérgicos"
+                  value={newSavingDesc}
+                  onChange={(e) => setNewSavingDesc(e.target.value)}
+                  className="w-full bg-vitta-surface-2 border border-vitta-border p-3 rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 font-semibold">
+                <div>
+                  <label className="text-xs font-extrabold text-vitta-text-primary uppercase block mb-1">Preço Normal *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="Ex: 100.00"
+                    value={newSavingOrigPrice}
+                    onChange={(e) => setNewSavingOrigPrice(e.target.value)}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border p-3 rounded-xl text-sm font-mono focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-extrabold text-vitta-text-primary uppercase block mb-1">Valor do Convênio *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="Ex: 75.00"
+                    value={newSavingPaidPrice}
+                    onChange={(e) => setNewSavingPaidPrice(e.target.value)}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border p-3 rounded-xl text-sm font-mono focus:ring-2 focus:ring-vitta-green/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Saving Preview */}
+              {newSavingOrigPrice && newSavingPaidPrice && (() => {
+                const o = parseFloat(newSavingOrigPrice);
+                const p = parseFloat(newSavingPaidPrice);
+                if (!isNaN(o) && !isNaN(p)) {
+                  const s = o - p;
+                  return (
+                    <div className="bg-vitta-surface-2 p-3.5 border border-dashed border-vitta-border rounded-xl text-center font-bold">
+                      <span className="text-[10px] uppercase font-bold text-vitta-text-secondary">Você vai economizar:</span>
+                      <p className={`text-xl font-black font-mono ${s >= 0 ? "text-vitta-green" : "text-vitta-danger"}`}>
+                        {s >= 0 ? "+" : ""} {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(s)}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <button
+                type="submit"
+                disabled={isSubmittingSaving}
+                className="w-full py-3.5 mt-2 bg-vitta-green text-white font-black text-sm rounded-xl hover:bg-vitta-green/90 shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmittingSaving ? "Adicionando..." : "Registrar Recurso Salvo"}
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
