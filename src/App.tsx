@@ -194,6 +194,7 @@ import { Medication, HealthGoal } from "./types";
 import AuditLogsList from "./components/Admin/AuditLogsList";
 import SubscriptionManagementView from "./components/Admin/SubscriptionManagementView";
 import AdminAnalytics from "./components/Admin/AnalyticsView";
+import { AdminVoucherManagementView } from "./components/Admin/AdminVoucherManagementView";
 import NotificationCenter from "./components/NotificationCenter";
 import HelpCenter from "./components/HelpCenter";
 import ReviewModal from "./components/ReviewModal";
@@ -7368,6 +7369,7 @@ const AdminView = ({ user }: { user: any }) => {
     | "subscriptions"
     | "content"
     | "medical-panel"
+    | "vouchers-management"
   >("overview");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -7757,6 +7759,17 @@ const AdminView = ({ user }: { user: any }) => {
           <MonitorPlay size={18} />
           Conteúdo
         </button>
+        <button
+          onClick={() => setSubTab("vouchers-management")}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all text-sm font-bold whitespace-nowrap ${
+            subTab === "vouchers-management"
+              ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20"
+              : "bg-vitta-surface-2 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border"
+          }`}
+        >
+          <Ticket size={18} />
+          Gestão de Vouchers
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -7844,7 +7857,7 @@ const AdminView = ({ user }: { user: any }) => {
                         className="bg-vitta-surface p-4 rounded-xl border border-vitta-border shadow-sm flex items-center gap-4 group"
                       >
                         <img
-                          src={apt.imageUrl}
+                          src={apt.imageUrl || "https://picsum.photos/seed/prof/100/100"}
                           alt={apt.professionalName}
                           className="w-14 h-14 rounded-xl object-cover"
                         />
@@ -7916,7 +7929,7 @@ const AdminView = ({ user }: { user: any }) => {
                           className={`p-4 flex items-center gap-3 ${idx !== professionals.length - 1 ? "border-b border-vitta-border" : ""}`}
                         >
                           <img
-                            src={prof.imageUrl}
+                            src={prof.imageUrl || "https://picsum.photos/seed/doc/100/100"}
                             alt={prof.name}
                             className="w-12 h-12 rounded-full object-cover"
                           />
@@ -7981,7 +7994,7 @@ const AdminView = ({ user }: { user: any }) => {
                       >
                         <div className="relative h-40">
                           <img
-                            src={offer.imageUrl}
+                            src={offer.imageUrl || "https://picsum.photos/seed/partner/100/100"}
                             alt={offer.name}
                             className="w-full h-full object-cover"
                           />
@@ -8093,6 +8106,7 @@ const AdminView = ({ user }: { user: any }) => {
           {subTab === "wallet-management" && <AdminWalletManagementView />}
           {subTab === "audit-logs" && <AuditLogsList />}
           {subTab === "subscriptions" && <SubscriptionManagementView />}
+          {subTab === "vouchers-management" && <AdminVoucherManagementView />}
         </motion.div>
       </AnimatePresence>
 
@@ -9982,7 +9996,7 @@ const ProfessionalsManagementView = () => {
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-4">
                   <img
-                    src={prof.imageUrl}
+                    src={prof.imageUrl || "https://picsum.photos/seed/doc/150/150"}
                     alt={prof.name}
                     className="w-14 h-14 rounded-xl object-cover"
                   />
@@ -10267,7 +10281,7 @@ const ProfessionalsView = ({
             >
               <div className="flex items-center gap-4">
                 <img
-                  src={prof.imageUrl}
+                  src={prof.imageUrl || "https://picsum.photos/seed/doc/150/150"}
                   alt={prof.name}
                   className="w-16 h-16 rounded-xl object-cover"
                 />
@@ -15785,7 +15799,7 @@ const PartnershipsView = ({
               >
                 <div className="flex items-center gap-4">
                   <img
-                    src={prof.imageUrl}
+                    src={prof.imageUrl || "https://picsum.photos/seed/doc/150/150"}
                     alt={prof.name}
                     className="w-16 h-16 rounded-xl object-cover"
                   />
@@ -18264,7 +18278,7 @@ const AppointmentsView = ({
             >
               <div className="flex items-center gap-4 flex-1">
                 <img
-                  src={apt.imageUrl}
+                  src={apt.imageUrl || "https://picsum.photos/seed/prof/150/150"}
                   alt={apt.professionalName}
                   className="w-16 h-16 rounded-xl object-cover"
                 />
@@ -19589,6 +19603,18 @@ const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
   );
 };
 
+const getIconByName = (name: string) => {
+  switch (name) {
+    case "FileText": return FileText;
+    case "Activity": return Activity;
+    case "Heart": return Heart;
+    case "Pill": return Pill;
+    case "User": return User;
+    case "Ticket":
+    default: return Ticket;
+  }
+};
+
 const CheckoutModal = ({
   isOpen,
   onClose,
@@ -19604,6 +19630,18 @@ const CheckoutModal = ({
 }) => {
   const { addToast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [feeRate, setFeeRate] = useState(10);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsubscribe = onSnapshot(doc(db, "system_configs", "vouchers"), (snapshot) => {
+      if (snapshot.exists()) {
+        const d = snapshot.data();
+        setFeeRate(d.feeRate !== undefined ? d.feeRate : 10);
+      }
+    });
+    return () => unsubscribe();
+  }, [isOpen]);
 
   if (!isOpen || !voucher) return null;
 
@@ -19654,6 +19692,30 @@ const CheckoutModal = ({
         });
       }
 
+      // 2.5. Seller Payout logic if voucher was created by merchant/partner / professional
+      if (voucher.sellerId) {
+        const rate = feeRate / 100;
+        const platformFeeVal = voucher.price * rate;
+        const netEarnings = voucher.price - platformFeeVal;
+
+        // Add funds to seller account balance
+        const sellerRef = doc(db, "users", voucher.sellerId);
+        await updateDoc(sellerRef, {
+          walletBalance: increment(netEarnings),
+        });
+
+        // Create transaction for seller (Credit)
+        const sellerTxRef = doc(collection(db, "transactions"));
+        await setDoc(sellerTxRef, {
+          userId: voucher.sellerId,
+          type: "credit",
+          amount: netEarnings,
+          description: `Venda de Voucher: ${voucher.title} (comprador: ${user.displayName || "Cliente"})`,
+          date: new Date().toISOString(),
+          status: "completed",
+        });
+      }
+
       // 3. Add voucher to user's benefits
       const userVoucherRef = doc(collection(db, "user_vouchers"));
       await setDoc(userVoucherRef, {
@@ -19661,11 +19723,13 @@ const CheckoutModal = ({
         voucherId: voucher.id,
         title: voucher.title,
         partner: voucher.partner,
+        price: voucher.price,
+        benefitValue: voucher.benefitValue || voucher.price,
         purchaseDate: new Date().toISOString(),
         status: "active",
       });
 
-      addToast("Voucher comprado com sucesso!", "success");
+      addToast("Voucher adquirido com sucesso!", "success");
       onClose();
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, "transactions");
@@ -19674,6 +19738,8 @@ const CheckoutModal = ({
       setIsProcessing(false);
     }
   };
+
+  const CalculatedIcon = voucher.icon || getIconByName(voucher.iconName);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -19699,7 +19765,7 @@ const CheckoutModal = ({
             <div
               className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${voucher.color}-100 text-${voucher.color}-600`}
             >
-              <voucher.icon size={24} />
+              <CalculatedIcon size={24} />
             </div>
             <div>
               <p className="font-bold text-vitta-text-primary">
@@ -19723,7 +19789,7 @@ const CheckoutModal = ({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-vitta-text-secondary">
-                Valor do Voucher
+                Valor Pago (Debitado)
               </span>
               <span className="font-medium text-rose-600">
                 -{" "}
@@ -19733,6 +19799,17 @@ const CheckoutModal = ({
                 }).format(voucher.price)}
               </span>
             </div>
+            {voucher.benefitValue && voucher.benefitValue !== voucher.price && (
+              <div className="flex justify-between text-sm bg-vitta-accent-bg/10 p-2 rounded-lg">
+                <span className="text-vitta-accent font-medium">Saldo de Uso do Voucher</span>
+                <span className="font-bold text-vitta-accent">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(voucher.benefitValue)}
+                </span>
+              </div>
+            )}
             <div className="pt-3 border-t border-vitta-border flex justify-between">
               <span className="font-bold text-vitta-text-primary">
                 Saldo Restante
@@ -19765,7 +19842,7 @@ const CheckoutModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-colors"
+              className="flex-1 py-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-colors text-center"
             >
               Cancelar
             </button>
@@ -19792,74 +19869,135 @@ const CheckoutModal = ({
 
 const VoucherView = ({
   user,
+  userData,
   setActiveTab,
 }: {
   user: any;
+  userData: any;
   setActiveTab: (tab: string) => void;
 }) => {
   const [balance, setBalance] = useState(0);
   const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
-  const [subTab, setSubTab] = useState<"store" | "my-vouchers">("store");
+  
+  const isPartnerOrProfessional =
+    userData?.role === "professional" || userData?.role === "conveniado";
+
+  const [subTab, setSubTab] = useState<"store" | "my-vouchers" | "offered-by-me">(
+    isPartnerOrProfessional ? "offered-by-me" : "store"
+  );
+  
   const [myVouchers, setMyVouchers] = useState<any[]>([]);
   const [loadingVouchers, setLoadingVouchers] = useState(false);
+  
+  const [catalogVouchers, setCatalogVouchers] = useState<any[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [feeRate, setFeeRate] = useState<number>(10);
+  const [vouchersEnabled, setVouchersEnabled] = useState<boolean>(true);
   const { addToast } = useToast();
 
-  const VOUCHERS = [
+  // Form states for creating/editing vouchers (for Partners/Professionals)
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [editingVoucher, setEditingVoucher] = useState<any>(null);
+  const [voucherForm, setVoucherForm] = useState({
+    title: "",
+    description: "",
+    price: "",
+    benefitValue: "",
+    color: "blue",
+    iconName: "Ticket",
+  });
+
+  const STATIC_VOUCHERS = [
     {
-      id: "1",
+      id: "s1",
       title: "Desconto 20% em Exames",
       partner: "Laboratório ViTTA",
       description: "Válido para todos os exames de sangue e imagem.",
       price: 50,
-      icon: FileText,
+      benefitValue: 70,
+      iconName: "FileText",
       color: "blue",
     },
     {
-      id: "2",
+      id: "s2",
       title: "Consulta Nutricional",
       partner: "Clínica Bem Estar",
       description: "Uma consulta completa com avaliação de bioimpedância.",
       price: 120,
-      icon: Activity,
+      benefitValue: 150,
+      iconName: "Activity",
       color: "emerald",
     },
     {
-      id: "3",
+      id: "s3",
       title: "Sessão de Fisioterapia",
       partner: "FisioCenter",
       description: "Sessão de 1 hora para reabilitação ou prevenção.",
       price: 80,
-      icon: Activity,
+      benefitValue: 100,
+      iconName: "Activity",
       color: "purple",
     },
     {
-      id: "4",
+      id: "s4",
       title: "Check-up Cardiológico",
       partner: "Cardio Vida",
       description: "Eletrocardiograma + Consulta com especialista.",
       price: 150,
-      icon: Heart,
+      benefitValue: 180,
+      iconName: "Heart",
       color: "rose",
     },
     {
-      id: "5",
+      id: "s5",
       title: "Desconto em Medicamentos",
       partner: "Farmácia Saúde",
       description: "R$ 30 de desconto em compras acima de R$ 100.",
       price: 15,
-      icon: Pill,
+      benefitValue: 30,
+      iconName: "Pill",
       color: "amber",
     },
     {
-      id: "6",
+      id: "s6",
       title: "Avaliação Odontológica",
       partner: "Odonto Sorriso",
       description: "Avaliação completa e limpeza básica.",
       price: 90,
-      icon: User,
+      benefitValue: 110,
+      iconName: "User",
       color: "indigo",
     },
   ];
+
+  useEffect(() => {
+    // Sync platform config for vouchers
+    const unsubscribeConfig = onSnapshot(doc(db, "system_configs", "vouchers"), (snapshot) => {
+      if (snapshot.exists()) {
+        const d = snapshot.data();
+        setFeeRate(d.feeRate !== undefined ? d.feeRate : 10);
+        setVouchersEnabled(d.vouchersEnabled !== undefined ? d.vouchersEnabled : true);
+      }
+    });
+
+    // Sync offered vouchers catalog
+    const unsubscribeCatalog = onSnapshot(
+      query(collection(db, "vouchers_catalog"), orderBy("createdAt", "desc")),
+      (snapshot) => {
+        setCatalogVouchers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setLoadingCatalog(false);
+      },
+      (error) => {
+        console.error("Error reading vouchers catalog:", error);
+        setLoadingCatalog(false);
+      }
+    );
+
+    return () => {
+      unsubscribeConfig();
+      unsubscribeCatalog();
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -19922,15 +20060,81 @@ const VoucherView = ({
     }
   };
 
+  const handleSaveVoucherForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voucherForm.title || !voucherForm.price || !voucherForm.benefitValue) {
+      addToast("Por favor, preencha todos os campos obrigatórios.", "error");
+      return;
+    }
+
+    const priceNum = parseFloat(voucherForm.price);
+    const benefitNum = parseFloat(voucherForm.benefitValue);
+
+    if (isNaN(priceNum) || priceNum <= 0) {
+      addToast("O valor pago pelo cliente deve ser maior que zero.", "error");
+      return;
+    }
+
+    if (isNaN(benefitNum) || benefitNum < priceNum) {
+      addToast("O valor real de saldo do voucher não pode ser menor que o pago.", "error");
+      return;
+    }
+
+    const sellerName = userData?.name || user?.displayName || "Parceiro ViTTA";
+
+    try {
+      if (editingVoucher) {
+        await updateDoc(doc(db, "vouchers_catalog", editingVoucher.id), {
+          title: voucherForm.title,
+          description: voucherForm.description,
+          price: priceNum,
+          benefitValue: benefitNum,
+          color: voucherForm.color,
+          iconName: voucherForm.iconName,
+          updatedAt: Timestamp.now(),
+        });
+        addToast("Voucher atualizado com sucesso!", "success");
+      } else {
+        const newRef = doc(collection(db, "vouchers_catalog"));
+        await setDoc(newRef, {
+          title: voucherForm.title,
+          description: voucherForm.description,
+          price: priceNum,
+          benefitValue: benefitNum,
+          color: voucherForm.color,
+          iconName: voucherForm.iconName,
+          partner: sellerName,
+          partnerRole: userData?.role || "partner",
+          sellerId: user.uid,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+        addToast("Novo voucher ofertado com sucesso!", "success");
+      }
+      setIsFormModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao registrar oferta de voucher.", "error");
+    }
+  };
+
+  // Compute final vouchers list to show to clients (mix dynamic from db + static if needed)
+  const displayVouchers = catalogVouchers.length > 0 ? catalogVouchers : STATIC_VOUCHERS;
+  
+  // Vouchers offered by this partner/professional specifically
+  const myOfferedVouchers = catalogVouchers.filter((v) => v.sellerId === user.uid);
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-vitta-text-primary">
-            Vouchers
+          <h1 className="text-3xl font-bold tracking-tight text-vitta-text-primary text-left">
+            Vouchers e Parcerias
           </h1>
-          <p className="text-vitta-text-secondary">
-            Compre benefícios exclusivos com seu saldo
+          <p className="text-vitta-text-secondary text-left">
+            {isPartnerOrProfessional
+              ? "Gerencie as ofertas e descontos que você disponibiliza para os membros"
+              : "Compre benefícios exclusivos bem-estar utilizando seu saldo"}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -19939,10 +20143,10 @@ const VoucherView = ({
               <Wallet size={16} />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
+              <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-left">
                 Saldo Disponível
               </p>
-              <p className="text-sm font-bold text-vitta-text-primary">
+              <p className="text-sm font-bold text-vitta-text-primary text-left">
                 {new Intl.NumberFormat("pt-BR", {
                   style: "currency",
                   currency: "BRL",
@@ -19950,16 +20154,31 @@ const VoucherView = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab("wallets")}
-            className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl text-sm font-bold hover:bg-vitta-surface-2 transition-colors"
-          >
-            Adicionar Saldo
-          </button>
+          {!isPartnerOrProfessional && (
+            <button
+              onClick={() => setActiveTab("wallets")}
+              className="px-4 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl text-sm font-bold hover:bg-vitta-surface-2 transition-colors"
+            >
+              Adicionar Saldo
+            </button>
+          )}
         </div>
       </header>
 
       <div className="flex gap-4 border-b border-vitta-border">
+        {isPartnerOrProfessional && (
+          <button
+            onClick={() => setSubTab("offered-by-me")}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
+              subTab === "offered-by-me"
+                ? "border-vitta-accent text-vitta-accent"
+                : "border-transparent text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            <Ticket size={18} />
+            Meus Vouchers Ofertados
+          </button>
+        )}
         <button
           onClick={() => setSubTab("store")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold whitespace-nowrap ${
@@ -19980,62 +20199,264 @@ const VoucherView = ({
           }`}
         >
           <Ticket size={18} />
-          Meus Vouchers
+          Vouchers Adquiridos
           {myVouchers.filter((v) => v.status === "active").length > 0 && (
-            <span className="bg-vitta-accent text-white px-2 py-0.5 rounded-full text-[10px]">
+            <span className="bg-vitta-accent text-white px-2 py-0.5 rounded-full text-[10px] ml-1">
               {myVouchers.filter((v) => v.status === "active").length}
             </span>
           )}
         </button>
       </div>
 
-      {subTab === "store" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {VOUCHERS.map((voucher) => (
-            <div
-              key={voucher.id}
-              className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
-            >
-              <div className="p-6 flex-1">
-                <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 bg-${voucher.color}-100 text-${voucher.color}-600`}
-                >
-                  <voucher.icon size={28} />
-                </div>
-                <h3 className="text-xl font-bold text-vitta-text-primary mb-2">
-                  {voucher.title}
-                </h3>
-                <p className="text-sm font-medium text-vitta-accent mb-4">
-                  {voucher.partner}
-                </p>
-                <p className="text-sm text-vitta-text-secondary line-clamp-3">
-                  {voucher.description}
-                </p>
-              </div>
-              <div className="p-6 border-t border-vitta-border bg-vitta-surface-2 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
-                    Valor
-                  </p>
-                  <p className="text-lg font-bold text-vitta-text-primary">
-                    {new Intl.NumberFormat("pt-BR", {
-                      style: "currency",
-                      currency: "BRL",
-                    }).format(voucher.price)}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedVoucher(voucher)}
-                  className="px-6 py-2 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-colors flex items-center gap-2"
-                >
-                  <ShoppingCart size={16} />
-                  Comprar
-                </button>
-              </div>
-            </div>
-          ))}
+      {!vouchersEnabled && !isPartnerOrProfessional && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 p-4 rounded-xl text-sm mb-6 text-left">
+          O sistema de novos vouchers está temporariamente em manutenção pelo administrador.
         </div>
-      ) : (
+      )}
+
+      {subTab === "offered-by-me" && isPartnerOrProfessional && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border">
+            <div className="text-left">
+              <h3 className="font-bold text-lg text-vitta-text-primary">
+                Painel do Ofertante de Vouchers
+              </h3>
+              <p className="text-sm text-vitta-text-secondary">
+                Como {userData?.role === "professional" ? "Profissional" : "Conveniado"}, você pode gerar ofertas exclusivas. Taxa administrativa de {feeRate}% descontada no repasse.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingVoucher(null);
+                setVoucherForm({
+                  title: "",
+                  description: "",
+                  price: "",
+                  benefitValue: "",
+                  color: "blue",
+                  iconName: "Ticket",
+                });
+                setIsFormModalOpen(true);
+              }}
+              className="px-5 py-2.5 bg-vitta-accent text-white font-bold rounded-xl hover:bg-vitta-accent/90 transition-all flex items-center gap-2 whitespace-nowrap"
+            >
+              <Plus size={18} /> Ofertar Novo Voucher
+            </button>
+          </div>
+
+          {loadingCatalog ? (
+            <div className="py-20 flex justify-center">
+              <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : myOfferedVouchers.length === 0 ? (
+            <div className="py-20 text-center text-vitta-text-secondary bg-vitta-surface border border-vitta-border rounded-3xl p-10 flex flex-col items-center">
+              <Ticket size={48} className="text-vitta-border mb-4" />
+              <p className="font-bold text-lg mb-1 text-vitta-text-primary">
+                Você ainda não ofertou nenhum voucher
+              </p>
+              <p className="text-sm max-w-md mb-6">
+                Crie um voucher especial onde o paciente paga um valor reduzido e ganha um saldo expandido de créditos para gastar nos seus atendimentos!
+              </p>
+              <button
+                onClick={() => setIsFormModalOpen(true)}
+                className="bg-vitta-accent text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-vitta-accent/15 hover:bg-vitta-accent/90"
+              >
+                Criar Meu Primeiro Voucher
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {myOfferedVouchers.map((voucher) => {
+                const CalculatedIcon = getIconByName(voucher.iconName);
+                const platformFeeVal = voucher.price * (feeRate / 100);
+                const sellerNet = voucher.price - platformFeeVal;
+                return (
+                  <div
+                    key={voucher.id}
+                    className="bg-vitta-surface rounded-2xl border border-vitta-border overflow-hidden shadow-sm flex flex-col justify-between"
+                  >
+                    <div className="p-6 text-left flex-1">
+                      <div className="flex justify-between items-start mb-4">
+                        <div
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${voucher.color}-100 text-${voucher.color}-600`}
+                        >
+                          <CalculatedIcon size={24} />
+                        </div>
+                      </div>
+                      <h4 className="text-lg font-bold text-vitta-text-primary mb-1">
+                        {voucher.title}
+                      </h4>
+                      <p className="text-xs text-vitta-text-secondary mb-4 line-clamp-3">
+                        {voucher.description}
+                      </p>
+
+                      <div className="border-t border-vitta-border/60 pt-4 space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-vitta-text-secondary">Preço Pago pelo Cliente</span>
+                          <span className="font-bold text-vitta-green">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(voucher.price)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-vitta-text-secondary">Saldo Recebido pelo Cliente</span>
+                          <span className="font-bold text-vitta-accent">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(voucher.benefitValue)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs border-b border-vitta-border/30 pb-2">
+                          <span className="text-vitta-text-secondary font-mono">Plataforma Fee ({feeRate}%)</span>
+                          <span className="font-medium text-rose-500">
+                            -{" "}
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(platformFeeVal)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm pt-2 font-black text-vitta-text-primary">
+                          <span>Seu Repasse Líquido</span>
+                          <span className="text-vitta-accent">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(sellerNet)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 border-t border-vitta-border bg-vitta-surface-2 flex gap-3 shrink-0">
+                      <button
+                        onClick={() => {
+                          setEditingVoucher(voucher);
+                          setVoucherForm({
+                            title: voucher.title,
+                            description: voucher.description,
+                            price: voucher.price.toString(),
+                            benefitValue: voucher.benefitValue.toString(),
+                            color: voucher.color,
+                            iconName: voucher.iconName,
+                          });
+                          setIsFormModalOpen(true);
+                        }}
+                        className="flex-1 py-2 bg-vitta-surface border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-surface-3 transition-colors"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Excluir permanentemente o voucher "${voucher.title}"?`)) {
+                            try {
+                              await deleteDoc(doc(db, "vouchers_catalog", voucher.id));
+                              addToast("Voucher removido com sucesso!", "success");
+                            } catch (err) {
+                              console.error(err);
+                              addToast("Erro ao excluir voucher.", "error");
+                            }
+                          }
+                        }}
+                        className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-colors"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "store" && (
+        <div className="space-y-6">
+          {loadingCatalog ? (
+            <div className="py-20 flex justify-center">
+              <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : displayVouchers.length === 0 ? (
+            <div className="py-20 text-center text-vitta-text-secondary">
+              Nenhum voucher disponível neste momento.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayVouchers.map((voucher) => {
+                const CalculatedIcon = getIconByName(voucher.iconName || "Ticket");
+                const savingsPct = voucher.benefitValue && voucher.price
+                  ? Math.round(((voucher.benefitValue - voucher.price) / voucher.price) * 100)
+                  : 0;
+                return (
+                  <div
+                    key={voucher.id}
+                    className="bg-vitta-surface rounded-2xl border border-vitta-border shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col justify-between"
+                  >
+                    <div className="p-6 text-left flex-1">
+                      <div className="flex justify-between items-start mb-4">
+                        <div
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${voucher.color}-100 text-${voucher.color}-600`}
+                        >
+                          <CalculatedIcon size={24} />
+                        </div>
+                        {savingsPct > 0 && (
+                          <span className="bg-vitta-accent-bg text-vitta-accent px-2 py-1 rounded-lg text-[10px] font-extrabold uppercase">
+                            🪙 Ganho +{savingsPct}% saldo
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-xl font-bold text-vitta-text-primary mb-1">
+                        {voucher.title}
+                      </h3>
+                      <p className="text-sm font-semibold text-vitta-accent mb-3">
+                        {voucher.partner}
+                      </p>
+                      <p className="text-sm text-vitta-text-secondary line-clamp-3">
+                        {voucher.description}
+                      </p>
+                    </div>
+
+                    <div className="p-6 border-t border-vitta-border bg-vitta-surface-2 flex items-center justify-between shrink-0">
+                      <div className="text-left">
+                        <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
+                          Preço de Custo
+                        </p>
+                        <p className="text-lg font-bold text-vitta-text-primary">
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          }).format(voucher.price)}
+                        </p>
+                        {voucher.benefitValue && voucher.benefitValue !== voucher.price && (
+                          <p className="text-xs text-vitta-green font-bold">
+                            Lança Saldo: {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(voucher.benefitValue)}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setSelectedVoucher(voucher)}
+                        disabled={!vouchersEnabled && !isPartnerOrProfessional}
+                        className="px-5 py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 disabled:opacity-50 text-white rounded-xl text-sm font-extrabold transition-colors flex items-center gap-2"
+                      >
+                        <ShoppingCart size={16} />
+                        Comprar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "my-vouchers" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loadingVouchers ? (
             <div className="col-span-full py-20 flex justify-center">
@@ -20048,8 +20469,7 @@ const VoucherView = ({
                 Você ainda não possui vouchers
               </p>
               <p className="text-sm max-w-sm mb-6">
-                Acesse o catálogo e utilize seu saldo para comprar benefícios
-                exclusivos.
+                Acesse o catálogo e utilize seu saldo para comprar benefícios exclusivos e expandir seu poder de consumo.
               </p>
               <button
                 onClick={() => setSubTab("store")}
@@ -20070,13 +20490,13 @@ const VoucherView = ({
                 return (
                   <div
                     key={voucher.id}
-                    className={`bg-vitta-surface rounded-2xl border shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${
+                    className={`bg-vitta-surface rounded-2xl border shadow-sm overflow-hidden flex flex-col justify-between transition-all duration-300 ${
                       isReward
                         ? "border-amber-400 bg-amber-50/10 shadow-md ring-2 ring-amber-400/20"
                         : "border-vitta-border"
                     }`}
                   >
-                    <div className="p-6 flex-1">
+                    <div className="p-6 text-left flex-1">
                       <div className="flex justify-between items-start mb-4">
                         <div
                           className={`w-12 h-12 rounded-xl flex items-center justify-center ${
@@ -20090,7 +20510,7 @@ const VoucherView = ({
                         <div className="flex flex-col items-end gap-1">
                           {voucher.status === "active" ? (
                             <span className="bg-vitta-green-bg text-vitta-green px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                              <Check size={12} /> Válido
+                              <Check size={12} /> Ativo / Válido
                             </span>
                           ) : (
                             <span className="bg-vitta-surface-3 text-vitta-text-muted px-3 py-1 rounded-full text-xs font-bold border border-vitta-border">
@@ -20099,7 +20519,7 @@ const VoucherView = ({
                           )}
                           {isReward && (
                             <span className="bg-amber-500/15 text-amber-600 text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider">
-                              🪙 Recompensa Vitta Coins
+                              🪙 Recompensa Coins
                             </span>
                           )}
                         </div>
@@ -20107,9 +20527,14 @@ const VoucherView = ({
                       <h3 className="text-lg font-bold text-vitta-text-primary mb-1">
                         {voucher.title}
                       </h3>
-                      <p className="text-sm font-medium text-vitta-accent mb-2">
+                      <p className="text-sm font-medium text-vitta-accent mb-4">
                         {voucher.partner}
                       </p>
+
+                      <div className="flex gap-4 text-xs font-bold mb-4 bg-vitta-surface-2 p-3 rounded-lg border border-vitta-border/50">
+                        <span className="text-vitta-green">Pago: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(voucher.price || 0)}</span>
+                        <span className="text-vitta-accent border-l border-vitta-border pl-4">Saldo Liberado: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(voucher.benefitValue || voucher.price || 0)}</span>
+                      </div>
 
                       {voucher.status === "active" && (
                         <div className="mt-4 p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/60 text-center space-y-2">
@@ -20120,7 +20545,7 @@ const VoucherView = ({
                             {voucher.code ||
                               `VITTA-${voucher.id.substring(0, 5).toUpperCase()}`}
                           </p>
-                          <div className="flex justify-center pt-1">
+                          <div className="flex justify-center pt-1 animate-pulse">
                             <div className="w-20 h-20 bg-white p-1 rounded-lg border border-vitta-border flex items-center justify-center">
                               <div className="grid grid-cols-4 gap-1 w-full h-full opacity-80">
                                 <div className="bg-black rounded-sm"></div>
@@ -20148,8 +20573,8 @@ const VoucherView = ({
                         </div>
                       )}
                     </div>
-                    <div className="p-4 border-t border-vitta-border bg-vitta-surface-2">
-                      <p className="text-xs text-vitta-text-secondary mb-3">
+                    <div className="p-4 border-t border-vitta-border bg-vitta-surface-2 shrink-0">
+                      <p className="text-xs text-vitta-text-secondary mb-3 text-left">
                         Adquirido em{" "}
                         {new Date(voucher.purchaseDate).toLocaleDateString()}
                       </p>
@@ -20161,7 +20586,7 @@ const VoucherView = ({
                           <ArrowUpRight size={16} /> Ativar / Usar Voucher
                         </button>
                       ) : (
-                        <div className="text-center py-2 text-xs font-semibold text-vitta-text-secondary/70">
+                        <div className="text-center py-2 text-xs font-bold text-vitta-text-secondary/70">
                           Utilizado em{" "}
                           {voucher.redeemedAt
                             ? new Date(voucher.redeemedAt).toLocaleDateString(
@@ -20177,6 +20602,164 @@ const VoucherView = ({
                 );
               })
           )}
+        </div>
+      )}
+
+      {/* CREATE / EDIT VOUCHER FORM MODAL */}
+      {isFormModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-vitta-surface w-full max-w-lg rounded-3xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col text-left"
+          >
+            <header className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
+              <h3 className="text-xl font-bold text-vitta-text-primary">
+                {editingVoucher ? "Editar Oferta de Voucher" : "Ofertar Novo Voucher"}
+              </h3>
+              <button
+                onClick={() => setIsFormModalOpen(false)}
+                className="text-vitta-text-secondary hover:text-vitta-text-primary transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </header>
+
+            <form onSubmit={handleSaveVoucherForm} className="p-6 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                  Título / Nome do Serviço ou Pacote *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Consulta Cardiológica + ECG"
+                  value={voucherForm.title}
+                  onChange={(e) => setVoucherForm({ ...voucherForm, title: e.target.value })}
+                  className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/20"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                  Descrição dos Benefícios *
+                </label>
+                <textarea
+                  placeholder="Descreva exatamente o que está contemplado neste voucher..."
+                  value={voucherForm.description}
+                  onChange={(e) => setVoucherForm({ ...voucherForm, description: e.target.value })}
+                  className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary h-24 focus:outline-none focus:ring-2 focus:ring-vitta-accent/20"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                    Valor Pago pelo Cliente (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="Ex: 50.00"
+                    value={voucherForm.price}
+                    onChange={(e) => setVoucherForm({ ...voucherForm, price: e.target.value })}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary font-bold focus:outline-none focus:ring-2 focus:ring-vitta-accent/20"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                    Valor Real em Saldo (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="Ex: 70.00"
+                    value={voucherForm.benefitValue}
+                    onChange={(e) => setVoucherForm({ ...voucherForm, benefitValue: e.target.value })}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary font-bold focus:outline-none focus:ring-2 focus:ring-vitta-accent/20"
+                    required
+                  />
+                </div>
+              </div>
+
+              {voucherForm.price && voucherForm.benefitValue && (
+                <div className="p-3 bg-vitta-accent-bg/10 rounded-xl border border-vitta-accent/20 text-xs space-y-1">
+                  <p className="font-bold text-vitta-accent mb-1">Cálculo e Ganhos da Parceria:</p>
+                  <div className="flex justify-between">
+                    <span>Taxa da Plataforma ({feeRate}%):</span>
+                    <span className="font-medium text-rose-500">
+                      R$ {parseFloat(voucherForm.price ? voucherForm.price : "0") * (feeRate / 100) ? (parseFloat(voucherForm.price) * (feeRate / 100)).toFixed(2) : "0.00"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-bold border-t border-vitta-accent/20 pt-1 mt-1 text-sm">
+                    <span className="text-vitta-text-primary">Repasse Líquido para Você:</span>
+                    <span className="text-vitta-green">
+                      R$ {parseFloat(voucherForm.price ? voucherForm.price : "0") * (1 - feeRate / 100) ? (parseFloat(voucherForm.price) * (1 - feeRate / 100)).toFixed(2) : "0.00"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                    Cor Visual do Card
+                  </label>
+                  <select
+                    value={voucherForm.color}
+                    onChange={(e) => setVoucherForm({ ...voucherForm, color: e.target.value })}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary font-medium focus:outline-none"
+                  >
+                    <option value="blue">Azul</option>
+                    <option value="emerald">Verde Esmeralda</option>
+                    <option value="purple">Roxo</option>
+                    <option value="rose">Rosa / Cereja</option>
+                    <option value="amber">Âmbar / Laranja</option>
+                    <option value="indigo">Índigo / Violeta</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-secondary uppercase mb-2">
+                    Ícone Temático
+                  </label>
+                  <select
+                    value={voucherForm.iconName}
+                    onChange={(e) => setVoucherForm({ ...voucherForm, iconName: e.target.value })}
+                    className="w-full bg-vitta-surface-2 border border-vitta-border rounded-xl px-4 py-3 text-vitta-text-primary font-medium focus:outline-none"
+                  >
+                    <option value="Ticket">Voucher Padrão (Ticket)</option>
+                    <option value="FileText">Exames e Laudos (Documento)</option>
+                    <option value="Activity">Sessões e Práticas (Atividade)</option>
+                    <option value="Heart">Especialidades e Coração (Saúde)</option>
+                    <option value="Pill">Medicamentos e Farmácia (Pílula)</option>
+                    <option value="User">Foco Individual ou Família (Usuário)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsFormModalOpen(false)}
+                  className="flex-1 py-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold hover:bg-vitta-surface-2 transition-colors text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-colors text-center"
+                >
+                  Salvar Oferta
+                </button>
+              </div>
+            </form>
+          </motion.div>
         </div>
       )}
 
@@ -21751,7 +22334,7 @@ export default function App() {
       case "wallets":
         return <WalletsView user={user} userData={userData} />;
       case "voucher":
-        return <VoucherView user={user} setActiveTab={setActiveTab} />;
+        return <VoucherView user={user} userData={userData} setActiveTab={setActiveTab} />;
       case "pharmacies":
         return <PharmaciesView isAdmin={isAdmin} />;
       case "radio":

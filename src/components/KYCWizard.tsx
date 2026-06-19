@@ -251,8 +251,14 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
                 { type: 'selfie' as const, label: 'Selfie' }
               ].map((item, i) => (
                 <div key={i} className={`relative rounded-2xl border border-vitta-border overflow-hidden h-32 ${item.type === 'selfie' ? 'col-span-2' : ''}`}>
-                  <img src={files[item.type]!} alt={item.label} className="w-full h-full object-cover" />
-                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-white uppercase">
+                  {files[item.type] ? (
+                    <img src={files[item.type]!} alt={item.label} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-vitta-surface-2 text-vitta-text-muted text-xs">
+                      Pendente
+                    </div>
+                  )}
+                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-white uppercase font-sans">
                     {item.label}
                   </div>
                 </div>

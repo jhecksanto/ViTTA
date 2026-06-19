@@ -380,6 +380,25 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "amount", "status", "createdAt"]
+    },
+    "VouchersCatalog": {
+      "title": "VouchersCatalog",
+      "description": "Vouchers offered in the partner/professionals catalog for clients to purchase",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "benefitValue": { "type": "number" },
+        "color": { "type": "string" },
+        "iconName": { "type": "string" },
+        "partner": { "type": "string" },
+        "partnerRole": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "price", "benefitValue", "sellerId"]
     }
   },
   "firestore": {
@@ -470,6 +489,10 @@
     "/withdrawals/{withdrawalId}": {
       "schema": "Withdrawal",
       "description": "Withdrawal requests of professionals and partners"
+    },
+    "/vouchers_catalog/{voucherId}": {
+      "schema": "VouchersCatalog",
+      "description": "Catalog of vouchers offered by partners and professionals"
     }
   }
 }
