@@ -13,7 +13,11 @@ import {
   AlertCircle,
   Edit2,
   Eye,
-  EyeOff
+  EyeOff,
+  Info,
+  X,
+  Star,
+  Calendar
 } from "lucide-react";
 import { db } from "../../firebase";
 import { fetchAddressByCep } from "../../lib/utils";
@@ -53,6 +57,10 @@ interface LiberalProfessional {
   neighborhood?: string;
   state?: string;
   active?: boolean;
+  vittaHealthDiscount?: string;
+  feeRate?: number;
+  price?: string;
+  availableDays?: string;
 }
 
 export const AdminLiberalConfigView = () => {
@@ -83,9 +91,19 @@ export const AdminLiberalConfigView = () => {
   const [newProfState, setNewProfState] = useState("");
   const [newProfDesc, setNewProfDesc] = useState("");
   const [newProfImage, setNewProfImage] = useState("");
+  
+  // New Discount/Fee/Price/Days fields
+  const [newProfDiscount, setNewProfDiscount] = useState("");
+  const [newProfFeeRate, setNewProfFeeRate] = useState<number | "">("");
+  const [newProfPrice, setNewProfPrice] = useState("");
+  const [newProfAvailableDays, setNewProfAvailableDays] = useState("");
+
   const [isSubmittingProf, setIsSubmittingProf] = useState(false);
   const [isSearchingCep, setIsSearchingCep] = useState(false);
   const [editingProf, setEditingProf] = useState<LiberalProfessional | null>(null);
+  
+  // Details state
+  const [selectedDetailProf, setSelectedDetailProf] = useState<LiberalProfessional | null>(null);
 
   const handleEditClick = (prof: LiberalProfessional) => {
     setEditingProf(prof);
@@ -100,6 +118,10 @@ export const AdminLiberalConfigView = () => {
     setNewProfState(prof.state || "");
     setNewProfDesc(prof.description || "");
     setNewProfImage(prof.imageUrl || "");
+    setNewProfDiscount(prof.vittaHealthDiscount || "");
+    setNewProfFeeRate(prof.feeRate !== undefined ? prof.feeRate : "");
+    setNewProfPrice(prof.price || "");
+    setNewProfAvailableDays(prof.availableDays || "");
     setShowAddProf(true);
   };
 
@@ -116,6 +138,10 @@ export const AdminLiberalConfigView = () => {
     setNewProfState("");
     setNewProfDesc("");
     setNewProfImage("");
+    setNewProfDiscount("");
+    setNewProfFeeRate("");
+    setNewProfPrice("");
+    setNewProfAvailableDays("");
     setShowAddProf(false);
   };
 
@@ -253,7 +279,11 @@ export const AdminLiberalConfigView = () => {
         city: newProfCity.trim(),
         state: newProfState.trim(),
         description: newProfDesc.trim(),
-        imageUrl: newProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60"
+        imageUrl: newProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60",
+        vittaHealthDiscount: newProfDiscount.trim(),
+        feeRate: newProfFeeRate === "" ? 0 : Number(newProfFeeRate),
+        price: newProfPrice.trim(),
+        availableDays: newProfAvailableDays.trim()
       };
 
       if (editingProf) {
@@ -575,6 +605,58 @@ export const AdminLiberalConfigView = () => {
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Desconto ViTTA Health</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 20% OFF"
+                    value={newProfDiscount}
+                    onChange={(e) => setNewProfDiscount(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Taxa Fee (%)</label>
+                  <input
+                    type="number"
+                    placeholder="Ex: 10"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={newProfFeeRate}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setNewProfFeeRate(isNaN(val) ? "" : val);
+                    }}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Valor (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: R$ 150,00"
+                    value={newProfPrice}
+                    onChange={(e) => setNewProfPrice(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Dias de Atendimento</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Seg, Qua, Sex"
+                    value={newProfAvailableDays}
+                    onChange={(e) => setNewProfAvailableDays(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
@@ -641,6 +723,13 @@ export const AdminLiberalConfigView = () => {
                     </div>
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
+                        onClick={() => setSelectedDetailProf(prof)}
+                        title="Ver Detalhes"
+                        className="p-2 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer border border-purple-200"
+                      >
+                        <Info size={14} />
+                      </button>
+                      <button
                         onClick={() => handleToggleActive(prof.id, prof.active)}
                         title={isActive ? "Desativar" : "Ativar"}
                         className={`p-2 rounded-xl transition-colors cursor-pointer border ${
@@ -676,6 +765,150 @@ export const AdminLiberalConfigView = () => {
         </div>
 
       </div>
+
+      {/* --- MODAL DETALHES DO PROFISSIONAL LIBERAL --- */}
+      {selectedDetailProf && (() => {
+        const priceMatch = (selectedDetailProf.price || "").replace(/[^\d,.-]/g, "").replace(",", ".");
+        const rawPriceValue = parseFloat(priceMatch);
+        const hasValidPrice = !isNaN(rawPriceValue) && rawPriceValue > 0;
+        
+        const discMatch = (selectedDetailProf.vittaHealthDiscount || "").match(/(\d+)/);
+        const discPct = discMatch ? parseFloat(discMatch[1]) : null;
+        
+        let finalPriceValue = null;
+        let computedSavings = null;
+        if (hasValidPrice && discPct !== null) {
+          computedSavings = (rawPriceValue * discPct) / 100;
+          finalPriceValue = rawPriceValue - computedSavings;
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-vitta-surface border border-vitta-border rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative"
+            >
+              <button
+                onClick={() => setSelectedDetailProf(null)}
+                className="absolute top-4 right-4 p-2.5 rounded-full bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border hover:text-vitta-text-primary transition-colors z-10 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="p-6 space-y-6 text-xs">
+                <div className="flex items-start gap-4">
+                  <img
+                    src={selectedDetailProf.imageUrl || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60"}
+                    alt={selectedDetailProf.name}
+                    className="w-16 h-16 rounded-2xl object-cover border border-vitta-border shrink-0"
+                  />
+                  <div>
+                    <span className="px-2 py-0.5 text-[10px] font-black bg-vitta-accent/15 text-vitta-accent rounded-md uppercase">
+                      {selectedDetailProf.category}
+                    </span>
+                    <h2 className="text-base font-black text-vitta-text-primary mt-1">
+                      {selectedDetailProf.name}
+                    </h2>
+                    <div className="flex items-center gap-1 text-vitta-amber mt-1 text-[10px] font-bold">
+                      <Star size={12} fill="currentColor" />
+                      <span>5.0 (Profissional Verificado)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-bold text-vitta-text-secondary uppercase tracking-widest text-[10px]">Sobre o Serviço</h4>
+                  <p className="text-vitta-text-primary leading-relaxed bg-vitta-surface-2 p-3 rounded-xl border border-vitta-border/40 text-justify">
+                    {selectedDetailProf.description || "Nenhuma descrição detalhada fornecida."}
+                  </p>
+                </div>
+
+                {/* Discount and Price Tabela */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-vitta-text-secondary uppercase tracking-widest text-[10px]">Parâmetros de Desconto & Atendimento</h4>
+                  
+                  <div className="bg-gradient-to-br from-vitta-green/5 to-vitta-green/10 border border-vitta-green/30 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between items-center border-b border-vitta-green/20 pb-1.5">
+                      <span className="text-vitta-text-secondary">Desconto ViTTA Health</span>
+                      <span className="font-bold text-vitta-green">{selectedDetailProf.vittaHealthDiscount || "Não informado"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center border-b border-vitta-green/20 pb-1.5">
+                      <span className="text-vitta-text-secondary">Taxa Fee (%)</span>
+                      <span className="font-bold text-vitta-text-primary font-mono">{selectedDetailProf.feeRate !== undefined ? `${selectedDetailProf.feeRate}%` : "0%"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center border-b border-vitta-green/20 pb-1.5">
+                      <span className="text-vitta-text-secondary">Dias de Atendimento</span>
+                      <span className="font-bold text-vitta-text-primary">{selectedDetailProf.availableDays || "Não informado"}</span>
+                    </div>
+
+                    {selectedDetailProf.price && (
+                      <div className="flex justify-between items-center border-b border-vitta-green/20 pb-1.5">
+                        <span className="text-vitta-text-secondary">Valor Normal</span>
+                        <span className="font-bold text-vitta-text-secondary line-through font-mono">{selectedDetailProf.price}</span>
+                      </div>
+                    )}
+
+                    {hasValidPrice && finalPriceValue !== null && computedSavings !== null && (
+                      <div className="flex justify-between items-center pt-1">
+                        <div>
+                          <span className="font-bold text-vitta-text-primary">Valor do Conveniado</span>
+                          <span className="text-[9px] text-vitta-green font-bold uppercase tracking-wider block mt-0.5">
+                            Economia de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(computedSavings)}
+                          </span>
+                        </div>
+                        <span className="text-base font-black text-vitta-green font-mono">
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(finalPriceValue)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Address Information */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-vitta-text-secondary uppercase tracking-widest text-[10px]">Endereço de Atendimento</h4>
+                  <div className="p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl space-y-1">
+                    <p className="text-vitta-text-primary">
+                      <span className="font-bold">Endereço:</span> {selectedDetailProf.street ? `${selectedDetailProf.street}${selectedDetailProf.number ? `, ${selectedDetailProf.number}` : ""}` : "Não informado"}
+                    </p>
+                    <p className="text-vitta-text-primary">
+                      <span className="font-bold">Bairro:</span> {selectedDetailProf.neighborhood || "Não informado"}
+                    </p>
+                    <p className="text-vitta-text-primary">
+                      <span className="font-bold">Cidade/UF:</span> {selectedDetailProf.city || "Online"}{selectedDetailProf.state ? ` - ${selectedDetailProf.state}` : ""}
+                    </p>
+                    <p className="text-vitta-text-primary">
+                      <span className="font-bold">CEP:</span> {selectedDetailProf.cep || "Não informado"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  {selectedDetailProf.phone && (
+                    <a
+                      href={`https://wa.me/${selectedDetailProf.phone.replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20seus%20serviços%20pelo%20convênio%20ViTTA.`}
+                      target="_blank"
+                      referrerPolicy="no-referrer"
+                      className="flex-1 py-3 bg-vitta-green text-white font-bold rounded-xl hover:bg-vitta-green/90 shadow-md text-center flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Phone size={14} /> Chamar no WhatsApp
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setSelectedDetailProf(null)}
+                    className="flex-1 py-3 bg-vitta-surface-2 text-vitta-text-secondary font-bold rounded-xl hover:bg-vitta-border hover:text-vitta-text-primary border border-vitta-border text-center cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
