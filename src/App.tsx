@@ -10496,6 +10496,7 @@ const PartnersView = ({
   const [showAddLiberalProf, setShowAddLiberalProf] = useState(false);
   const [newLiberalProfName, setNewLiberalProfName] = useState("");
   const [newLiberalProfCategory, setNewLiberalProfCategory] = useState("");
+  const [newLiberalProfEmail, setNewLiberalProfEmail] = useState("");
   const [newLiberalProfPhone, setNewLiberalProfPhone] = useState("");
   const [newLiberalProfCep, setNewLiberalProfCep] = useState("");
   const [newLiberalProfStreet, setNewLiberalProfStreet] = useState("");
@@ -10823,9 +10824,29 @@ const PartnersView = ({
     }
     setIsSubmittingLiberalProf(true);
     try {
+      const emailVal = newLiberalProfEmail.trim().toLowerCase();
+      const feeRateVal = newLiberalProfFeeRate === "" ? 0 : Number(newLiberalProfFeeRate);
+      let linkedUserId = "";
+
+      if (emailVal) {
+        try {
+          const q = query(
+            collection(db, "users"),
+            where("email", "==", emailVal)
+          );
+          const snap = await getDocs(q);
+          snap.forEach((userDoc) => {
+            linkedUserId = userDoc.id;
+          });
+        } catch (e) {
+          console.error("Erro ao buscar usuário por email:", e);
+        }
+      }
+
       await addDoc(collection(db, "liberal_professionals"), {
         name: newLiberalProfName.trim(),
         category: newLiberalProfCategory,
+        email: emailVal,
         phone: newLiberalProfPhone.trim(),
         cep: newLiberalProfCep.trim(),
         street: newLiberalProfStreet.trim(),
@@ -10836,15 +10857,28 @@ const PartnersView = ({
         description: newLiberalProfDesc.trim(),
         imageUrl: newLiberalProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60",
         vittaHealthDiscount: newLiberalProfDiscount.trim(),
-        feeRate: newLiberalProfFeeRate === "" ? 0 : Number(newLiberalProfFeeRate),
+        feeRate: feeRateVal,
         price: newLiberalProfPrice.trim(),
         availableDays: newLiberalProfAvailableDays.trim(),
-        userId: user?.uid || "",
+        userId: linkedUserId || user?.uid || "",
         createdAt: Timestamp.now(),
       });
+
+      if (linkedUserId) {
+        try {
+          await updateDoc(doc(db, "users", linkedUserId), {
+            role: "liberal",
+            feeRate: feeRateVal,
+          });
+        } catch (e) {
+          console.error("Erro ao atualizar dados do usuário vinculado:", e);
+        }
+      }
+
       addToast("Profissional Liberal cadastrado com sucesso!", "success");
       setNewLiberalProfName("");
       setNewLiberalProfCategory("");
+      setNewLiberalProfEmail("");
       setNewLiberalProfPhone("");
       setNewLiberalProfCep("");
       setNewLiberalProfStreet("");
@@ -11063,27 +11097,13 @@ const PartnersView = ({
               setActiveSubTab("categorias");
               setSelectedCategory(null);
             }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-l border-vitta-border/30 cursor-pointer ${
               activeSubTab === "categorias"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
             }`}
           >
             Categorias
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveSubTab("vitta-health");
-              setSelectedCategory(null);
-            }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap cursor-pointer ${
-              activeSubTab === "vitta-health"
-                ? "bg-vitta-surface text-vitta-accent shadow-sm"
-                : "text-vitta-text-secondary hover:text-vitta-text-primary"
-            }`}
-          >
-            ViTTA Health
           </button>
         </div>
 
@@ -11522,7 +11542,7 @@ const PartnersView = ({
                 Cadastrar Novo Profissional Liberal
               </h3>
               <form onSubmit={handleAddLiberalProf} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-vitta-text-secondary">Nome Completo / Serviço</label>
                     <input
@@ -11545,6 +11565,16 @@ const PartnersView = ({
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">E-mail de Cadastro (Opcional)</label>
+                    <input
+                      type="email"
+                      value={newLiberalProfEmail}
+                      onChange={(e) => setNewLiberalProfEmail(e.target.value)}
+                      placeholder="Ex: profissional@vitta.club"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
                   </div>
                 </div>
 
@@ -13199,6 +13229,44 @@ const SettingsView = ({
 
       await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
 
+      // Sync feeRate to professional/liberal collections on profile update
+      if (updatedData.feeRate !== undefined) {
+        const rateVal = Number(updatedData.feeRate);
+        const emailVal = (updatedData.email || "").toLowerCase().trim();
+        
+        if (updatedData.role === "professional") {
+          if (emailVal) {
+            try {
+              const q = query(collection(db, "professionals"), where("email", "==", emailVal));
+              const snap = await getDocs(q);
+              snap.forEach(async (dDoc) => {
+                await updateDoc(doc(db, "professionals", dDoc.id), {
+                  feeRate: rateVal,
+                  userId: user.uid,
+                });
+              });
+            } catch (e) {
+              console.error("Error syncing professional feeRate on profile update:", e);
+            }
+          }
+        } else if (updatedData.role === "liberal") {
+          if (emailVal) {
+            try {
+              const q = query(collection(db, "liberal_professionals"), where("email", "==", emailVal));
+              const snap = await getDocs(q);
+              snap.forEach(async (dDoc) => {
+                await updateDoc(doc(db, "liberal_professionals", dDoc.id), {
+                  feeRate: rateVal,
+                  userId: user.uid,
+                });
+              });
+            } catch (e) {
+              console.error("Error syncing liberal professional feeRate on profile update:", e);
+            }
+          }
+        }
+      }
+
       if (
         profileData.name !== user.displayName ||
         finalPhotoURL !== user.photoURL
@@ -13786,6 +13854,7 @@ const SettingsView = ({
 
               {(userData?.role === "professional" ||
                 userData?.role === "conveniado" ||
+                userData?.role === "liberal" ||
                 userData?.role === "admin" ||
                 user?.email === "admin@vitta.club" ||
                 user?.email === "suporte@vitta.club" ||
@@ -16063,17 +16132,6 @@ const PartnershipsView = ({
           <Tag size={18} />
           Ofertas
         </button>
-        <button
-          onClick={() => setActiveSubTab("vitta-health")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
-            activeSubTab === "vitta-health"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
-          }`}
-        >
-          <Activity size={18} />
-          ViTTA Health
-        </button>
       </div>
 
       {activeSubTab === "establishments" && (
@@ -17506,6 +17564,43 @@ const UsersView = () => {
     try {
       const { id, ...data } = editingUser;
       await updateDoc(doc(db, "users", id), data);
+
+      // Sync/Mirror feeRate changes to professionals or liberal_professionals
+      const feeRateVal = data.feeRate !== undefined ? Number(data.feeRate) : 0;
+      const emailVal = data.email || "";
+
+      if (data.role === "professional") {
+        if (emailVal) {
+          try {
+            const q = query(collection(db, "professionals"), where("email", "==", emailVal.toLowerCase().trim()));
+            const snap = await getDocs(q);
+            snap.forEach(async (dDoc) => {
+              await updateDoc(doc(db, "professionals", dDoc.id), {
+                feeRate: feeRateVal,
+                userId: id,
+              });
+            });
+          } catch (e) {
+            console.error("Error syncing professional feeRate:", e);
+          }
+        }
+      } else if (data.role === "liberal") {
+        if (emailVal) {
+          try {
+            const q = query(collection(db, "liberal_professionals"), where("email", "==", emailVal.toLowerCase().trim()));
+            const snap = await getDocs(q);
+            snap.forEach(async (dDoc) => {
+              await updateDoc(doc(db, "liberal_professionals", dDoc.id), {
+                feeRate: feeRateVal,
+                userId: id,
+              });
+            });
+          } catch (e) {
+            console.error("Error syncing liberal professional feeRate:", e);
+          }
+        }
+      }
+
       await logAdminAction(
         "UPDATE_USER",
         `Editou o usuário: ${data.email || id}`,
@@ -17929,6 +18024,33 @@ const UsersView = () => {
                     />
                   </div>
                 </div>
+
+                {(editingUser.role === "professional" ||
+                  editingUser.role === "conveniado" ||
+                  editingUser.role === "liberal") && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Taxa Fee (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1;0.01"
+                      min="0"
+                      max="100"
+                      value={editingUser.feeRate !== undefined ? editingUser.feeRate : 0}
+                      onChange={(e) =>
+                        setEditingUser({
+                          ...editingUser,
+                          feeRate: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                    <p className="text-[10px] text-vitta-text-muted px-1 italic">
+                      Percentual de comissão retido pela plataforma nas operações deste usuário.
+                    </p>
+                  </div>
+                )}
 
                 {/* KYC Documents Preview for Admin */}
                 {(editingUser.documentFrontUrl ||
@@ -23039,7 +23161,7 @@ export default function App() {
               }
             } else {
               // Create if missing
-              const newData = {
+              const newData: any = {
                 uid: firebaseUser.uid,
                 name: firebaseUser.displayName || "Usuário",
                 email: firebaseUser.email,
@@ -23049,7 +23171,7 @@ export default function App() {
                 createdAt: Timestamp.now(),
               };
 
-              // Also check on initial creation if this user is a professional by email
+              // Also check on initial creation if this user is a professional or liberal professional by email
               if (firebaseUser.email) {
                 try {
                   const qProf = query(
@@ -23060,6 +23182,7 @@ export default function App() {
                   if (!profSnap.empty) {
                     newData.role = "professional";
                     const profDoc = profSnap.docs[0];
+                    newData.feeRate = profDoc.data().feeRate !== undefined ? Number(profDoc.data().feeRate) : 0;
                     setTimeout(async () => {
                       try {
                         await updateDoc(doc(db, "professionals", profDoc.id), {
@@ -23072,6 +23195,29 @@ export default function App() {
                         );
                       }
                     }, 1000);
+                  } else {
+                    const qLib = query(
+                      collection(db, "liberal_professionals"),
+                      where("email", "==", firebaseUser.email),
+                    );
+                    const libSnap = await getDocs(qLib);
+                    if (!libSnap.empty) {
+                      newData.role = "liberal";
+                      const libDoc = libSnap.docs[0];
+                      newData.feeRate = libDoc.data().feeRate !== undefined ? Number(libDoc.data().feeRate) : 0;
+                      setTimeout(async () => {
+                        try {
+                          await updateDoc(doc(db, "liberal_professionals", libDoc.id), {
+                            userId: firebaseUser.uid,
+                          });
+                        } catch (e) {
+                          console.error(
+                            "Erro ao vincular id do profissional liberal na criacao:",
+                            e,
+                          );
+                        }
+                      }, 1000);
+                    }
                   }
                 } catch (err) {
                   console.error(err);
@@ -23575,23 +23721,17 @@ export default function App() {
       {/* Global Audio Element */}
       <audio
         ref={audioRef}
-        src={
-          radioConfig.url
-            ? radioConfig.url.includes(":") && !radioConfig.url.includes(";")
-              ? radioConfig.url.endsWith("/")
-                ? `${radioConfig.url};`
-                : `${radioConfig.url}/;`
-              : radioConfig.url
-            : undefined
-        }
+        src={radioConfig.url || undefined}
         onError={(e) => {
           const target = e.target as HTMLAudioElement;
           if (target.error) {
-            console.error(
-              "Erro no elemento de áudio:",
+            console.warn(
+              "Aviso de áudio (tratado e em fallback silencioso):",
               target.error.code,
               target.error.message,
             );
+            // Fallback gracefully to silent audio to satisfy browser playback & codec requirements
+            target.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
           }
         }}
       />
