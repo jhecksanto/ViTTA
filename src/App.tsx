@@ -10447,10 +10447,21 @@ const getIcon = (iconName: string, size = 24, className = "text-white") => {
 const PartnersView = ({
   setActiveTab,
   user,
+  userData,
+  isAdmin = false,
 }: {
   setActiveTab?: (tab: string) => void;
   user?: any;
+  userData?: any;
+  isAdmin?: boolean;
 }) => {
+  const isUserAdmin =
+    isAdmin ||
+    userData?.role === "admin" ||
+    user?.email === "admin@vitta.club" ||
+    user?.email === "suporte@vitta.club" ||
+    user?.email === "jhecksanto@gmail.com";
+
   const { addToast } = useToast();
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -11060,20 +11071,6 @@ const PartnersView = ({
           >
             Categorias
           </button>
-
-          <button
-            onClick={() => {
-              setActiveSubTab("profissionais");
-              setSelectedCategory(null);
-            }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
-              activeSubTab === "profissionais"
-                ? "bg-vitta-surface text-vitta-accent shadow-sm"
-                : "text-vitta-text-secondary hover:text-vitta-text-primary"
-            }`}
-          >
-            Profissionais de Saúde
-          </button>
           
           <button
             onClick={() => {
@@ -11441,34 +11438,38 @@ const PartnersView = ({
                 Profissionais Liberais
               </h2>
               <p className="text-vitta-text-secondary">
-                Encontre serviços de apoio (Ex: cabeleireiros, taxistas, uber, motoboys) credenciados ou cadastre um novo profissional/categoria!
+                {isUserAdmin
+                  ? "Encontre serviços de apoio (Ex: cabeleireiros, taxistas, uber, motoboys) credenciados ou cadastre um novo profissional/categoria!"
+                  : "Encontre serviços de apoio (Ex: cabeleireiros, taxistas, uber, motoboys) credenciados para você obter descontos exclusivos!"}
               </p>
             </div>
             
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => {
-                  setShowAddLiberalCategory(true);
-                  setShowAddLiberalProf(false);
-                }}
-                className="px-4 py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold border border-vitta-border flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus size={14} /> Cadastrar Categoria
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddLiberalProf(true);
-                  setShowAddLiberalCategory(false);
-                }}
-                className="px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1.5 cursor-pointer"
-              >
-                <UserPlus size={14} /> Cadastrar Profissional
-              </button>
-            </div>
+            {isUserAdmin && (
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    setShowAddLiberalCategory(true);
+                    setShowAddLiberalProf(false);
+                  }}
+                  className="px-4 py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold border border-vitta-border flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={14} /> Cadastrar Categoria
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddLiberalProf(true);
+                    setShowAddLiberalCategory(false);
+                  }}
+                  className="px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <UserPlus size={14} /> Cadastrar Profissional
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Form: Add Liberal Category */}
-          {showAddLiberalCategory && (
+          {isUserAdmin && showAddLiberalCategory && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -11510,7 +11511,7 @@ const PartnersView = ({
           )}
 
           {/* Form: Add Liberal Professional */}
-          {showAddLiberalProf && (
+          {isUserAdmin && showAddLiberalProf && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -23228,7 +23229,7 @@ export default function App() {
         return isAdmin ? (
           <PartnershipsView setActiveTab={setActiveTab} />
         ) : (
-          <PartnersView setActiveTab={setActiveTab} user={user} />
+          <PartnersView setActiveTab={setActiveTab} user={user} userData={userData} isAdmin={isAdmin} />
         );
       case "wallets":
         return <WalletsView user={user} userData={userData} />;
