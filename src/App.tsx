@@ -10513,6 +10513,11 @@ const PartnersView = ({
   const [isSubmittingLiberalProf, setIsSubmittingLiberalProf] = useState(false);
   const [isSearchingLiberalCep, setIsSearchingLiberalCep] = useState(false);
   
+  // Searchable dropdown for users linking
+  const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+  const [isOpenUserDropdown, setIsOpenUserDropdown] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  
   // Details Modal state for Liberal Professionals
   const [selectedUserLiberalProf, setSelectedUserLiberalProf] = useState<any>(null);
 
@@ -10607,6 +10612,18 @@ const PartnersView = ({
       }
     );
 
+    const unsubscribeUsers = onSnapshot(
+      collection(db, "users"),
+      (snapshot) => {
+        setRegisteredUsers(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        );
+      },
+      (error) => {
+        console.error("Error fetching registered users in PartnersView:", error);
+      }
+    );
+
     let unsubscribeSavings = () => {};
     if (user?.uid) {
       unsubscribeSavings = onSnapshot(
@@ -10629,6 +10646,7 @@ const PartnersView = ({
       unsubscribeLiberalCategories();
       unsubscribeLiberalProfs();
       unsubscribeSavings();
+      unsubscribeUsers();
     };
   }, [user]);
 
@@ -11566,15 +11584,117 @@ const PartnersView = ({
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-2">
+
+                  <div className="space-y-2 relative" id="email-vinculo-dropdown-container">
                     <label className="text-xs font-bold text-vitta-text-secondary">E-mail de Cadastro (Opcional)</label>
-                    <input
-                      type="email"
-                      value={newLiberalProfEmail}
-                      onChange={(e) => setNewLiberalProfEmail(e.target.value)}
-                      placeholder="Ex: profissional@vitta.club"
-                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
-                    />
+                    <div className="relative">
+                      <input
+                        type="email"
+                        value={newLiberalProfEmail}
+                        onChange={(e) => {
+                          setNewLiberalProfEmail(e.target.value);
+                          setUserSearchTerm(e.target.value);
+                          if (!isOpenUserDropdown) {
+                            setIsOpenUserDropdown(true);
+                          }
+                        }}
+                        onFocus={() => {
+                          setIsOpenUserDropdown(true);
+                          setUserSearchTerm(newLiberalProfEmail);
+                        }}
+                        placeholder="Ex: profissional@vitta.club"
+                        className="w-full pl-4 pr-10 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsOpenUserDropdown(!isOpenUserDropdown);
+                          setUserSearchTerm(newLiberalProfEmail);
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-vitta-text-muted hover:text-vitta-text-primary cursor-pointer flex items-center justify-center p-1 rounded-md hover:bg-vitta-surface"
+                      >
+                        <ChevronDown size={18} className={`transition-transform ${isOpenUserDropdown ? "rotate-180" : ""}`} />
+                      </button>
+                    </div>
+
+                    {/* Invisible overlay to detect clicks outside the dropdown */}
+                    {isOpenUserDropdown && (
+                      <div 
+                        className="fixed inset-0 z-40 bg-transparent" 
+                        onClick={() => setIsOpenUserDropdown(false)} 
+                        id="email-dropdown-overlay"
+                      />
+                    )}
+
+                    {/* Dropdown Menu */}
+                    {isOpenUserDropdown && (
+                      <div 
+                        className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-vitta-surface-2 border border-vitta-border rounded-xl shadow-2xl p-2 flex flex-col space-y-1 scrollbar-thin"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Option to clear selection */}
+                        {newLiberalProfEmail && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewLiberalProfEmail("");
+                              setIsOpenUserDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-1.5 rounded-lg text-xs text-rose-500 hover:bg-rose-50/10 transition-colors flex items-center gap-1.5 cursor-pointer font-medium"
+                          >
+                            <X size={12} />
+                            Limpar campo de e-mail
+                          </button>
+                        )}
+
+                        <span className="text-[10px] text-vitta-text-muted font-bold uppercase tracking-wider px-3 py-1 block">
+                          Usuários Cadastrados
+                        </span>
+                        
+                        {registeredUsers
+                          .filter((u) => {
+                            const name = (u.name || "").toLowerCase();
+                            const email = (u.email || "").toLowerCase();
+                            const term = userSearchTerm.toLowerCase();
+                            return name.includes(term) || email.includes(term);
+                          })
+                          .slice(0, 15)
+                          .map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => {
+                                setNewLiberalProfEmail(u.email || "");
+                                setIsOpenUserDropdown(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex flex-col cursor-pointer ${
+                                newLiberalProfEmail === u.email
+                                  ? "bg-vitta-accent/10 text-vitta-accent"
+                                  : "hover:bg-vitta-accent/5 text-vitta-text-primary"
+                              }`}
+                            >
+                              <span className="font-bold flex items-center gap-1">
+                                {u.name || "Sem Nome"}
+                                {newLiberalProfEmail === u.email && (
+                                  <Check size={10} className="text-vitta-accent" />
+                                )}
+                              </span>
+                              <span className="text-[10px] text-vitta-text-muted">{u.email}</span>
+                            </button>
+                          ))}
+
+                        {registeredUsers.filter((u) => {
+                          const name = (u.name || "").toLowerCase();
+                          const email = (u.email || "").toLowerCase();
+                          const term = userSearchTerm.toLowerCase();
+                          return name.includes(term) || email.includes(term);
+                        }).length === 0 && (
+                          <p className="text-[11px] text-vitta-text-muted px-3 py-2 italic text-center">
+                            Nenhum usuário correspondente.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
