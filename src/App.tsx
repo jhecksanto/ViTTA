@@ -12086,11 +12086,6 @@ const PartnersView = ({
                     </div>
 
                     <div className="flex justify-between items-center border-b border-vitta-green/20 pb-2">
-                      <span className="text-xs text-vitta-text-secondary font-medium">Taxa Fee (%)</span>
-                      <span className="text-xs font-bold text-vitta-text-primary font-mono">{selectedUserLiberalProf.feeRate !== undefined ? `${selectedUserLiberalProf.feeRate}%` : "0%"}</span>
-                    </div>
-
-                    <div className="flex justify-between items-center border-b border-vitta-green/20 pb-2">
                       <span className="text-xs text-vitta-text-secondary font-medium">Dias de Atendimento</span>
                       <span className="text-xs font-bold text-vitta-text-primary">{selectedUserLiberalProf.availableDays || "Não informado"}</span>
                     </div>
@@ -13789,41 +13784,52 @@ const SettingsView = ({
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between px-1">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
-                    Taxa Fee (%)
-                  </label>
-                  {!(userData?.role === "admin" || user?.email === "jhecksanto@gmail.com") && (
-                    <span className="text-[9px] text-vitta-danger font-bold uppercase">
-                      Apenas Admin
-                    </span>
+              {(userData?.role === "professional" ||
+                userData?.role === "conveniado" ||
+                userData?.role === "admin" ||
+                user?.email === "admin@vitta.club" ||
+                user?.email === "suporte@vitta.club" ||
+                user?.email === "jhecksanto@gmail.com") && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
+                      Taxa Fee (%)
+                    </label>
+                  </div>
+                  {userData?.role === "admin" ||
+                  user?.email === "admin@vitta.club" ||
+                  user?.email === "suporte@vitta.club" ||
+                  user?.email === "jhecksanto@gmail.com" ? (
+                    <>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={profileData.feeRate !== undefined ? profileData.feeRate : ""}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setProfileData((prev) => ({
+                            ...prev,
+                            feeRate: val,
+                          }));
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 outline-none"
+                      />
+                      <p className="text-[10px] text-vitta-text-secondary px-1 italic">
+                        Percentual de custo por uso da plataforma para transações de profissionais.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="w-full px-4 py-3.5 bg-vitta-surface-2 border border-vitta-border rounded-xl flex justify-between items-center">
+                      <span className="text-sm font-medium text-vitta-text-secondary">Sua Taxa Fee atual</span>
+                      <span className="text-sm font-black text-vitta-green font-mono bg-vitta-green/10 px-3 py-1 rounded-xl">
+                        {profileData.feeRate !== undefined ? `${profileData.feeRate}%` : "0%"}
+                      </span>
+                    </div>
                   )}
                 </div>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  value={profileData.feeRate !== undefined ? profileData.feeRate : ""}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0;
-                    setProfileData((prev) => ({
-                      ...prev,
-                      feeRate: val,
-                    }));
-                  }}
-                  disabled={!(userData?.role === "admin" || user?.email === "jhecksanto@gmail.com")}
-                  className={`w-full px-4 py-3 bg-vitta-surface-2 border rounded-xl text-sm text-vitta-text-primary transition-all ${
-                    (userData?.role === "admin" || user?.email === "jhecksanto@gmail.com")
-                      ? "border-vitta-border focus:ring-2 focus:ring-vitta-accent/20 outline-none cursor-text"
-                      : "border-vitta-border/50 opacity-60 cursor-not-allowed text-vitta-text-muted"
-                  }`}
-                />
-                <p className="text-[10px] text-vitta-text-secondary px-1 italic">
-                  Percentual de custo por uso da plataforma para transações de profissionais.
-                </p>
-              </div>
+              )}
             </div>
           </div>
 
