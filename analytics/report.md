@@ -1,10 +1,12 @@
 # Relatório de Diagnóstico e Avanço - Sistema de Telemedicina (Vitta)
-**Data e Hora de Geração:** 16 de junho de 2026, 11:03:00 (Horário de Brasília)
+**Data e Hora de Geração:** 27 de junho de 2026, 21:49:18 (Horário de Brasília)
 
 ---
 
 ## 📋 1. Visão Geral e Contexto Atual
-Este relatório apresenta um diagnóstico preciso e atualizado do sistema de telemedicina integrado à plataforma **Vitta**. O sistema atual evoluiu significativamente de uma estrutura meramente simulada para uma integração real de videoconferência síncrona utilizando **WebRTC (RTCPeerConnection)** estruturada de forma resiliente sobre o **Cloud Firestore** como canal de sinalização de ofertas, respostas (SDP Offer/Answer) e candidatos de rede (ICE Candidates).
+Este relatório apresenta um diagnóstico preciso e atualizado do sistema de telemedicina integrado à plataforma **ViTTA**. O sistema atual evoluiu significativamente de uma estrutura meramente simulada para uma integração real de videoconferência síncrona utilizando **WebRTC (RTCPeerConnection)** estruturada de forma resiliente sobre o **Cloud Firestore** como canal de sinalização de ofertas, respostas (SDP Offer/Answer) e candidatos de rede (ICE Candidates).
+
+Além disso, o sistema conta com recursos administrativos recentes para gestão de vouchers e profissionais liberais, além da interface do paciente para auto-registro e consulta de tais profissionais.
 
 O objetivo desta análise é mapear estritamente o que já está concluído/em andamento e as arestas técnicas finas que restam refinar (finalização de pendências) para consolidar a entrega, sem adição de novos escopos funcionais.
 
@@ -13,9 +15,9 @@ O objetivo desta análise é mapear estritamente o que já está concluído/em a
 ## 🔍 2. Estado de Implementação Atual (O que já está CONCLUÍDO)
 
 ### 🚀 Fluxo de Handshake WebRTC Real via Firestore
-- **Canal de Sinalização Síncrono**: O componente `TelemedicineRoom.tsx` utiliza o Firestore como intermediário sob a subcoleção `/webrtc/signal` para troca direta das especificações criptografadas de mídia (Offer/Answer).
+- **Canal de Sinalização Síncrono**: O componente `TelemedicineRoom.tsx` utiliza o Firestore como intermediário sob a subcoleção `/webrtc/signal` para troca direta das especificações de mídia (Offer/Answer).
 - **Tratamento de ICE Candidates**: Coleta e pareamento mútuo em tempo real de candidatos de rede de ambos os lados (médico e paciente) através de ouvintes reativos nas subcoleções temporárias `doctorCandidates` e `patientCandidates`.
-- **Limpeza Automática de Conexões Anteriores**: Mecanismo robusto que limpa registros de sinalização e ICE candidates estéreis ou antigos no Firestore no exato momento da conexão de um novo usuário, evitando handshakes falsos ou colisões em chamadas reabertas.
+- **Limpeza Automática de Conexões Anteriores**: Mecanismo que limpa registros de sinalização e ICE candidates estéreis ou antigos no Firestore no exato momento da conexão de um novo usuário, evitando handshakes falsos ou colisões em chamadas reabertas.
 
 ### 🎥 Controles Síncronos e Análise de Espectro
 - **Análise Física de Microfone Síncrona**: O aplicativo utiliza a `Web Audio API` com `AnalyserNode` para desenhar barras dinâmicas responsivas de acordo com a amplitude real de som do microfone local e também do microfone remoto (interlocutor).
@@ -25,6 +27,10 @@ O objetivo desta análise é mapear estritamente o que já está concluído/em a
 ### 🛡 Roteamento, Deep-Linking e Segurança de Acesso
 - **Autorização Estrita de Participantes**: Bloqueio ativo de conexões de qualquer usuário autenticado que não seja o profissional ou o paciente diretamente vinculados à consulta, redirecionando invasores para o fluxo principal.
 - **Remoção de Parâmetros de URL**: Limpeza automática do endereço de busca `?room` do navegador usando `window.history.replaceState` imediatamente após o acionamento interno da videoconferência, evitando carregamentos cíclicos.
+
+### 💼 Gestão e Configuração de Profissionais Liberais
+- **Painel Admin Dedicado (`AdminLiberalConfigView`)**: Interface completa para cadastro, listagem, busca inteligente e exclusão de Categorias e Profissionais Liberais direto pelo painel administrativo, sincronizada em tempo real com o Firestore.
+- **Auto-registro e Busca por Pacientes**: Formulário na aba de Profissionais Liberais onde o próprio paciente/afiliado pode cadastrar serviços autônomos ou de apoio, filtrando-os de forma reativa por categoria de atuação ou por digitação livre (nome, cidade, descrição).
 
 ---
 

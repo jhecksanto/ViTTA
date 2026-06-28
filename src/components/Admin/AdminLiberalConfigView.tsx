@@ -10,14 +10,19 @@ import {
   Phone,
   MapPin,
   Tag,
-  AlertCircle
+  AlertCircle,
+  Edit2,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { db } from "../../firebase";
+import { fetchAddressByCep } from "../../lib/utils";
 import {
   collection,
   onSnapshot,
   addDoc,
   deleteDoc,
+  updateDoc,
   doc,
   query,
   where,
@@ -42,6 +47,12 @@ interface LiberalProfessional {
   description: string;
   imageUrl: string;
   createdAt: any;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  state?: string;
+  active?: boolean;
 }
 
 export const AdminLiberalConfigView = () => {
@@ -64,10 +75,78 @@ export const AdminLiberalConfigView = () => {
   const [newProfName, setNewProfName] = useState("");
   const [newProfCategory, setNewProfCategory] = useState("");
   const [newProfPhone, setNewProfPhone] = useState("");
+  const [newProfCep, setNewProfCep] = useState("");
+  const [newProfStreet, setNewProfStreet] = useState("");
+  const [newProfNumber, setNewProfNumber] = useState("");
+  const [newProfNeighborhood, setNewProfNeighborhood] = useState("");
   const [newProfCity, setNewProfCity] = useState("");
+  const [newProfState, setNewProfState] = useState("");
   const [newProfDesc, setNewProfDesc] = useState("");
   const [newProfImage, setNewProfImage] = useState("");
   const [isSubmittingProf, setIsSubmittingProf] = useState(false);
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
+  const [editingProf, setEditingProf] = useState<LiberalProfessional | null>(null);
+
+  const handleEditClick = (prof: LiberalProfessional) => {
+    setEditingProf(prof);
+    setNewProfName(prof.name);
+    setNewProfCategory(prof.category);
+    setNewProfPhone(prof.phone || "");
+    setNewProfCep(prof.cep || "");
+    setNewProfStreet(prof.street || "");
+    setNewProfNumber(prof.number || "");
+    setNewProfNeighborhood(prof.neighborhood || "");
+    setNewProfCity(prof.city || "");
+    setNewProfState(prof.state || "");
+    setNewProfDesc(prof.description || "");
+    setNewProfImage(prof.imageUrl || "");
+    setShowAddProf(true);
+  };
+
+  const handleCancelProf = () => {
+    setEditingProf(null);
+    setNewProfName("");
+    setNewProfCategory("");
+    setNewProfPhone("");
+    setNewProfCep("");
+    setNewProfStreet("");
+    setNewProfNumber("");
+    setNewProfNeighborhood("");
+    setNewProfCity("");
+    setNewProfState("");
+    setNewProfDesc("");
+    setNewProfImage("");
+    setShowAddProf(false);
+  };
+
+  const handleToggleActive = async (id: string, currentStatus: boolean | undefined) => {
+    try {
+      const newStatus = currentStatus === false ? true : false;
+      await updateDoc(doc(db, "liberal_professionals", id), {
+        active: newStatus
+      });
+      addToast(`Profissional ${newStatus ? "ativado" : "desativado"} com sucesso!`, "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao alterar status do profissional.", "error");
+    }
+  };
+
+  const handleProfCepChange = async (cepVal: string) => {
+    setNewProfCep(cepVal);
+    const cleaned = cepVal.replace(/\D/g, "");
+    if (cleaned.length === 8) {
+      setIsSearchingCep(true);
+      const addr = await fetchAddressByCep(cleaned);
+      setIsSearchingCep(false);
+      if (addr) {
+        setNewProfStreet(addr.street || "");
+        setNewProfNeighborhood(addr.neighborhood || "");
+        setNewProfCity(addr.city || "");
+        setNewProfState(addr.state || "");
+      }
+    }
+  };
 
   // Toggle Forms
   const [showAddCat, setShowAddCat] = useState(false);
@@ -77,8 +156,7 @@ export const AdminLiberalConfigView = () => {
     // 1. Sync Liberal Categories
     const categoriesQuery = query(
       collection(db, "categories"),
-      where("type", "==", "liberal"),
-      orderBy("name", "asc")
+      where("type", "==", "liberal")
     );
     const unsubCats = onSnapshot(
       categoriesQuery,
@@ -87,6 +165,7 @@ export const AdminLiberalConfigView = () => {
           id: doc.id,
           ...doc.data()
         })) as Category[];
+        list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         setCategories(list);
       },
       (error) => {
@@ -163,27 +242,36 @@ export const AdminLiberalConfigView = () => {
     }
     setIsSubmittingProf(true);
     try {
-      await addDoc(collection(db, "liberal_professionals"), {
+      const data = {
         name: newProfName.trim(),
         category: newProfCategory,
         phone: newProfPhone.trim(),
+        cep: newProfCep.trim(),
+        street: newProfStreet.trim(),
+        number: newProfNumber.trim(),
+        neighborhood: newProfNeighborhood.trim(),
         city: newProfCity.trim(),
+        state: newProfState.trim(),
         description: newProfDesc.trim(),
-        imageUrl: newProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60",
-        createdAt: Timestamp.now()
-      });
+        imageUrl: newProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60"
+      };
 
-      addToast("Profissional Liberal inserido com sucesso!", "success");
-      setNewProfName("");
-      setNewProfCategory("");
-      setNewProfPhone("");
-      setNewProfCity("");
-      setNewProfDesc("");
-      setNewProfImage("");
-      setShowAddProf(false);
+      if (editingProf) {
+        await updateDoc(doc(db, "liberal_professionals", editingProf.id), data);
+        addToast("Profissional Liberal atualizado com sucesso!", "success");
+      } else {
+        await addDoc(collection(db, "liberal_professionals"), {
+          ...data,
+          active: true,
+          createdAt: Timestamp.now()
+        });
+        addToast("Profissional Liberal inserido com sucesso!", "success");
+      }
+
+      handleCancelProf();
     } catch (err) {
       console.error(err);
-      addToast("Erro ao adicionar profissional.", "error");
+      addToast(editingProf ? "Erro ao atualizar profissional." : "Erro ao adicionar profissional.", "error");
     } finally {
       setIsSubmittingProf(false);
     }
@@ -330,7 +418,16 @@ export const AdminLiberalConfigView = () => {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-vitta-text-primary">Profissionais Liberais</h3>
             <button
-              onClick={() => setShowAddProf(!showAddProf)}
+              onClick={() => {
+                if (showAddProf && editingProf) {
+                  handleCancelProf();
+                  setShowAddProf(true);
+                } else if (showAddProf) {
+                  handleCancelProf();
+                } else {
+                  setShowAddProf(true);
+                }
+              }}
               className="px-3 py-1.5 bg-vitta-accent text-white hover:bg-vitta-accent/90 rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1 cursor-pointer"
             >
               <UserPlus size={14} /> Adicionar Profissional
@@ -344,7 +441,9 @@ export const AdminLiberalConfigView = () => {
               onSubmit={handleAddProfessional}
               className="p-5 bg-vitta-surface-2 rounded-2xl border border-vitta-border space-y-4 text-xs"
             >
-              <h4 className="text-sm font-bold text-vitta-text-primary text-xs">Novo Profissional Liberal</h4>
+              <h4 className="text-sm font-bold text-vitta-text-primary text-xs">
+                {editingProf ? "Editar Profissional Liberal" : "Novo Profissional Liberal"}
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="font-bold text-vitta-text-secondary">Nome Completo / Serviço</label>
@@ -385,12 +484,70 @@ export const AdminLiberalConfigView = () => {
                   />
                 </div>
                 <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary flex items-center gap-1">
+                    CEP {isSearchingCep && <span className="text-[10px] text-vitta-accent animate-pulse">(Buscando...)</span>}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 29300-000"
+                    value={newProfCep}
+                    onChange={(e) => handleProfCepChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Rua / Logradouro</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Av. Francisco Lacerda de Aguiar"
+                    value={newProfStreet}
+                    onChange={(e) => setNewProfStreet(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Número</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 123"
+                    value={newProfNumber}
+                    onChange={(e) => setNewProfNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Bairro</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Gilberto Machado"
+                    value={newProfNeighborhood}
+                    onChange={(e) => setNewProfNeighborhood(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div className="space-y-1">
                   <label className="font-bold text-vitta-text-secondary">Cidade de Atuação</label>
                   <input
                     type="text"
-                    placeholder="Ex: Cachoeiro de Itapemirim - ES"
+                    placeholder="Ex: Cachoeiro de Itapemirim"
                     value={newProfCity}
                     onChange={(e) => setNewProfCity(e.target.value)}
+                    className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-vitta-text-secondary">Estado (UF)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: ES"
+                    value={newProfState}
+                    onChange={(e) => setNewProfState(e.target.value)}
                     className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl focus:ring-1 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                   />
                 </div>
@@ -421,7 +578,7 @@ export const AdminLiberalConfigView = () => {
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowAddProf(false)}
+                  onClick={handleCancelProf}
                   className="px-4 py-2 border border-vitta-border rounded-xl text-xs font-bold text-vitta-text-secondary hover:bg-vitta-surface transition-colors cursor-pointer"
                 >
                   Cancelar
@@ -431,7 +588,7 @@ export const AdminLiberalConfigView = () => {
                   disabled={isSubmittingProf}
                   className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmittingProf ? "Salvando..." : "Confirmar Profissional"}
+                  {isSubmittingProf ? "Salvando..." : editingProf ? "Salvar Alterações" : "Confirmar Profissional"}
                 </button>
               </div>
             </motion.form>
@@ -452,35 +609,66 @@ export const AdminLiberalConfigView = () => {
             {loading ? (
               <p className="text-xs text-vitta-text-muted text-center py-4">Carregando profissionais...</p>
             ) : filteredProfs.length > 0 ? (
-              filteredProfs.map((prof) => (
-                <div key={prof.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border gap-4">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={prof.imageUrl || "https://picsum.photos/seed/liberal/100/100"}
-                      alt={prof.name}
-                      className="w-10 h-10 rounded-xl object-cover border border-vitta-border"
-                    />
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-xs text-vitta-text-primary">{prof.name}</span>
-                        <span className="text-[10px] font-black uppercase text-vitta-accent bg-vitta-accent/10 px-2 py-0.5 rounded-md">
-                          {prof.category}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 text-[10px] text-vitta-text-secondary mt-1">
-                        <span className="flex items-center gap-1"><Phone size={10} /> {prof.phone || "Sem whatsapp"}</span>
-                        <span className="flex items-center gap-1"><MapPin size={10} /> {prof.city || "Online"}</span>
+              filteredProfs.map((prof) => {
+                const isActive = prof.active !== false;
+                return (
+                  <div key={prof.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border gap-4">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={prof.imageUrl || "https://picsum.photos/seed/liberal/100/100"}
+                        alt={prof.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-vitta-border"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-xs text-vitta-text-primary">{prof.name}</span>
+                          <span className="text-[10px] font-black uppercase text-vitta-accent bg-vitta-accent/10 px-2 py-0.5 rounded-md">
+                            {prof.category}
+                          </span>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${isActive ? "text-vitta-green bg-vitta-green-bg" : "text-gray-400 bg-gray-100"}`}>
+                            {isActive ? "Ativo" : "Inativo"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] text-vitta-text-secondary mt-1 flex-wrap">
+                          <span className="flex items-center gap-1"><Phone size={10} /> {prof.phone || "Sem whatsapp"}</span>
+                          <span className="flex items-center gap-1">
+                            <MapPin size={10} /> 
+                            {prof.street ? `${prof.street}${prof.number ? `, ${prof.number}` : ""}${prof.neighborhood ? ` - ${prof.neighborhood}` : ""}, ` : ""}
+                            {prof.city || "Online"}{prof.state ? ` - ${prof.state}` : ""}{prof.cep ? ` (${prof.cep})` : ""}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        onClick={() => handleToggleActive(prof.id, prof.active)}
+                        title={isActive ? "Desativar" : "Ativar"}
+                        className={`p-2 rounded-xl transition-colors cursor-pointer border ${
+                          isActive
+                            ? "bg-amber-50 text-amber-500 hover:bg-amber-100 border-amber-200"
+                            : "bg-vitta-green-bg text-vitta-green hover:opacity-90 border-vitta-green/20"
+                        }`}
+                      >
+                        {isActive ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(prof)}
+                        title="Editar"
+                        className="p-2 bg-blue-50 text-blue-500 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer border border-blue-200"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProfessional(prof.id, prof.name)}
+                        title="Excluir"
+                        className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors cursor-pointer border border-red-200"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleDeleteProfessional(prof.id, prof.name)}
-                    className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors self-end sm:self-auto cursor-pointer border border-red-200"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))
+                );
+              })
             ) : (
               <p className="text-xs text-vitta-text-muted text-center py-4">Nenhum profissional cadastrado com esses termos.</p>
             )}

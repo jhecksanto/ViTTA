@@ -7783,7 +7783,7 @@ const AdminView = ({ user }: { user: any }) => {
           }`}
         >
           <Briefcase size={18} />
-          Configurações Liberais
+          Profissionais Liberais
         </button>
       </div>
 
@@ -10486,10 +10486,32 @@ const PartnersView = ({
   const [newLiberalProfName, setNewLiberalProfName] = useState("");
   const [newLiberalProfCategory, setNewLiberalProfCategory] = useState("");
   const [newLiberalProfPhone, setNewLiberalProfPhone] = useState("");
+  const [newLiberalProfCep, setNewLiberalProfCep] = useState("");
+  const [newLiberalProfStreet, setNewLiberalProfStreet] = useState("");
+  const [newLiberalProfNumber, setNewLiberalProfNumber] = useState("");
+  const [newLiberalProfNeighborhood, setNewLiberalProfNeighborhood] = useState("");
   const [newLiberalProfCity, setNewLiberalProfCity] = useState("");
+  const [newLiberalProfState, setNewLiberalProfState] = useState("");
   const [newLiberalProfDesc, setNewLiberalProfDesc] = useState("");
   const [newLiberalProfImage, setNewLiberalProfImage] = useState("");
   const [isSubmittingLiberalProf, setIsSubmittingLiberalProf] = useState(false);
+  const [isSearchingLiberalCep, setIsSearchingLiberalCep] = useState(false);
+
+  const handleUserLiberalCepChange = async (cepVal: string) => {
+    setNewLiberalProfCep(cepVal);
+    const cleaned = cepVal.replace(/\D/g, "");
+    if (cleaned.length === 8) {
+      setIsSearchingLiberalCep(true);
+      const addr = await fetchAddressByCep(cleaned);
+      setIsSearchingLiberalCep(false);
+      if (addr) {
+        setNewLiberalProfStreet(addr.street || "");
+        setNewLiberalProfNeighborhood(addr.neighborhood || "");
+        setNewLiberalProfCity(addr.city || "");
+        setNewLiberalProfState(addr.state || "");
+      }
+    }
+  };
 
   const [selectedLiberalCategory, setSelectedLiberalCategory] = useState("Todos");
   
@@ -10639,6 +10661,7 @@ const PartnersView = ({
 
   const filteredLiberalProfessionals = useMemo(() => {
     return liberalProfessionals.filter((prof) => {
+      if (prof.active === false) return false;
       const matchesSearch =
         (prof.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (prof.description || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -10786,7 +10809,12 @@ const PartnersView = ({
         name: newLiberalProfName.trim(),
         category: newLiberalProfCategory,
         phone: newLiberalProfPhone.trim(),
+        cep: newLiberalProfCep.trim(),
+        street: newLiberalProfStreet.trim(),
+        number: newLiberalProfNumber.trim(),
+        neighborhood: newLiberalProfNeighborhood.trim(),
         city: newLiberalProfCity.trim(),
+        state: newLiberalProfState.trim(),
         description: newLiberalProfDesc.trim(),
         imageUrl: newLiberalProfImage.trim() || "https://images.unsplash.com/photo-1521791136364-72861c690450?w=400&auto=format&fit=crop&q=60",
         userId: user?.uid || "",
@@ -10796,7 +10824,12 @@ const PartnersView = ({
       setNewLiberalProfName("");
       setNewLiberalProfCategory("");
       setNewLiberalProfPhone("");
+      setNewLiberalProfCep("");
+      setNewLiberalProfStreet("");
+      setNewLiberalProfNumber("");
+      setNewLiberalProfNeighborhood("");
       setNewLiberalProfCity("");
+      setNewLiberalProfState("");
       setNewLiberalProfDesc("");
       setNewLiberalProfImage("");
       setShowAddLiberalProf(false);
@@ -10968,7 +11001,7 @@ const PartnersView = ({
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-vitta-accent/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl" />
       </section>
 
-      {/* Tabs Menu (Empresas, Profissionais de Saúde, ViTTA Health, Profissionais Liberais, Categorias) */}
+      {/* Tabs Menu (Empresas, Profissionais Liberais, Categorias, Profissionais de Saúde, ViTTA Health) */}
       <div className="border-b border-vitta-border pb-4 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex bg-vitta-surface-2 p-1.5 rounded-2xl border border-vitta-border grow md:grow-0 overflow-x-auto no-scrollbar max-w-full">
           <button
@@ -10987,10 +11020,38 @@ const PartnersView = ({
           
           <button
             onClick={() => {
-              setActiveSubTab("profissionais");
+              setActiveSubTab("profissionais-liberais");
               setSelectedCategory(null);
             }}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-x border-vitta-border/30 cursor-pointer ${
+              activeSubTab === "profissionais-liberais"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            Profissionais Liberais
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab("categorias");
+              setSelectedCategory(null);
+            }}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
+              activeSubTab === "categorias"
+                ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                : "text-vitta-text-secondary hover:text-vitta-text-primary"
+            }`}
+          >
+            Categorias
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab("profissionais");
+              setSelectedCategory(null);
+            }}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
               activeSubTab === "profissionais"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
@@ -11004,41 +11065,13 @@ const PartnersView = ({
               setActiveSubTab("vitta-health");
               setSelectedCategory(null);
             }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap cursor-pointer ${
               activeSubTab === "vitta-health"
                 ? "bg-vitta-surface text-vitta-accent shadow-sm"
                 : "text-vitta-text-secondary hover:text-vitta-text-primary"
             }`}
           >
             ViTTA Health
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveSubTab("profissionais-liberais");
-              setSelectedCategory(null);
-            }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap border-r border-vitta-border/30 cursor-pointer ${
-              activeSubTab === "profissionais-liberais"
-                ? "bg-vitta-surface text-vitta-accent shadow-sm"
-                : "text-vitta-text-secondary hover:text-vitta-text-primary"
-            }`}
-          >
-            Profissionais Liberais
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveSubTab("categorias");
-              setSelectedCategory(null);
-            }}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all whitespace-nowrap cursor-pointer ${
-              activeSubTab === "categorias"
-                ? "bg-vitta-surface text-vitta-accent shadow-sm"
-                : "text-vitta-text-secondary hover:text-vitta-text-primary"
-            }`}
-          >
-            Categorias
           </button>
         </div>
 
@@ -11511,12 +11544,70 @@ const PartnersView = ({
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-vitta-text-secondary">Cidade / Região de Atuação</label>
+                    <label className="text-xs font-bold text-vitta-text-secondary flex items-center gap-1">
+                      CEP {isSearchingLiberalCep && <span className="text-[10px] text-vitta-accent animate-pulse">(Buscando...)</span>}
+                    </label>
+                    <input
+                      type="text"
+                      value={newLiberalProfCep}
+                      onChange={(e) => handleUserLiberalCepChange(e.target.value)}
+                      placeholder="Ex: 29300-000"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Rua / Logradouro</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfStreet}
+                      onChange={(e) => setNewLiberalProfStreet(e.target.value)}
+                      placeholder="Ex: Av. Francisco Lacerda de Aguiar"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Número</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfNumber}
+                      onChange={(e) => setNewLiberalProfNumber(e.target.value)}
+                      placeholder="Ex: 123"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Bairro</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfNeighborhood}
+                      onChange={(e) => setNewLiberalProfNeighborhood(e.target.value)}
+                      placeholder="Ex: Gilberto Machado"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Cidade de Atuação</label>
                     <input
                       type="text"
                       value={newLiberalProfCity}
                       onChange={(e) => setNewLiberalProfCity(e.target.value)}
-                      placeholder="Ex: Cachoeiro de Itapemirim - ES"
+                      placeholder="Ex: Cachoeiro de Itapemirim"
+                      className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary">Estado (UF)</label>
+                    <input
+                      type="text"
+                      value={newLiberalProfState}
+                      onChange={(e) => setNewLiberalProfState(e.target.value)}
+                      placeholder="Ex: ES"
                       className="w-full px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     />
                   </div>
@@ -11612,9 +11703,13 @@ const PartnersView = ({
                         <h3 className="font-bold text-base text-vitta-text-primary mt-1 truncate">
                           {prof.name}
                         </h3>
-                        <div className="flex items-center gap-1 text-vitta-text-secondary mt-1 text-xs">
-                          <MapPin size={12} />
-                          <span>{prof.city || "Região não informada"}</span>
+                        <div className="flex items-center gap-1 text-vitta-text-secondary mt-1 text-xs flex-wrap">
+                          <MapPin size={12} className="shrink-0" />
+                          <span>
+                            {prof.street ? `${prof.street}${prof.number ? `, ${prof.number}` : ""}${prof.neighborhood ? ` - ${prof.neighborhood}` : ""}, ` : ""}
+                            {prof.city || "Região não informada"}{prof.state ? ` - ${prof.state}` : ""}
+                            {prof.cep ? ` (${prof.cep})` : ""}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -15208,7 +15303,11 @@ const PartnershipsView = ({
   };
 
   const [activeSubTab, setActiveSubTab] = useState<
-    "establishments" | "categories" | "offers" | "vitta-health"
+    | "establishments"
+    | "profissionais-liberais"
+    | "categories"
+    | "offers"
+    | "vitta-health"
   >("establishments");
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -15715,6 +15814,17 @@ const PartnershipsView = ({
           Empresas
         </button>
         <button
+          onClick={() => setActiveSubTab("profissionais-liberais")}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+            activeSubTab === "profissionais-liberais"
+              ? "border-vitta-green text-vitta-green"
+              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+          }`}
+        >
+          <Briefcase size={18} />
+          Profissionais Liberais
+        </button>
+        <button
           onClick={() => setActiveSubTab("categories")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
             activeSubTab === "categories"
@@ -15861,6 +15971,12 @@ const PartnershipsView = ({
             ))}
           </div>
         </>
+      )}
+
+      {activeSubTab === "profissionais-liberais" && (
+        <div className="space-y-6">
+          <AdminLiberalConfigView />
+        </div>
       )}
 
       {activeSubTab === "categories" && (

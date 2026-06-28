@@ -1,9 +1,9 @@
 # Especificação Técnica de Telemedicina - Pendências de Finalização (Spec.md)
-**Data e Hora de Geração:** 16 de junho de 2026, 11:03:00 (Horário de Brasília)
+**Data e Hora de Geração:** 27 de junho de 2026, 21:49:18 (Horário de Brasília)
 
 ---
 
-Este documento atua como especificação de referência de engenharia de software para mapear de forma rigorosa os comportamentos, fluxos lógicos e ajustes de componentes que restam refinar no sistema de videoconferência de telemedicina do **Vitta**, baseando-se estritamente nas arestas descritas no relatório de análise diagnóstica.
+Este documento atua como especificação de referência de engenharia de software para mapear de forma rigorosa os comportamentos, fluxos lógicos e ajustes de componentes que restam refinar no sistema de videoconferência de telemedicina do **ViTTA**, baseando-se estritamente nas arestas descritas no relatório de análise diagnóstica.
 
 ---
 
@@ -18,7 +18,13 @@ Este documento atua como especificação de referência de engenharia de softwar
 ### ⚙️ B2: Garantia Antimemory-Leak de Ouvintes de Interação Global (Autoplay Bypass Listener)
 - **Componente Alvo**: `TelemedicineRoom.tsx`
 - **Descrição de Comportamento**: O fluxo de contorno para políticas rígidas de autoplay do navegador se dá através de um listener global acoplado à janela (`window.addEventListener('click', unlockAutoplay)`).
-  1. A especificação técnica requer a revisão e reforço para assegurar que **todas** as referências dessas escutas sejam totalmente liberadas tanto no retorno da função do hook de efeito de montagem quanto em quaisquer alterações estruturais das dependências das streams de mídia de vídeo ativo, prevenindo acúmulo de processamento excedente.
+  1. A especificação técnica requer a revisão e reforço para assegurar que **todas** as referências dessas escutas sejam totalmente liberadas tanto no retorno da função do hook de efeito de montagem quanto em quaisquer alterações estruturais das dependências das streams de mídia de vídeo ativo, prevenindo acúmulo de ouvintes órfãos.
+
+### ⚙️ B3: Reset do AnalyserNode e Microfones Remotos
+- **Componente Alvo**: `TelemedicineRoom.tsx`
+- **Descrição de Comportamento**: Ao fechar a sala ou recarregar a tela:
+  1. Parar todos os loops de animação (`requestAnimationFrame`) que processam os dados dos analisadores de áudio.
+  2. Fechar ou suspender o contexto de áudio (`AudioContext.close()`) utilizado para a decodificação e desenho das barras de espectro, eliminando vazamento de canais de áudio abertos.
 
 ---
 
@@ -28,5 +34,5 @@ Este documento atua como especificação de referência de engenharia de softwar
 - **Componente Alvo**: `TelemedicineRoom.tsx` (Footer de Controles e Grid Visual)
 - **Descrição**: Em smartphones com largura de tela menor ou igual a 360px (por exemplo, iPhone SE de primeira geração e displays compactos visualizados via emulador de viewport):
   1. O distanciamento interno da barra de controle flutuante inferior (`footer`), que atualmente divide espaço em layouts amplos, deve se adaptar reduzindo dinamicamente as lacunas horizontais (`gap`) e margens laterais de preenchimento (`gap-2 sm:gap-6 px-2 sm:px-10`).
-  2. Reduzir as dimensões dos botões para manter a largura sem transbordar horizontalmente das dimensões da janela visual, assegurando que o botão de mudo e câmera mantenham altura/largura confortáveis de no máximo `w-10 h-10` para preservar a área de tátil (mínimo de 44px conforme diretrizes de usabilidade móvel) sem comprometer o layout geral.
+  2. Reduzir as dimensões dos botões para manter a largura sem transbordar horizontalmente das dimensões da janela visual, assegurando que o botão de mudo e câmera mantenham altura/largura confortáveis de no máximo `w-10 h-10` para preservar a área tátil (mínimo de 44px conforme diretrizes de usabilidade móvel) sem comprometer o layout geral.
   3. No painel lateral do chat Drawer, o título e as abas de seleção do workspace clínico profissional (receitas, prontuário, atestados) devem compactar seus tamanhos de fonte de forma a não forçar quebras ou empilhamentos verticais anômalos que cubram elementos de digitação em telas de altura e largura limitadas.
