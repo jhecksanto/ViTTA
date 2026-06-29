@@ -63,7 +63,7 @@ interface LiberalProfessional {
   availableDays?: string;
 }
 
-export const AdminLiberalConfigView = () => {
+export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
   const { addToast } = useToast();
 
   // Lists state
@@ -371,12 +371,14 @@ export const AdminLiberalConfigView = () => {
         <div className="lg:col-span-1 bg-vitta-surface p-6 rounded-3xl border border-vitta-border space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-vitta-text-primary">Categorias</h3>
-            <button
-              onClick={() => setShowAddCat(!showAddCat)}
-              className="p-1.5 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent/20 rounded-lg transition-colors cursor-pointer"
-            >
-              <Plus size={16} />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setShowAddCat(!showAddCat)}
+                className="p-1.5 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent/20 rounded-lg transition-colors cursor-pointer"
+              >
+                <Plus size={16} />
+              </button>
+            )}
           </div>
 
           {showAddCat && (
@@ -429,12 +431,14 @@ export const AdminLiberalConfigView = () => {
               filteredCats.map((cat) => (
                 <div key={cat.id} className="flex justify-between items-center p-3 bg-vitta-surface-2 hover:bg-vitta-surface rounded-xl border border-vitta-border/60 transition-colors">
                   <span className="text-xs font-bold text-vitta-text-primary">{cat.name}</span>
-                  <button
-                    onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                    className="p-1 text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                      className="p-1 text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               ))
             ) : (
@@ -447,21 +451,23 @@ export const AdminLiberalConfigView = () => {
         <div className="lg:col-span-2 bg-vitta-surface p-6 rounded-3xl border border-vitta-border space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-vitta-text-primary">Profissionais Liberais</h3>
-            <button
-              onClick={() => {
-                if (showAddProf && editingProf) {
-                  handleCancelProf();
-                  setShowAddProf(true);
-                } else if (showAddProf) {
-                  handleCancelProf();
-                } else {
-                  setShowAddProf(true);
-                }
-              }}
-              className="px-3 py-1.5 bg-vitta-accent text-white hover:bg-vitta-accent/90 rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1 cursor-pointer"
-            >
-              <UserPlus size={14} /> Adicionar Profissional
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  if (showAddProf && editingProf) {
+                    handleCancelProf();
+                    setShowAddProf(true);
+                  } else if (showAddProf) {
+                    handleCancelProf();
+                  } else {
+                    setShowAddProf(true);
+                  }
+                }}
+                className="px-3 py-1.5 bg-vitta-accent text-white hover:bg-vitta-accent/90 rounded-xl text-xs font-bold shadow-md shadow-vitta-accent/15 flex items-center gap-1 cursor-pointer"
+              >
+                <UserPlus size={14} /> Adicionar Profissional
+              </button>
+            )}
           </div>
 
           {showAddProf && (
@@ -729,31 +735,35 @@ export const AdminLiberalConfigView = () => {
                       >
                         <Info size={14} />
                       </button>
-                      <button
-                        onClick={() => handleToggleActive(prof.id, prof.active)}
-                        title={isActive ? "Desativar" : "Ativar"}
-                        className={`p-2 rounded-xl transition-colors cursor-pointer border ${
-                          isActive
-                            ? "bg-amber-50 text-amber-500 hover:bg-amber-100 border-amber-200"
-                            : "bg-vitta-green-bg text-vitta-green hover:opacity-90 border-vitta-green/20"
-                        }`}
-                      >
-                        {isActive ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                      <button
-                        onClick={() => handleEditClick(prof)}
-                        title="Editar"
-                        className="p-2 bg-blue-50 text-blue-500 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer border border-blue-200"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProfessional(prof.id, prof.name)}
-                        title="Excluir"
-                        className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors cursor-pointer border border-red-200"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => handleToggleActive(prof.id, prof.active)}
+                            title={isActive ? "Desativar" : "Ativar"}
+                            className={`p-2 rounded-xl transition-colors cursor-pointer border ${
+                              isActive
+                                ? "bg-amber-50 text-amber-500 hover:bg-amber-100 border-amber-200"
+                                : "bg-vitta-green-bg text-vitta-green hover:opacity-90 border-vitta-green/20"
+                            }`}
+                          >
+                            {isActive ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button
+                            onClick={() => handleEditClick(prof)}
+                            title="Editar"
+                            className="p-2 bg-blue-50 text-blue-500 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer border border-blue-200"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProfessional(prof.id, prof.name)}
+                            title="Excluir"
+                            className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors cursor-pointer border border-red-200"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

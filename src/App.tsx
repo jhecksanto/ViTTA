@@ -1919,6 +1919,7 @@ const PatientDashboardView = ({
   const [isMetricsModalOpen, setIsMetricsModalOpen] = useState(false);
   const [isMedicationModalOpen, setIsMedicationModalOpen] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [totalSaved, setTotalSaved] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -2033,6 +2034,22 @@ const PatientDashboardView = ({
       setGoals(data);
     });
 
+    // 7. Fetch Economies for total savings
+    let unsubscribeSavings = () => {};
+    if (user?.uid) {
+      unsubscribeSavings = onSnapshot(
+        query(collection(db, "economies"), where("userId", "==", user.uid)),
+        (snapshot) => {
+          const savings = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          const total = savings.reduce((acc: number, curr: any) => acc + (parseFloat(curr.savedAmount) || 0), 0);
+          setTotalSaved(total);
+        },
+        (error) => {
+          console.error("Error fetching economies for dashboard", error);
+        }
+      );
+    }
+
     return () => {
       unsubscribeMetrics();
       unsubscribeAppointments();
@@ -2040,6 +2057,7 @@ const PatientDashboardView = ({
       unsubscribeWallet();
       unsubscribeMeds();
       unsubscribeGoals();
+      unsubscribeSavings();
     };
   }, [user]);
 
@@ -2225,6 +2243,45 @@ const PatientDashboardView = ({
           </div>
         </button>
       </div>
+
+      {/* Economia Conquistada no Sistema ViTTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative overflow-hidden bg-gradient-to-br from-emerald-500/10 via-vitta-accent/5 to-vitta-purple/10 border border-vitta-green/20 rounded-[2rem] p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm"
+      >
+        <div className="flex items-start md:items-center gap-5">
+          <div className="w-14 h-14 bg-vitta-green text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-vitta-green/20">
+            <TrendingUp size={28} />
+          </div>
+          <div>
+            <span className="text-[10px] font-black tracking-widest text-vitta-green uppercase">Economia Conquistada</span>
+            <h2 className="text-3xl font-black text-vitta-text-primary mt-1 font-mono">
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalSaved)}
+            </h2>
+            <p className="text-xs text-vitta-text-secondary mt-1">
+              Sua economia total acumulada utilizando cupons, convênios e agendamentos no ecossistema ViTTA.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2.5 w-full md:w-auto shrink-0">
+          <button
+            onClick={() => setActiveTab("plans")}
+            className="flex-1 md:flex-none px-5 py-3 bg-vitta-green text-white text-xs font-black rounded-xl hover:bg-vitta-green/90 transition-all shadow-md shadow-vitta-green/15 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <ShieldCheck size={16} /> Ver Rede Credenciada
+          </button>
+          <button
+            onClick={() => setActiveTab("offers")}
+            className="flex-1 md:flex-none px-5 py-3 bg-white border border-vitta-border text-vitta-text-primary text-xs font-black rounded-xl hover:bg-vitta-surface transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Tag size={16} /> Ver Ofertas & Parcerias
+          </button>
+        </div>
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-vitta-green/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-24 h-24 bg-vitta-accent/5 rounded-full blur-xl pointer-events-none" />
+      </motion.div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6">
         {stats.map((stat, idx) => (
@@ -2805,6 +2862,13 @@ const HomeView = ({
               className="px-5 py-3 bg-white text-vitta-accent font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-102 transition-all duration-200 active:scale-95"
             >
               Agendar Nova Consulta
+            </button>
+            <button
+              id="home-cta-plans"
+              onClick={() => setActiveTab("plans")}
+              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+            >
+              Convênios
             </button>
             <button
               id="home-cta-radio"
@@ -15142,7 +15206,7 @@ const ExamsManagementView = () => {
   );
 };
 
-const OffersManagementView = () => {
+const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
   const { addToast } = useToast();
   const [offers, setOffers] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -15335,25 +15399,27 @@ const OffersManagementView = () => {
         <h2 className="text-2xl font-bold text-vitta-text-primary">
           Gestão de Ofertas
         </h2>
-        <button
-          onClick={() => {
-            setIsCreating(!isCreating);
-            setEditingItem(null);
-            setNewItem({
-              title: "",
-              discount: "",
-              partner: "",
-              imageUrl: "",
-              description: "",
-              expiryDate: "",
-              isBanner: false,
-            });
-          }}
-          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-        >
-          {isCreating ? <X size={20} /> : <Plus size={20} />}
-          {isCreating ? "Fechar" : "Nova Oferta"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => {
+              setIsCreating(!isCreating);
+              setEditingItem(null);
+              setNewItem({
+                title: "",
+                discount: "",
+                partner: "",
+                imageUrl: "",
+                description: "",
+                expiryDate: "",
+                isBanner: false,
+              });
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+          >
+            {isCreating ? <X size={20} /> : <Plus size={20} />}
+            {isCreating ? "Fechar" : "Nova Oferta"}
+          </button>
+        )}
       </div>
 
       {isCreating && (
@@ -15534,9 +15600,11 @@ const OffersManagementView = () => {
                 <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
                   Status/Validade
                 </th>
-                <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
-                  Ações
-                </th>
+                {isAdmin && (
+                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
+                    Ações
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-vitta-border">
@@ -15589,28 +15657,30 @@ const OffersManagementView = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-8 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleEdit(offer)}
-                          className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(offer.id)}
-                          className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-8 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleEdit(offer)}
+                            className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(offer.id)}
+                            className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={isAdmin ? 5 : 4}
                     className="px-8 py-12 text-center text-vitta-text-muted text-sm"
                   >
                     Nenhuma oferta cadastrada.
@@ -15637,10 +15707,20 @@ const OffersManagementView = () => {
 const PartnershipsView = ({
   setSubTab,
   setActiveTab,
+  user,
+  userData,
 }: {
   setSubTab?: (tab: any) => void;
   setActiveTab?: (tab: string) => void;
+  user?: any;
+  userData?: any;
 }) => {
+  const isAdmin =
+    userData?.role === "admin" ||
+    user?.email === "jhecksanto@gmail.com" ||
+    user?.email === "admin@vitta.club" ||
+    user?.email === "suporte@vitta.club";
+
   const { addToast } = useToast();
 
   const handleLogoUpload = (file: File) => {
@@ -16256,15 +16336,17 @@ const PartnershipsView = ({
 
       {activeSubTab === "establishments" && (
         <>
-          <div className="flex justify-between items-center">
-            <button
-              onClick={() => setIsCreating("partner")}
-              className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-            >
-              <Plus size={20} />
-              Novo Estabelecimento
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => setIsCreating("partner")}
+                className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+              >
+                <Plus size={20} />
+                Novo Estabelecimento
+              </button>
+            </div>
+          )}
 
           <div className="bg-vitta-surface p-4 rounded-xl border border-vitta-border shadow-sm flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
@@ -16344,23 +16426,37 @@ const PartnershipsView = ({
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <button
-                      onClick={() =>
-                        setEditingItem({ type: "partner", ...partner })
-                      }
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors"
-                    >
-                      <Edit size={16} />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDeletePartner(partner.id)}
-                      className="p-2.5 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
+                  {isAdmin ? (
+                    <div className="flex gap-2 pt-4">
+                      <button
+                        onClick={() =>
+                          setEditingItem({ type: "partner", ...partner })
+                        }
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors"
+                      >
+                        <Edit size={16} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeletePartner(partner.id)}
+                        className="p-2.5 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ) : partner.phone ? (
+                    <div className="pt-4">
+                      <a
+                        href={`https://wa.me/${partner.phone.replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20as%20ofertas%20do%20convênio%20ViTTA.`}
+                        target="_blank"
+                        referrerPolicy="no-referrer"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all cursor-pointer"
+                      >
+                        <Phone size={14} />
+                        WhatsApp
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
               </motion.div>
             ))}
@@ -16370,27 +16466,29 @@ const PartnershipsView = ({
 
       {activeSubTab === "profissionais-liberais" && (
         <div className="space-y-6">
-          <AdminLiberalConfigView />
+          <AdminLiberalConfigView isAdmin={isAdmin} />
         </div>
       )}
 
       {activeSubTab === "categories" && (
         <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <button
-              onClick={() =>
-                setIsCreating(isCreating === "category" ? null : "category")
-              }
-              className={`flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20`}
-            >
-              {isCreating === "category" ? (
-                <Plus size={20} className="rotate-45" />
-              ) : (
-                <Plus size={20} />
-              )}
-              {isCreating === "category" ? "Cancelar" : "Nova Categoria"}
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() =>
+                  setIsCreating(isCreating === "category" ? null : "category")
+                }
+                className={`flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20`}
+              >
+                {isCreating === "category" ? (
+                  <Plus size={20} className="rotate-45" />
+                ) : (
+                  <Plus size={20} />
+                )}
+                {isCreating === "category" ? "Cancelar" : "Nova Categoria"}
+              </button>
+            </div>
+          )}
 
           {isCreating === "category" && (
             <motion.div
@@ -16767,9 +16865,11 @@ const PartnershipsView = ({
                   <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">
                     Empresas
                   </th>
-                  <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
-                    Ações
-                  </th>
+                  {isAdmin && (
+                    <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
+                      Ações
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-vitta-border">
@@ -16809,24 +16909,26 @@ const PartnershipsView = ({
                         {getPartnersCountByCategory(category.name)}
                       </span>
                     </td>
-                    <td className="px-8 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() =>
-                            setEditingItem({ type: "category", ...category })
-                          }
-                          className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCategory(category.id)}
-                          className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td className="px-8 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() =>
+                              setEditingItem({ type: "category", ...category })
+                            }
+                            className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                          >
+                            <Edit size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category.id)}
+                            className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -16835,7 +16937,7 @@ const PartnershipsView = ({
         </div>
       )}
 
-      {activeSubTab === "offers" && <OffersManagementView />}
+      {activeSubTab === "offers" && <OffersManagementView isAdmin={isAdmin} />}
 
       {activeSubTab === "vitta-health" && (
         <div className="space-y-6">
@@ -23200,10 +23302,14 @@ export default function App() {
     };
 
     if (isAuthReady && user) {
-      console.log(
-        "DEBUG: App pronto e usuário logado, chamando seedPartners...",
-      );
-      seedPartners();
+      const userIsAdmin = userData?.role === "admin";
+
+      if (userIsAdmin) {
+        console.log(
+          "DEBUG: App pronto e usuário logado como admin com role ativa, chamando seedPartners...",
+        );
+        seedPartners();
+      }
 
       // Seed health metrics history if empty
       const seedMetrics = async () => {
@@ -23233,7 +23339,7 @@ export default function App() {
       };
       seedMetrics();
     }
-  }, [isAuthReady, user]);
+  }, [isAuthReady, user, userData]);
 
   useEffect(() => {
     let unsubscribeUserData: (() => void) | null = null;
@@ -23250,8 +23356,19 @@ export default function App() {
               const data = snapshot.data();
               setUserData(data);
 
-              // Check if user's email belongs to a registered professional
-              if (data.email) {
+              const isAdminEmail =
+                data.email &&
+                (data.email === "jhecksanto@gmail.com" ||
+                  data.email === "admin@vitta.club" ||
+                  data.email === "suporte@vitta.club");
+
+              if (isAdminEmail && data.role !== "admin") {
+                console.log("DEBUG: Elevating user to admin role in database...");
+                await updateDoc(doc(db, "users", firebaseUser.uid), {
+                  role: "admin",
+                });
+              } else if (data.email && !isAdminEmail) {
+                // Check if user's email belongs to a registered professional
                 try {
                   const qProf = query(
                     collection(db, "professionals"),
@@ -23281,18 +23398,23 @@ export default function App() {
               }
             } else {
               // Create if missing
+              const isUserAdmin =
+                firebaseUser.email === "jhecksanto@gmail.com" ||
+                firebaseUser.email === "admin@vitta.club" ||
+                firebaseUser.email === "suporte@vitta.club";
+
               const newData: any = {
                 uid: firebaseUser.uid,
                 name: firebaseUser.displayName || "Usuário",
                 email: firebaseUser.email,
-                role: "user",
+                role: isUserAdmin ? "admin" : "user",
                 status: "Ativo",
-                plan: "Free",
+                plan: isUserAdmin ? "Infinity" : "Free",
                 createdAt: Timestamp.now(),
               };
 
               // Also check on initial creation if this user is a professional or liberal professional by email
-              if (firebaseUser.email) {
+              if (firebaseUser.email && !isUserAdmin) {
                 try {
                   const qProf = query(
                     collection(db, "professionals"),
@@ -23498,10 +23620,12 @@ export default function App() {
           />
         );
       case "plans":
-        return isAdmin ? (
-          <PartnershipsView setActiveTab={setActiveTab} />
-        ) : (
-          <PartnersView setActiveTab={setActiveTab} user={user} userData={userData} isAdmin={isAdmin} />
+        return (
+          <PartnershipsView
+            setActiveTab={setActiveTab}
+            user={user}
+            userData={userData}
+          />
         );
       case "wallets":
         return <WalletsView user={user} userData={userData} />;
