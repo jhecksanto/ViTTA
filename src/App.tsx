@@ -7415,7 +7415,7 @@ const ContentManagerView = () => {
   );
 };
 
-const AdminView = ({ user }: { user: any }) => {
+const AdminView = ({ user, userData }: { user: any; userData?: any }) => {
   const { addToast } = useToast();
   const [subTab, setSubTab] = useState<
     | "overview"
@@ -8172,7 +8172,7 @@ const AdminView = ({ user }: { user: any }) => {
           )}
           {subTab === "deletion-requests" && <AdminDeletionRequestsView />}
           {subTab === "partnerships" && (
-            <PartnershipsView setSubTab={setSubTab} />
+            <PartnershipsView setSubTab={setSubTab} user={user} userData={userData} />
           )}
           {subTab === "professionals" && <ProfessionalsManagementView />}
           {subTab === "exams" && <ExamsManagementView />}
@@ -15206,13 +15206,38 @@ const ExamsManagementView = () => {
   );
 };
 
-const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
+const OffersManagementView = ({
+  isAdmin = false,
+  onNavigateToPartner,
+  onNavigateToProfessional,
+}: {
+  isAdmin?: boolean;
+  onNavigateToPartner?: (partnerName: string) => void;
+  onNavigateToProfessional?: (profName: string) => void;
+}) => {
   const { addToast } = useToast();
   const [offers, setOffers] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
+  const [generatedCoupon, setGeneratedCoupon] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  const handleGenerateCoupon = (offerId: string) => {
+    const code = `VITTA-OFFER-${Math.random().toString(36).substring(3, 9).toUpperCase()}`;
+    setGeneratedCoupon(code);
+    setCopied(false);
+  };
+
+  const handleCopyCoupon = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    addToast("Código do cupom copiado para a área de transferência!", "success");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const [newItem, setNewItem] = useState({
     title: "",
     discount: "",
@@ -15612,7 +15637,12 @@ const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
                 offers.map((offer) => (
                   <tr
                     key={offer.id}
-                    className="hover:bg-vitta-surface-2 transition-colors"
+                    onClick={() => {
+                      setSelectedOffer(offer);
+                      setGeneratedCoupon("");
+                    }}
+                    className="hover:bg-vitta-surface-2 transition-colors cursor-pointer group"
+                    title="Clique para ver os detalhes completos desta oferta"
                   >
                     <td className="px-8 py-4">
                       <div className="flex items-center gap-3">
@@ -15624,7 +15654,7 @@ const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
                           />
                         )}
                         <div className="flex flex-col">
-                          <span className="font-bold text-sm text-vitta-text-primary">
+                          <span className="font-bold text-sm text-vitta-text-primary group-hover:text-vitta-accent transition-colors">
                             {offer.title}
                           </span>
                           {offer.isBanner && (
@@ -15636,12 +15666,12 @@ const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
                       </div>
                     </td>
                     <td className="px-8 py-4">
-                      <span className="text-sm text-vitta-text-secondary">
+                      <span className="text-sm text-vitta-text-secondary font-medium">
                         {offer.partner}
                       </span>
                     </td>
                     <td className="px-8 py-4">
-                      <span className="px-2 py-1 bg-vitta-danger/10 text-vitta-danger text-xs font-bold rounded-lg">
+                      <span className="px-2 py-1 bg-vitta-danger/10 text-vitta-danger text-xs font-bold rounded-lg border border-vitta-danger/10">
                         {offer.discount}
                       </span>
                     </td>
@@ -15658,7 +15688,7 @@ const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
                       )}
                     </td>
                     {isAdmin && (
-                      <td className="px-8 py-4 text-right">
+                      <td className="px-8 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => handleEdit(offer)}
@@ -15692,6 +15722,263 @@ const OffersManagementView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
         </div>
       </div>
 
+      {/* Offer Details Modal */}
+      <AnimatePresence>
+        {selectedOffer && (() => {
+          // Find matching partner or professional
+          const matchedPartner = partners.find(
+            (p) => p.name?.toLowerCase().trim() === selectedOffer.partner?.toLowerCase().trim()
+          );
+          const matchedProf = professionals.find(
+            (p) => p.name?.toLowerCase().trim() === selectedOffer.partner?.toLowerCase().trim()
+          );
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-vitta-text-primary/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-vitta-surface w-full max-w-lg rounded-2xl shadow-2xl border border-vitta-border overflow-hidden max-h-[92vh] flex flex-col"
+              >
+                {/* Header Image or Fallback */}
+                <div className="relative h-48 bg-gradient-to-br from-vitta-accent/10 to-vitta-green-bg shrink-0">
+                  <img
+                    src={
+                      selectedOffer.imageUrl ||
+                      matchedPartner?.imageUrl ||
+                      matchedProf?.imageUrl ||
+                      "https://images.unsplash.com/photo-1521791136364-72861c690450?w=600&auto=format&fit=crop&q=80"
+                    }
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                  
+                  {/* Close button */}
+                  <button
+                    onClick={() => {
+                      setSelectedOffer(null);
+                      setGeneratedCoupon("");
+                    }}
+                    className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-sm transition-all cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+
+                  <div className="absolute bottom-4 left-6 right-6">
+                    <span className="inline-block px-2.5 py-1 bg-vitta-accent text-white text-[10px] font-black uppercase tracking-wider rounded-lg mb-2 shadow-lg shadow-vitta-accent/20">
+                      Cupom de Convênio
+                    </span>
+                    <h3 className="text-xl font-bold text-white drop-shadow-md">
+                      {selectedOffer.title}
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Content body */}
+                <div className="p-6 md:p-8 space-y-6 overflow-y-auto">
+                  {/* Partner and Discount info */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-vitta-border">
+                    <div>
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
+                        Oferecido por
+                      </p>
+                      <h4 className="text-base font-bold text-vitta-text-primary mt-0.5">
+                        {selectedOffer.partner}
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1.5 bg-vitta-danger/10 text-vitta-danger font-black rounded-xl text-sm border border-vitta-danger/20 shadow-sm shadow-vitta-danger/5">
+                        {selectedOffer.discount}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                      Descrição / Regras
+                    </h5>
+                    <p className="text-sm text-vitta-text-secondary leading-relaxed bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                      {selectedOffer.description ||
+                        `Aproveite este benefício exclusivo oferecido por ${selectedOffer.partner} em parceria com o ecossistema ViTTA Club. Apresente o código gerado no momento do atendimento para garantir seu desconto.`}
+                    </p>
+                  </div>
+
+                  {/* Expiration date */}
+                  <div className="flex items-center gap-2 text-sm text-vitta-text-secondary">
+                    <Calendar size={16} className="text-vitta-text-muted" />
+                    <span className="font-medium">
+                      Validade:{" "}
+                      <span className="font-bold text-vitta-text-primary">
+                        {selectedOffer.expiryDate
+                          ? new Date(selectedOffer.expiryDate).toLocaleDateString("pt-BR")
+                          : "Contínua (Sem expiração definida)"}
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Coupon generation section */}
+                  <div className="bg-vitta-green-bg/30 border border-vitta-green/20 p-5 rounded-2xl text-center space-y-4">
+                    {!generatedCoupon ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-vitta-green font-bold">
+                          Pronto para economizar?
+                        </p>
+                        <button
+                          onClick={() => handleGenerateCoupon(selectedOffer.id)}
+                          className="w-full py-3 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <Ticket size={16} />
+                          Gerar Cupom de Desconto
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-vitta-green font-bold">
+                          Seu cupom foi gerado com sucesso!
+                        </p>
+                        <div className="flex items-center justify-between gap-2 p-3 bg-white border border-vitta-green/20 rounded-xl max-w-xs mx-auto">
+                          <span className="font-mono text-base font-black text-vitta-text-primary tracking-wider pl-2 select-all">
+                            {generatedCoupon}
+                          </span>
+                          <button
+                            onClick={() => handleCopyCoupon(generatedCoupon)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              copied
+                                ? "bg-vitta-green text-white"
+                                : "bg-vitta-green-bg text-vitta-green hover:bg-vitta-green hover:text-white"
+                            }`}
+                          >
+                            {copied ? (
+                              <>
+                                <Check size={14} /> Copiado!
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={14} /> Copiar
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-vitta-text-muted">
+                          Apresente o código no estabelecimento ou informe no contato.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Matched Partner Contact info */}
+                  {(matchedPartner || matchedProf) && (
+                    <div className="pt-4 border-t border-vitta-border space-y-4">
+                      <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                        Informações do Parceiro
+                      </h5>
+                      <div className="space-y-3 text-sm">
+                        {matchedPartner && (
+                          <>
+                            {matchedPartner.address && (
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(matchedPartner.address)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-start gap-2.5 text-vitta-text-secondary hover:text-vitta-accent transition-colors"
+                              >
+                                <MapPin size={16} className="text-vitta-text-muted mt-0.5" />
+                                <span>{matchedPartner.address}</span>
+                              </a>
+                            )}
+                            {matchedPartner.phone && (
+                              <a
+                                href={`https://wa.me/${matchedPartner.phone.replace(/\D/g, "")}?text=Olá!%20Encontrei%20sua%20oferta%20"${encodeURIComponent(selectedOffer.title)}"%20no%20app%20da%20ViTTA.`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 text-vitta-text-secondary hover:text-vitta-green transition-colors"
+                              >
+                                <Phone size={16} className="text-vitta-text-muted" />
+                                <span>{matchedPartner.phone} (WhatsApp)</span>
+                              </a>
+                            )}
+                          </>
+                        )}
+                        {matchedProf && (
+                          <>
+                            <div className="flex items-center gap-2 text-vitta-text-secondary">
+                              <Stethoscope size={16} className="text-vitta-text-muted" />
+                              <span>{matchedProf.specialty}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-vitta-text-muted">Avaliação:</span>
+                              <div className="flex items-center gap-1 text-vitta-amber text-xs font-bold">
+                                <Star size={12} fill="currentColor" />
+                                {matchedProf.rating || "5.0"}
+                              </div>
+                            </div>
+                            {(matchedProf.phone || matchedProf.whatsapp) && (
+                              <a
+                                href={`https://wa.me/${(matchedProf.phone || matchedProf.whatsapp).replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20a%20oferta%20"${encodeURIComponent(selectedOffer.title)}"%20pela%20ViTTA.`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 text-vitta-text-secondary hover:text-vitta-green transition-colors"
+                              >
+                                <Phone size={16} className="text-vitta-text-muted" />
+                                <span>{matchedProf.phone || matchedProf.whatsapp} (WhatsApp)</span>
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Redirection link / navigation button */}
+                      <div className="pt-2">
+                        {matchedPartner && onNavigateToPartner && (
+                          <button
+                            onClick={() => {
+                              setSelectedOffer(null);
+                              onNavigateToPartner(matchedPartner.name);
+                            }}
+                            className="w-full py-2.5 bg-vitta-accent-bg hover:bg-vitta-accent hover:text-white text-vitta-accent text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Store size={14} />
+                            Ver Estabelecimento na Lista
+                          </button>
+                        )}
+                        {matchedProf && onNavigateToProfessional && (
+                          <button
+                            onClick={() => {
+                              setSelectedOffer(null);
+                              onNavigateToProfessional(matchedProf.name);
+                            }}
+                            className="w-full py-2.5 bg-vitta-accent-bg hover:bg-vitta-accent hover:text-white text-vitta-accent text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Stethoscope size={14} />
+                            Ver Profissional de Saúde na Lista
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer action */}
+                <div className="p-4 bg-vitta-surface-2 border-t border-vitta-border flex justify-end shrink-0">
+                  <button
+                    onClick={() => {
+                      setSelectedOffer(null);
+                      setGeneratedCoupon("");
+                    }}
+                    className="px-6 py-2 bg-vitta-surface border border-vitta-border hover:bg-vitta-surface-2 text-vitta-text-secondary text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
       <ConfirmationModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
@@ -15709,11 +15996,13 @@ const PartnershipsView = ({
   setActiveTab,
   user,
   userData,
+  googleToken,
 }: {
   setSubTab?: (tab: any) => void;
   setActiveTab?: (tab: string) => void;
   user?: any;
   userData?: any;
+  googleToken?: string | null;
 }) => {
   const isAdmin =
     userData?.role === "admin" ||
@@ -15800,6 +16089,28 @@ const PartnershipsView = ({
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [profSearchQuery, setProfSearchQuery] = useState("");
+  const [selectedPartnerDetail, setSelectedPartnerDetail] = useState<any | null>(null);
+  const [selectedProfDetail, setSelectedProfDetail] = useState<any | null>(null);
+  const [bookingProfessional, setBookingProfessional] = useState<any | null>(null);
+  const [generatedCoupon, setGeneratedCoupon] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  const handleGenerateCoupon = () => {
+    setGeneratedCoupon(`VITTA-CODE-${Math.random().toString(36).substring(3, 9).toUpperCase()}`);
+    setCopied(false);
+  };
+
+  const handleNavigateToPartner = (partnerName: string) => {
+    setSearchQuery(partnerName);
+    setSelectedCategory("Todas as Categorias");
+    setActiveSubTab("establishments");
+  };
+
+  const handleNavigateToProfessional = (profName: string) => {
+    setProfSearchQuery(profName);
+    setActiveSubTab("vitta-health");
+  };
+
   const [isCreating, setIsCreating] = useState<"partner" | "category" | null>(
     null,
   );
@@ -15931,12 +16242,15 @@ const PartnershipsView = ({
   );
 
   const filteredPartners = partners.filter((partner) => {
-    const matchesSearch = partner.name
+    const matchesSearch = (partner.name || "")
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === "Todas as Categorias" ||
-      partner.category === selectedCategory;
+      !selectedCategory ||
+      (partner.category &&
+        selectedCategory &&
+        partner.category.trim().toLowerCase() === selectedCategory.trim().toLowerCase());
     return matchesSearch && matchesCategory;
   });
 
@@ -16048,7 +16362,12 @@ const PartnershipsView = ({
   };
 
   const getPartnersCountByCategory = (categoryName: string) => {
-    return partners.filter((p) => p.category === categoryName).length;
+    return partners.filter(
+      (p) =>
+        p.category &&
+        categoryName &&
+        p.category.trim().toLowerCase() === categoryName.trim().toLowerCase()
+    ).length;
   };
 
   return (
@@ -16289,8 +16608,9 @@ const PartnershipsView = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 md:gap-4 border-b border-vitta-border pb-1">
+      <div id="partnerships-subtabs-bar" className="flex flex-wrap gap-2 md:gap-4 border-b border-vitta-border pb-1">
         <button
+          id="tab-btn-establishments"
           onClick={() => setActiveSubTab("establishments")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "establishments"
@@ -16302,6 +16622,7 @@ const PartnershipsView = ({
           Empresas
         </button>
         <button
+          id="tab-btn-profissionais-liberais"
           onClick={() => setActiveSubTab("profissionais-liberais")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "profissionais-liberais"
@@ -16313,6 +16634,7 @@ const PartnershipsView = ({
           Profissionais Liberais
         </button>
         <button
+          id="tab-btn-categories"
           onClick={() => setActiveSubTab("categories")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "categories"
@@ -16324,6 +16646,7 @@ const PartnershipsView = ({
           Categorias
         </button>
         <button
+          id="tab-btn-offers"
           onClick={() => setActiveSubTab("offers")}
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "offers"
@@ -16333,6 +16656,18 @@ const PartnershipsView = ({
         >
           <Tag size={18} />
           Ofertas
+        </button>
+        <button
+          id="tab-btn-vitta-health"
+          onClick={() => setActiveSubTab("vitta-health")}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+            activeSubTab === "vitta-health"
+              ? "border-vitta-green text-vitta-green"
+              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+          }`}
+        >
+          <Activity size={18} />
+          Membros ViTTA Health
         </button>
       </div>
 
@@ -16389,7 +16724,12 @@ const PartnershipsView = ({
               <motion.div
                 key={partner.id}
                 whileHover={{ y: -4 }}
-                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm relative"
+                onClick={() => {
+                  setSelectedPartnerDetail(partner);
+                  setGeneratedCoupon("");
+                }}
+                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm relative cursor-pointer hover:border-vitta-green/30 transition-all group"
+                title="Clique para ver os detalhes deste estabelecimento"
               >
                 <div className="flex justify-between items-start mb-6">
                   <img
@@ -16398,7 +16738,7 @@ const PartnershipsView = ({
                       "https://picsum.photos/seed/partner/400/300"
                     }
                     alt={partner.name}
-                    className="w-12 h-12 rounded-xl object-cover"
+                    className="w-12 h-12 rounded-xl object-cover border border-vitta-border"
                   />
                   <span className="px-2.5 py-1 bg-vitta-green-bg text-vitta-green text-[10px] font-bold uppercase tracking-wider rounded-lg">
                     Ativo
@@ -16407,10 +16747,17 @@ const PartnershipsView = ({
 
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-xl font-bold text-vitta-text-primary">
+                    <h3 className="text-xl font-bold text-vitta-text-primary group-hover:text-vitta-green transition-colors">
                       {partner.name}
                     </h3>
-                    <span className="inline-block px-3 py-1 bg-vitta-accent-bg text-vitta-accent text-xs font-bold rounded-lg mt-1">
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCategory(partner.category);
+                      }}
+                      className="inline-block px-3 py-1 bg-vitta-accent-bg text-vitta-accent text-xs font-bold rounded-lg mt-1 cursor-pointer hover:bg-vitta-accent hover:text-white transition-all"
+                      title={`Filtrar por ${partner.category}`}
+                    >
                       {partner.category}
                     </span>
                   </div>
@@ -16421,7 +16768,7 @@ const PartnershipsView = ({
                       {partner.discount}
                     </p>
                     {partner.address && (
-                      <p className="text-vitta-text-secondary">
+                      <p className="text-vitta-text-secondary line-clamp-2">
                         <span className="font-bold">Endereço:</span>{" "}
                         {partner.address}
                       </p>
@@ -16429,25 +16776,25 @@ const PartnershipsView = ({
                   </div>
 
                   {isAdmin ? (
-                    <div className="flex gap-2 pt-4">
+                    <div className="flex gap-2 pt-4" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() =>
                           setEditingItem({ type: "partner", ...partner })
                         }
-                        className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary hover:bg-vitta-surface-2 transition-colors cursor-pointer"
                       >
                         <Edit size={16} />
                         Editar
                       </button>
                       <button
                         onClick={() => handleDeletePartner(partner.id)}
-                        className="p-2.5 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-colors"
+                        className="p-2.5 bg-vitta-danger/10 text-vitta-danger rounded-xl hover:bg-vitta-danger/20 transition-colors cursor-pointer"
                       >
                         <Trash2 size={18} />
                       </button>
                     </div>
                   ) : partner.phone ? (
-                    <div className="pt-4">
+                    <div className="pt-4" onClick={(e) => e.stopPropagation()}>
                       <a
                         href={`https://wa.me/${partner.phone.replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20as%20ofertas%20do%20convênio%20ViTTA.`}
                         target="_blank"
@@ -16878,7 +17225,12 @@ const PartnershipsView = ({
                 {categories.map((category) => (
                   <tr
                     key={category.id}
-                    className="hover:bg-vitta-surface-2 transition-colors"
+                    onClick={() => {
+                      setSelectedCategory(category.name);
+                      setActiveSubTab("establishments");
+                    }}
+                    className="hover:bg-vitta-surface-2 transition-colors cursor-pointer group"
+                    title={`Clique para ver estabelecimentos da categoria ${category.name}`}
                   >
                     <td className="px-8 py-4">
                       <div className="flex items-center gap-3">
@@ -16896,7 +17248,7 @@ const PartnershipsView = ({
                             getIcon(category.icon, 16)
                           )}
                         </div>
-                        <span className="font-bold text-sm text-vitta-text-primary">
+                        <span className="font-bold text-sm text-vitta-text-primary group-hover:text-vitta-green transition-colors">
                           {category.name}
                         </span>
                       </div>
@@ -16907,23 +17259,27 @@ const PartnershipsView = ({
                       </span>
                     </td>
                     <td className="px-8 py-4 text-center">
-                      <span className="text-sm text-vitta-text-secondary">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-vitta-surface-2 rounded-lg text-xs font-semibold text-vitta-text-secondary group-hover:bg-vitta-green-bg group-hover:text-vitta-green transition-all">
                         {getPartnersCountByCategory(category.name)}
                       </span>
                     </td>
                     {isAdmin && (
-                      <td className="px-8 py-4 text-right">
+                      <td className="px-8 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <button
-                            onClick={() =>
-                              setEditingItem({ type: "category", ...category })
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingItem({ type: "category", ...category });
+                            }}
                             className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
                           >
                             <Edit size={18} />
                           </button>
                           <button
-                            onClick={() => handleDeleteCategory(category.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCategory(category.id);
+                            }}
                             className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
                           >
                             <Trash2 size={18} />
@@ -16939,7 +17295,13 @@ const PartnershipsView = ({
         </div>
       )}
 
-      {activeSubTab === "offers" && <OffersManagementView isAdmin={isAdmin} />}
+      {activeSubTab === "offers" && (
+        <OffersManagementView
+          isAdmin={isAdmin}
+          onNavigateToPartner={handleNavigateToPartner}
+          onNavigateToProfessional={handleNavigateToProfessional}
+        />
+      )}
 
       {activeSubTab === "vitta-health" && (
         <div className="space-y-6">
@@ -16977,16 +17339,21 @@ const PartnershipsView = ({
               <motion.div
                 key={prof.id}
                 whileHover={{ y: -4 }}
-                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm space-y-4"
+                onClick={() => {
+                  setSelectedProfDetail(prof);
+                  setGeneratedCoupon("");
+                }}
+                className="bg-vitta-surface p-6 rounded-xl border border-vitta-border shadow-sm space-y-4 cursor-pointer hover:border-vitta-green/30 transition-all group"
+                title="Clique para ver os detalhes deste profissional"
               >
                 <div className="flex items-center gap-4">
                   <img
                     src={prof.imageUrl || "https://picsum.photos/seed/doc/150/150"}
                     alt={prof.name}
-                    className="w-16 h-16 rounded-xl object-cover"
+                    className="w-16 h-16 rounded-xl object-cover border border-vitta-border"
                   />
                   <div>
-                    <h3 className="font-bold text-lg text-vitta-text-primary">
+                    <h3 className="font-bold text-lg text-vitta-text-primary group-hover:text-vitta-green transition-colors">
                       {prof.name}
                     </h3>
                     <p className="text-sm text-vitta-text-secondary">
@@ -17010,12 +17377,23 @@ const PartnershipsView = ({
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-colors shadow-lg shadow-vitta-accent/20">
+                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => {
+                      setSelectedProfDetail(prof);
+                      setGeneratedCoupon("");
+                    }}
+                    className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-colors shadow-lg shadow-vitta-accent/20 cursor-pointer text-center"
+                  >
                     Ver Detalhes
                   </button>
-                  <button className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl hover:bg-vitta-border transition-colors">
-                    <Calendar size={18} />
+                  <button
+                    onClick={() => setBookingProfessional(prof)}
+                    className="flex-1 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-colors shadow-lg shadow-vitta-green/20 cursor-pointer flex items-center justify-center gap-1.5"
+                    title="Agendar Atendimento"
+                  >
+                    <Calendar size={16} />
+                    Agendar
                   </button>
                 </div>
               </motion.div>
@@ -17046,6 +17424,385 @@ const PartnershipsView = ({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
         type={confirmModal.type}
+      />
+
+      {/* Establishment (Partner) Detail Modal */}
+      <AnimatePresence>
+        {selectedPartnerDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-vitta-text-primary/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-vitta-surface w-full max-w-lg rounded-2xl shadow-2xl border border-vitta-border overflow-hidden max-h-[92vh] flex flex-col"
+            >
+              {/* Header Image or Fallback */}
+              <div className="relative h-48 bg-gradient-to-br from-vitta-green-bg to-vitta-accent-bg shrink-0">
+                <img
+                  src={
+                    selectedPartnerDetail.imageUrl ||
+                    "https://images.unsplash.com/photo-1521791136364-72861c690450?w=600&auto=format&fit=crop&q=80"
+                  }
+                  alt={selectedPartnerDetail.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                
+                {/* Close button */}
+                <button
+                  onClick={() => {
+                    setSelectedPartnerDetail(null);
+                    setGeneratedCoupon("");
+                  }}
+                  className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-sm transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="absolute bottom-4 left-6 right-6">
+                  <span className="inline-block px-2.5 py-1 bg-vitta-green text-white text-[10px] font-black uppercase tracking-wider rounded-lg mb-2 shadow-lg">
+                    {selectedPartnerDetail.category}
+                  </span>
+                  <h3 className="text-xl font-bold text-white drop-shadow-md">
+                    {selectedPartnerDetail.name}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Content body */}
+              <div className="p-6 md:p-8 space-y-6 overflow-y-auto">
+                {/* Highlights and Discount info */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-vitta-border">
+                  <div>
+                    <span className="px-2.5 py-1 bg-vitta-green-bg text-vitta-green text-xs font-bold rounded-lg">
+                      Parceiro Ativo
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-vitta-text-secondary">Desconto Exclusivo:</span>
+                    <span className="px-3 py-1.5 bg-vitta-green-bg text-vitta-green font-black rounded-xl text-sm border border-vitta-green/20">
+                      {selectedPartnerDetail.discount}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="space-y-2">
+                  <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                    Sobre o Estabelecimento
+                  </h5>
+                  <p className="text-sm text-vitta-text-secondary leading-relaxed bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                    {selectedPartnerDetail.description ||
+                      `Aproveite este benefício exclusivo oferecido por ${selectedPartnerDetail.name} em parceria com o ecossistema ViTTA Club. Apresente o código gerado no momento do atendimento para garantir seu desconto.`}
+                  </p>
+                </div>
+
+                {/* Contact and address */}
+                <div className="space-y-4 pt-2">
+                  <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                    Localização & Contato
+                  </h5>
+                  <div className="space-y-3 text-sm">
+                    {selectedPartnerDetail.address && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPartnerDetail.address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2.5 text-vitta-text-secondary hover:text-vitta-accent transition-colors group"
+                      >
+                        <MapPin size={16} className="text-vitta-text-muted mt-0.5" />
+                        <span className="group-hover:underline">{selectedPartnerDetail.address}</span>
+                      </a>
+                    )}
+                    {selectedPartnerDetail.phone && (
+                      <a
+                        href={`https://wa.me/${selectedPartnerDetail.phone.replace(/\D/g, "")}?text=Olá!%20Sou%20conveniado%20ViTTA%20e%20gostaria%20de%20saber%20mais%20sobre%20os%20benefícios.`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 text-vitta-text-secondary hover:text-vitta-green transition-colors group"
+                      >
+                        <Phone size={16} className="text-vitta-text-muted" />
+                        <span className="group-hover:underline">{selectedPartnerDetail.phone} (WhatsApp)</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Coupon generation section */}
+                <div className="bg-vitta-green-bg/30 border border-vitta-green/20 p-5 rounded-2xl text-center space-y-4">
+                  {!generatedCoupon ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-vitta-green font-bold">
+                        Deseja resgatar esta oferta?
+                      </p>
+                      <button
+                        onClick={handleGenerateCoupon}
+                        className="w-full py-3 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Ticket size={16} />
+                        Gerar Código de Desconto
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-vitta-green font-bold">
+                        Cupom gerado com sucesso!
+                      </p>
+                      <div className="flex items-center justify-between gap-2 p-3 bg-white border border-vitta-green/20 rounded-xl max-w-xs mx-auto">
+                        <span className="font-mono text-base font-black text-vitta-text-primary tracking-wider pl-2 select-all">
+                          {generatedCoupon}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedCoupon);
+                            setCopied(true);
+                            addToast("Cupom copiado!", "success");
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            copied
+                              ? "bg-vitta-green text-white"
+                              : "bg-vitta-green-bg text-vitta-green hover:bg-vitta-green hover:text-white"
+                          }`}
+                        >
+                          {copied ? (
+                            <>
+                              <Check size={14} /> Copiado!
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={14} /> Copiar
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-vitta-text-muted">
+                        Apresente este código no estabelecimento para obter seu benefício.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-vitta-surface-2 border-t border-vitta-border flex justify-end shrink-0">
+                <button
+                  onClick={() => {
+                    setSelectedPartnerDetail(null);
+                    setGeneratedCoupon("");
+                  }}
+                  className="px-6 py-2 bg-vitta-surface border border-vitta-border hover:bg-vitta-surface-2 text-vitta-text-secondary text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Professional Detail Modal */}
+      <AnimatePresence>
+        {selectedProfDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-vitta-text-primary/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-vitta-surface w-full max-w-lg rounded-2xl shadow-2xl border border-vitta-border overflow-hidden max-h-[92vh] flex flex-col"
+            >
+              {/* Header Image/Background */}
+              <div className="relative h-44 bg-gradient-to-br from-vitta-green-bg to-vitta-accent-bg shrink-0 flex items-end p-6">
+                <div className="absolute inset-0 bg-black/30" />
+                <button
+                  onClick={() => {
+                    setSelectedProfDetail(null);
+                    setGeneratedCoupon("");
+                  }}
+                  className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-sm transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="relative flex items-center gap-4">
+                  <img
+                    src={
+                      selectedProfDetail.imageUrl ||
+                      "https://picsum.photos/seed/doc/150/150"
+                    }
+                    alt={selectedProfDetail.name}
+                    className="w-20 h-20 rounded-2xl object-cover border-4 border-white bg-white shadow-md animate-fade-in"
+                  />
+                  <div className="text-white drop-shadow">
+                    <h3 className="text-xl font-bold">{selectedProfDetail.name}</h3>
+                    <p className="text-sm opacity-90">{selectedProfDetail.specialty}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 md:p-8 space-y-6 overflow-y-auto">
+                {/* Rating / Desconto Info */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-vitta-border">
+                  <div className="flex items-center gap-1.5 text-vitta-text-secondary text-sm">
+                    <div className="flex items-center gap-1 text-vitta-amber">
+                      <Star size={16} fill="currentColor" />
+                      <span className="font-bold">{selectedProfDetail.rating || "5.0"}</span>
+                    </div>
+                    <span>• {selectedProfDetail.reviews || "84"} avaliações</span>
+                  </div>
+                  <span className="px-3 py-1.5 bg-vitta-green-bg text-vitta-green font-black rounded-xl text-sm border border-vitta-green/20">
+                    Membro ViTTA Health: {selectedProfDetail.vittaHealthDiscount || "Desconto Especial"}
+                  </span>
+                </div>
+
+                {/* Biography */}
+                <div className="space-y-2">
+                  <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                    Sobre o Profissional
+                  </h5>
+                  <p className="text-sm text-vitta-text-secondary leading-relaxed bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                    {selectedProfDetail.bio ||
+                      `${selectedProfDetail.name} é um especialista altamente capacitado em ${selectedProfDetail.specialty}, atuando ativamente no ecossistema ViTTA Health para entregar o melhor atendimento clínico e acompanhamento individual para sua saúde e bem-estar.`}
+                  </p>
+                </div>
+
+                {/* Scheduling and Contact details */}
+                <div className="space-y-4 pt-2">
+                  <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-wider">
+                    Contatos & Horários
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border space-y-1">
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                        Dias de Atendimento
+                      </p>
+                      <p className="text-xs font-bold text-vitta-text-primary">
+                        Segunda a Sexta-feira
+                      </p>
+                    </div>
+                    <div className="bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border space-y-1">
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                        Telefone / WhatsApp
+                      </p>
+                      {(selectedProfDetail.whatsapp || selectedProfDetail.phone) ? (
+                        <a
+                          href={`https://wa.me/${(selectedProfDetail.whatsapp || selectedProfDetail.phone).replace(/\D/g, "")}?text=Olá!%20Encontrei%20você%20pelo%20app%20da%20ViTTA%20e%20gostaria%20de%20agendar%20uma%20consulta.`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-vitta-green hover:underline flex items-center gap-1"
+                        >
+                          <Phone size={12} />
+                          {selectedProfDetail.whatsapp || selectedProfDetail.phone}
+                        </a>
+                      ) : (
+                        <p className="text-xs font-bold text-vitta-text-primary">
+                          Contatar Central ViTTA
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coupon Generator & Direct Booking */}
+                <div className="bg-vitta-green-bg/30 border border-vitta-green/20 p-5 rounded-2xl text-center space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-xs text-vitta-green font-bold">
+                      Deseja agendar consulta com este profissional?
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSelectedProfDetail(null);
+                        setBookingProfessional(selectedProfDetail);
+                      }}
+                      className="w-full py-3 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Calendar size={16} />
+                      Agendar Atendimento
+                    </button>
+                  </div>
+
+                  <div className="border-t border-vitta-green/10 my-2" />
+
+                  {!generatedCoupon ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-vitta-green font-bold">
+                        Prefere gerar um cupom para agendamento externo?
+                      </p>
+                      <button
+                        onClick={handleGenerateCoupon}
+                        className="w-full py-3 bg-vitta-accent text-white rounded-xl text-sm font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Ticket size={16} />
+                        Gerar Código de Desconto
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-vitta-green font-bold">
+                        Seu código de desconto foi gerado!
+                      </p>
+                      <div className="flex items-center justify-between gap-2 p-3 bg-white border border-vitta-green/20 rounded-xl max-w-xs mx-auto">
+                        <span className="font-mono text-base font-black text-vitta-text-primary tracking-wider pl-2 select-all">
+                          {generatedCoupon}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedCoupon);
+                            setCopied(true);
+                            addToast("Código copiado!", "success");
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            copied
+                              ? "bg-vitta-green text-white"
+                              : "bg-vitta-green-bg text-vitta-green hover:bg-vitta-green hover:text-white"
+                          }`}
+                        >
+                          {copied ? (
+                            <>
+                              <Check size={14} /> Copiado!
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={14} /> Copiar
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-vitta-text-muted">
+                        Apresente este código no agendamento para comprovar seu convênio.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-vitta-surface-2 border-t border-vitta-border flex justify-end shrink-0">
+                <button
+                  onClick={() => {
+                    setSelectedProfDetail(null);
+                    setGeneratedCoupon("");
+                  }}
+                  className="px-6 py-2 bg-vitta-surface border border-vitta-border hover:bg-vitta-surface-2 text-vitta-text-secondary text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <BookingModal
+        isOpen={!!bookingProfessional}
+        onClose={() => setBookingProfessional(null)}
+        professional={bookingProfessional}
+        user={user}
+        userData={userData}
+        googleToken={googleToken}
+        setActiveTab={setActiveTab}
       />
     </div>
   );
@@ -23594,7 +24351,7 @@ export default function App() {
           />
         );
       case "dashboard":
-        if (isAdmin) return <AdminView user={user} />;
+        if (isAdmin) return <AdminView user={user} userData={userData} />;
         if (isProfessional)
           return (
             <ProfessionalDashboardView
@@ -23627,6 +24384,7 @@ export default function App() {
             setActiveTab={setActiveTab}
             user={user}
             userData={userData}
+            googleToken={googleToken}
           />
         );
       case "wallets":
@@ -23667,7 +24425,7 @@ export default function App() {
         return <OffersView user={user} />;
       default:
         return isAdmin ? (
-          <AdminView user={user} />
+          <AdminView user={user} userData={userData} />
         ) : (
           <PlaceholderView title="Dashboard Paciente" />
         );

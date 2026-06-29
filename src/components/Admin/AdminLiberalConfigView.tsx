@@ -74,6 +74,7 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
   // Search state
   const [searchCategoryQuery, setSearchCategoryQuery] = useState("");
   const [searchProfQuery, setSearchProfQuery] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
 
   // Creation states - Category
   const [newCatName, setNewCatName] = useState("");
@@ -334,11 +335,14 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
     (cat.name || "").toLowerCase().includes(searchCategoryQuery.toLowerCase())
   );
 
-  const filteredProfs = professionals.filter((prof) =>
-    (prof.name || "").toLowerCase().includes(searchProfQuery.toLowerCase()) ||
-    (prof.category || "").toLowerCase().includes(searchProfQuery.toLowerCase()) ||
-    (prof.city || "").toLowerCase().includes(searchProfQuery.toLowerCase())
-  );
+  const filteredProfs = professionals.filter((prof) => {
+    const matchesSearch =
+      (prof.name || "").toLowerCase().includes(searchProfQuery.toLowerCase()) ||
+      (prof.category || "").toLowerCase().includes(searchProfQuery.toLowerCase()) ||
+      (prof.city || "").toLowerCase().includes(searchProfQuery.toLowerCase());
+    const matchesCategory = !selectedCategoryFilter || prof.category === selectedCategoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="space-y-8">
@@ -428,19 +432,37 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
 
           <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
             {filteredCats.length > 0 ? (
-              filteredCats.map((cat) => (
-                <div key={cat.id} className="flex justify-between items-center p-3 bg-vitta-surface-2 hover:bg-vitta-surface rounded-xl border border-vitta-border/60 transition-colors">
-                  <span className="text-xs font-bold text-vitta-text-primary">{cat.name}</span>
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                      className="p-1 text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))
+              filteredCats.map((cat) => {
+                const isSelected = selectedCategoryFilter === cat.name;
+                return (
+                  <div
+                    key={cat.id}
+                    onClick={() => setSelectedCategoryFilter(isSelected ? null : cat.name)}
+                    className={`flex justify-between items-center p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "border-vitta-accent bg-vitta-accent/10 shadow-sm shadow-vitta-accent/5"
+                        : "bg-vitta-surface-2 hover:bg-vitta-surface border-vitta-border/60 hover:border-vitta-border"
+                    }`}
+                  >
+                    <span className={`text-xs font-bold ${isSelected ? "text-vitta-accent" : "text-vitta-text-primary"}`}>
+                      {cat.name}
+                    </span>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCategory(cat.id, cat.name);
+                        }}
+                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                          isSelected ? "text-red-500 hover:bg-red-50/50" : "text-red-500 hover:bg-red-50"
+                        }`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             ) : (
               <p className="text-xs text-vitta-text-muted text-center py-4">Nenhuma categoria cadastrada.</p>
             )}
@@ -692,6 +714,19 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
               className="w-full pl-10 pr-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs outline-none text-vitta-text-primary focus:ring-1 focus:ring-vitta-accent/10 transition-all font-bold"
             />
           </div>
+
+          {selectedCategoryFilter && (
+            <div className="flex items-center gap-2 text-xs font-bold bg-vitta-accent/10 text-vitta-accent px-3 py-1.5 rounded-xl border border-vitta-accent/20 w-fit">
+              <span>Filtrado por: {selectedCategoryFilter}</span>
+              <button
+                onClick={() => setSelectedCategoryFilter(null)}
+                className="hover:text-red-500 transition-colors cursor-pointer flex items-center justify-center p-0.5 rounded-full hover:bg-vitta-accent/10"
+                title="Limpar Filtro"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           <div className="space-y-3 max-h-[500px] overflow-y-auto no-scrollbar">
             {loading ? (
