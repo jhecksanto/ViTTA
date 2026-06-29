@@ -16279,18 +16279,20 @@ const PartnershipsView = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-vitta-text-primary">
-            Gestão de Convênios
+            {isAdmin ? "Gestão de Convênios" : "Convênios"}
           </h1>
           <p className="text-vitta-text-secondary">
-            Cadastre e gerencie estabelecimentos conveniados
+            {isAdmin
+              ? "Cadastre e gerencie estabelecimentos conveniados"
+              : "Encontre empresas, profissionais e descontos parceiros"}
           </p>
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-vitta-border">
+      <div className="flex flex-wrap gap-2 md:gap-4 border-b border-vitta-border pb-1">
         <button
           onClick={() => setActiveSubTab("establishments")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "establishments"
               ? "border-vitta-green text-vitta-green"
               : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
@@ -16301,7 +16303,7 @@ const PartnershipsView = ({
         </button>
         <button
           onClick={() => setActiveSubTab("profissionais-liberais")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "profissionais-liberais"
               ? "border-vitta-green text-vitta-green"
               : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
@@ -16312,7 +16314,7 @@ const PartnershipsView = ({
         </button>
         <button
           onClick={() => setActiveSubTab("categories")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "categories"
               ? "border-vitta-green text-vitta-green"
               : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
@@ -16323,7 +16325,7 @@ const PartnershipsView = ({
         </button>
         <button
           onClick={() => setActiveSubTab("offers")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
             activeSubTab === "offers"
               ? "border-vitta-green text-vitta-green"
               : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
@@ -23768,7 +23770,7 @@ export default function App() {
                 />
                 <SidebarItem
                   icon={ShieldCheck}
-                  label="Convênios"
+                  label={isAdmin ? "Gestão de Convênios" : "Convênios"}
                   active={activeTab === "plans"}
                   onClick={() => {
                     setActiveTab("plans");
