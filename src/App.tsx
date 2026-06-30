@@ -109,6 +109,7 @@ import {
   FileQuestion,
   SkipForward,
   Eye,
+  EyeOff,
   MonitorPlay,
   Images,
   TrendingUp,
@@ -2685,10 +2686,12 @@ const HomeView = ({
   user,
   userData,
   setActiveTab,
+  setPartnershipSubTab,
 }: {
   user: any;
   userData: any;
   setActiveTab: (tab: string) => void;
+  setPartnershipSubTab?: (subTab: any) => void;
 }) => {
   const resources = [
     {
@@ -2868,10 +2871,23 @@ const HomeView = ({
             </button>
             <button
               id="home-cta-plans"
-              onClick={() => setActiveTab("plans")}
+              onClick={() => {
+                if (setPartnershipSubTab) setPartnershipSubTab("establishments");
+                setActiveTab("plans");
+              }}
               className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
             >
               Convênios
+            </button>
+            <button
+              id="home-cta-vitta-health"
+              onClick={() => {
+                if (setPartnershipSubTab) setPartnershipSubTab("vitta-health");
+                setActiveTab("plans");
+              }}
+              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+            >
+              ViTTA Health
             </button>
             <button
               id="home-cta-radio"
@@ -3652,8 +3668,8 @@ const AdminSupportChatView = ({ adminUser }: { adminUser: any }) => {
           }
         });
 
-        // Reset unread counter
-        updateDoc(doc(db, "chats", userId), { unreadCount: 0 });
+        // Reset unread counter safely using setDoc with merge to avoid 'No document to update' error
+        setDoc(doc(db, "chats", userId), { unreadCount: 0 }, { merge: true });
       },
       (error) => {
         handleFirestoreError(
@@ -13857,6 +13873,22 @@ const SettingsView = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8">
+      {userData?.status === "Inativo" && (
+        <div className="p-6 bg-vitta-danger/10 border border-vitta-danger/20 rounded-3xl flex items-center gap-4">
+          <div className="p-3 bg-vitta-danger/20 rounded-2xl text-vitta-danger">
+            <Lock size={24} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-vitta-text-primary">
+              Acesso Limitado - Conta Inativa
+            </h3>
+            <p className="text-vitta-text-secondary text-sm">
+              Sua conta está atualmente desativada e seu acesso foi restrito apenas a esta página de perfil. Caso precise regularizar sua conta, entre em contato com nossa equipe de suporte.
+            </p>
+          </div>
+        </div>
+      )}
+
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">
@@ -15413,11 +15445,20 @@ const ExamsManagementView = () => {
   const { addToast } = useToast();
   const [exams, setExams] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [newItem, setNewItem] = useState({
     name: "",
     priceVitta: "",
     priceParticular: "",
     description: "",
+  });
+  const [editItem, setEditItem] = useState({
+    id: "",
+    name: "",
+    priceVitta: "",
+    priceParticular: "",
+    description: "",
+    isActive: true,
   });
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -15451,6 +15492,7 @@ const ExamsManagementView = () => {
     try {
       await addDoc(collection(db, "exams"), {
         ...newItem,
+        isActive: true,
         createdAt: Timestamp.now(),
       });
       await logAdminAction(
@@ -15468,6 +15510,60 @@ const ExamsManagementView = () => {
     } catch (err) {
       console.error("Erro ao criar exame:", err);
       addToast("Erro ao criar tipo de exame.", "error");
+    }
+  };
+
+  const startEdit = (exam: any) => {
+    setEditItem({
+      id: exam.id,
+      name: exam.name || "",
+      priceVitta: exam.priceVitta || "",
+      priceParticular: exam.priceParticular || "",
+      description: exam.description || "",
+      isActive: exam.isActive !== false,
+    });
+    setIsEditing(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateDoc(doc(db, "exams", editItem.id), {
+        name: editItem.name,
+        priceVitta: editItem.priceVitta,
+        priceParticular: editItem.priceParticular,
+        description: editItem.description,
+        isActive: editItem.isActive,
+      });
+      await logAdminAction(
+        "UPDATE_EXAM_TYPE",
+        `Editou o tipo de exame: ${editItem.name}`,
+      );
+      setIsEditing(false);
+      addToast("Tipo de exame atualizado com sucesso.", "success");
+    } catch (err) {
+      console.error("Erro ao atualizar exame:", err);
+      addToast("Erro ao atualizar tipo de exame.", "error");
+    }
+  };
+
+  const handleToggleActive = async (exam: any) => {
+    const newStatus = exam.isActive === false ? true : false;
+    try {
+      await updateDoc(doc(db, "exams", exam.id), {
+        isActive: newStatus,
+      });
+      await logAdminAction(
+        newStatus ? "ACTIVATE_EXAM_TYPE" : "DEACTIVATE_EXAM_TYPE",
+        `${newStatus ? "Ativou" : "Desativou"} o tipo de exame: ${exam.name}`,
+      );
+      addToast(
+        `Tipo de exame ${newStatus ? "ativado" : "desativado"} com sucesso.`,
+        "success",
+      );
+    } catch (err) {
+      console.error("Erro ao alterar status do exame:", err);
+      addToast("Erro ao alterar status do tipo de exame.", "error");
     }
   };
 
@@ -15585,6 +15681,9 @@ const ExamsManagementView = () => {
                 Exame
               </th>
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">
+                Status
+              </th>
+              <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">
                 Preço Vitta
               </th>
               <th className="px-8 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-center">
@@ -15612,6 +15711,19 @@ const ExamsManagementView = () => {
                   </div>
                 </td>
                 <td className="px-8 py-4 text-center">
+                  {exam.isActive !== false ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-vitta-green/10 text-vitta-green border border-vitta-green/20 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-vitta-green animate-pulse" />
+                      Ativo
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/20 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      Inativo
+                    </span>
+                  )}
+                </td>
+                <td className="px-8 py-4 text-center">
                   <span className="text-sm font-bold text-vitta-green">
                     {exam.priceVitta}
                   </span>
@@ -15622,12 +15734,33 @@ const ExamsManagementView = () => {
                   </span>
                 </td>
                 <td className="px-8 py-4 text-right">
-                  <button
-                    onClick={() => handleDelete(exam.id)}
-                    className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => startEdit(exam)}
+                      title="Editar Exame"
+                      className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleToggleActive(exam)}
+                      title={exam.isActive !== false ? "Desativar Exame" : "Ativar Exame"}
+                      className={`p-2 transition-colors ${
+                        exam.isActive !== false
+                          ? "text-vitta-text-muted hover:text-amber-500"
+                          : "text-vitta-text-muted hover:text-vitta-green"
+                      }`}
+                    >
+                      {exam.isActive !== false ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(exam.id)}
+                      title="Excluir Exame"
+                      className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -15643,6 +15776,135 @@ const ExamsManagementView = () => {
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
         type={confirmModal.type}
       />
+
+      {/* Edit Exam Modal */}
+      <AnimatePresence>
+        {isEditing && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-vitta-surface w-full max-w-xl rounded-3xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="flex justify-between items-center px-8 py-6 border-b border-vitta-border bg-vitta-surface-2">
+                <h3 className="text-xl font-bold text-vitta-text-primary">
+                  Editar Tipo de Exame
+                </h3>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="p-2 hover:bg-vitta-border rounded-xl transition-colors text-vitta-text-muted hover:text-vitta-text-primary"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleUpdate} className="p-8 space-y-6 overflow-y-auto">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-vitta-text-muted uppercase tracking-wider mb-2">
+                      Nome do Exame
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editItem.name}
+                      onChange={(e) =>
+                        setEditItem({ ...editItem, name: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-vitta-text-muted uppercase tracking-wider mb-2">
+                        Preço Vitta
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editItem.priceVitta}
+                        onChange={(e) =>
+                          setEditItem({ ...editItem, priceVitta: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-vitta-text-muted uppercase tracking-wider mb-2">
+                        Preço Particular
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editItem.priceParticular}
+                        onChange={(e) =>
+                          setEditItem({ ...editItem, priceParticular: e.target.value })
+                        }
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-vitta-text-muted uppercase tracking-wider mb-2">
+                      Descrição
+                    </label>
+                    <textarea
+                      value={editItem.description}
+                      onChange={(e) =>
+                        setEditItem({ ...editItem, description: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary min-h-[100px]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 bg-vitta-surface-2 border border-vitta-border rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setEditItem({ ...editItem, isActive: !editItem.isActive })}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
+                        editItem.isActive ? "bg-vitta-green" : "bg-vitta-text-muted/30"
+                      }`}
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                          editItem.isActive ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <p className="text-sm font-bold text-vitta-text-primary">
+                        {editItem.isActive ? "Exame Ativo" : "Exame Inativo"}
+                      </p>
+                      <p className="text-xs text-vitta-text-muted">
+                        Exames inativos não aparecem para novos agendamentos
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-vitta-border">
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-vitta-green hover:bg-vitta-green/90 text-white rounded-2xl font-bold transition-all shadow-lg shadow-vitta-green/20"
+                  >
+                    Salvar Alterações
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-3 border border-vitta-border rounded-2xl text-sm font-bold text-vitta-text-secondary hover:bg-vitta-surface-2 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -16585,12 +16847,14 @@ const PartnershipsView = ({
   user,
   userData,
   googleToken,
+  initialSubTab = "establishments",
 }: {
   setSubTab?: (tab: any) => void;
   setActiveTab?: (tab: string) => void;
   user?: any;
   userData?: any;
   googleToken?: string | null;
+  initialSubTab?: "establishments" | "profissionais-liberais" | "categories" | "offers" | "vitta-health";
 }) => {
   const isAdmin =
     userData?.role === "admin" ||
@@ -16671,7 +16935,13 @@ const PartnershipsView = ({
     | "categories"
     | "offers"
     | "vitta-health"
-  >("establishments");
+  >(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [partners, setPartners] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -25045,6 +25315,13 @@ const LoginView = ({
 export default function App() {
   const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("home");
+  const [partnershipSubTab, setPartnershipSubTab] = useState<
+    | "establishments"
+    | "profissionais-liberais"
+    | "categories"
+    | "offers"
+    | "vitta-health"
+  >("establishments");
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -25057,6 +25334,12 @@ export default function App() {
   const [activeTelemedicineApt, setActiveTelemedicineApt] = useState<
     any | null
   >(null);
+
+  useEffect(() => {
+    if (userData?.status === "Inativo" && activeTab !== "profile") {
+      setActiveTab("profile");
+    }
+  }, [userData?.status, activeTab]);
 
   // Radio Global State
   const [radioConfig, setRadioConfig] = useState({
@@ -25646,6 +25929,19 @@ export default function App() {
   const isProfessional = userData?.role === "professional";
 
   const renderContent = () => {
+    if (userData?.status === "Inativo") {
+      return (
+        <SettingsView
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          user={user}
+          userData={userData}
+          googleToken={googleToken}
+          setGoogleToken={setGoogleToken}
+        />
+      );
+    }
+
     if (activeTelemedicineApt) {
       return (
         <TelemedicineRoom
@@ -25664,6 +25960,7 @@ export default function App() {
             user={user}
             userData={userData}
             setActiveTab={setActiveTab}
+            setPartnershipSubTab={setPartnershipSubTab}
           />
         );
       case "dashboard":
@@ -25701,6 +25998,7 @@ export default function App() {
             user={user}
             userData={userData}
             googleToken={googleToken}
+            initialSubTab={partnershipSubTab}
           />
         );
       case "wallets":
@@ -25797,125 +26095,144 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar">
+            {userData?.status === "Inativo" && (
+              <div className="mx-2 p-4 bg-vitta-danger/10 border border-vitta-danger/20 rounded-2xl mb-2 flex items-start gap-3">
+                <div className="shrink-0 text-vitta-danger mt-0.5">
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-vitta-danger uppercase tracking-wider mb-1">
+                    Acesso Restrito
+                  </p>
+                  <p className="text-[11px] text-vitta-text-secondary leading-relaxed">
+                    Sua conta está inativa. O acesso está restrito ao seu perfil.
+                  </p>
+                </div>
+              </div>
+            )}
             <div>
               <p className="px-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-4">
                 Navegação
               </p>
               <nav className="space-y-1">
-                <SidebarItem
-                  icon={Home}
-                  label="Página Inicial"
-                  active={activeTab === "home"}
-                  onClick={() => {
-                    setActiveTab("home");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={LayoutGrid}
-                  label={
-                    isAdmin
-                      ? "Painel Admin"
-                      : userData?.role === "professional"
-                        ? "Painel Médico"
-                        : "Dashboard"
-                  }
-                  active={activeTab === "dashboard"}
-                  onClick={() => {
-                    setActiveTab("dashboard");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Users}
-                  label="Profissionais"
-                  active={activeTab === "professionals"}
-                  onClick={() => {
-                    setActiveTab("professionals");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Clock}
-                  label="Agendamentos"
-                  active={activeTab === "appointments"}
-                  onClick={() => {
-                    setActiveTab("appointments");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={ShieldCheck}
-                  label={isAdmin ? "Gestão de Convênios" : "Convênios"}
-                  active={activeTab === "plans"}
-                  onClick={() => {
-                    setActiveTab("plans");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Wallet}
-                  label="Carteiras"
-                  active={activeTab === "wallets"}
-                  onClick={() => {
-                    setActiveTab("wallets");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={CreditCard}
-                  label="Compra Voucher"
-                  active={activeTab === "voucher"}
-                  onClick={() => {
-                    setActiveTab("voucher");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Stethoscope}
-                  label="Farmácias de Plantão"
-                  active={activeTab === "pharmacies"}
-                  onClick={() => {
-                    setActiveTab("pharmacies");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Radio}
-                  label="Rádio ViTTA"
-                  active={activeTab === "radio"}
-                  onClick={() => {
-                    setActiveTab("radio");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Tag}
-                  label="Ofertas e Descontos"
-                  active={activeTab === "offers"}
-                  onClick={() => {
-                    setActiveTab("offers");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={MessageSquare}
-                  label="Chat Suporte"
-                  active={activeTab === "chat"}
-                  onClick={() => {
-                    setActiveTab("chat");
-                    setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Bell}
-                  label="Notificações"
-                  active={activeTab === "notifications"}
-                  onClick={() => {
-                    setActiveTab("notifications");
-                    setIsSidebarOpen(false);
-                  }}
-                />
+                {userData?.status !== "Inativo" ? (
+                  <>
+                    <SidebarItem
+                      icon={Home}
+                      label="Página Inicial"
+                      active={activeTab === "home"}
+                      onClick={() => {
+                        setActiveTab("home");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={LayoutGrid}
+                      label={
+                        isAdmin
+                          ? "Painel Admin"
+                          : userData?.role === "professional"
+                            ? "Painel Médico"
+                            : "Dashboard"
+                      }
+                      active={activeTab === "dashboard"}
+                      onClick={() => {
+                        setActiveTab("dashboard");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Users}
+                      label="Profissionais"
+                      active={activeTab === "professionals"}
+                      onClick={() => {
+                        setActiveTab("professionals");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Clock}
+                      label="Agendamentos"
+                      active={activeTab === "appointments"}
+                      onClick={() => {
+                        setActiveTab("appointments");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={ShieldCheck}
+                      label={isAdmin ? "Gestão de Convênios" : "Convênios"}
+                      active={activeTab === "plans"}
+                      onClick={() => {
+                        setActiveTab("plans");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Wallet}
+                      label="Carteiras"
+                      active={activeTab === "wallets"}
+                      onClick={() => {
+                        setActiveTab("wallets");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={CreditCard}
+                      label="Compra Voucher"
+                      active={activeTab === "voucher"}
+                      onClick={() => {
+                        setActiveTab("voucher");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Stethoscope}
+                      label="Farmácias de Plantão"
+                      active={activeTab === "pharmacies"}
+                      onClick={() => {
+                        setActiveTab("pharmacies");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Radio}
+                      label="Rádio ViTTA"
+                      active={activeTab === "radio"}
+                      onClick={() => {
+                        setActiveTab("radio");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Tag}
+                      label="Ofertas e Descontos"
+                      active={activeTab === "offers"}
+                      onClick={() => {
+                        setActiveTab("offers");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={MessageSquare}
+                      label="Chat Suporte"
+                      active={activeTab === "chat"}
+                      onClick={() => {
+                        setActiveTab("chat");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                    <SidebarItem
+                      icon={Bell}
+                      label="Notificações"
+                      active={activeTab === "notifications"}
+                      onClick={() => {
+                        setActiveTab("notifications");
+                        setIsSidebarOpen(false);
+                      }}
+                    />
+                  </>
+                ) : null}
                 <SidebarItem
                   icon={User}
                   label="Perfil"
@@ -25925,15 +26242,17 @@ export default function App() {
                     setIsSidebarOpen(false);
                   }}
                 />
-                <SidebarItem
-                  icon={HelpCircle}
-                  label="Suporte"
-                  active={activeTab === "support"}
-                  onClick={() => {
-                    setActiveTab("support");
-                    setIsSidebarOpen(false);
-                  }}
-                />
+                {userData?.status !== "Inativo" && (
+                  <SidebarItem
+                    icon={HelpCircle}
+                    label="Suporte"
+                    active={activeTab === "support"}
+                    onClick={() => {
+                      setActiveTab("support");
+                      setIsSidebarOpen(false);
+                    }}
+                  />
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-vitta-danger hover:bg-vitta-danger/10 mx-2"
@@ -25982,17 +26301,19 @@ export default function App() {
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
-            <div className="relative hidden md:block">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted"
-                size={18}
-              />
-              <input
-                type="text"
-                placeholder="Buscar exames, médicos..."
-                className="pl-10 pr-4 py-2 bg-vitta-surface-2 border border-vitta-border rounded-lg text-sm w-64 focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
-              />
-            </div>
+            {userData?.status !== "Inativo" && (
+              <div className="relative hidden md:block">
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted"
+                  size={18}
+                />
+                <input
+                  type="text"
+                  placeholder="Buscar exames, médicos..."
+                  className="pl-10 pr-4 py-2 bg-vitta-surface-2 border border-vitta-border rounded-lg text-sm w-64 focus:ring-2 focus:ring-vitta-accent/20 transition-all text-vitta-text-primary outline-none"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -26002,17 +26323,19 @@ export default function App() {
             >
               {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsHelpCenterOpen(true)}
-                className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border rounded-lg hover:bg-vitta-border hover:text-vitta-accent transition-all"
-                title="Central de Ajuda"
-              >
-                <HelpCircle size={20} />
-              </button>
+            {userData?.status !== "Inativo" && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsHelpCenterOpen(true)}
+                  className="p-2.5 bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border rounded-lg hover:bg-vitta-border hover:text-vitta-accent transition-all"
+                  title="Central de Ajuda"
+                >
+                  <HelpCircle size={20} />
+                </button>
 
-              {user && <NotificationCenter userId={user.uid} />}
-            </div>
+                {user && <NotificationCenter userId={user.uid} />}
+              </div>
+            )}
             <div 
               onClick={() => setActiveTab("profile")}
               className="flex items-center gap-3 pl-4 border-l border-vitta-border cursor-pointer hover:opacity-80 transition-all"
