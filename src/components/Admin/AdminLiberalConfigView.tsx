@@ -108,8 +108,8 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
 
   const handleEditClick = (prof: LiberalProfessional) => {
     setEditingProf(prof);
-    setNewProfName(prof.name);
-    setNewProfCategory(prof.category);
+    setNewProfName(prof.name || "");
+    setNewProfCategory(prof.category || "");
     setNewProfPhone(prof.phone || "");
     setNewProfCep(prof.cep || "");
     setNewProfStreet(prof.street || "");

@@ -9565,7 +9565,7 @@ const ProfessionalsManagementView = () => {
                   <input
                     type="text"
                     required
-                    value={editingItem ? editingItem.name : newItem.name}
+                    value={(editingItem ? editingItem.name : newItem.name) || ""}
                     onChange={(e) =>
                       editingItem
                         ? setEditingItem({
@@ -9589,9 +9589,9 @@ const ProfessionalsManagementView = () => {
                         type="text"
                         required
                         value={
-                          editingItem
+                          (editingItem
                             ? editingItem.specialty
-                            : newItem.specialty
+                            : newItem.specialty) || ""
                         }
                         onChange={(e) =>
                           editingItem
@@ -9615,9 +9615,9 @@ const ProfessionalsManagementView = () => {
                         type="text"
                         placeholder="Ex: 20% OFF"
                         value={
-                          editingItem
+                          (editingItem
                             ? editingItem.vittaHealthDiscount
-                            : newItem.vittaHealthDiscount
+                            : newItem.vittaHealthDiscount) || ""
                         }
                         onChange={(e) =>
                           editingItem
@@ -9672,9 +9672,9 @@ const ProfessionalsManagementView = () => {
                         type="text"
                         placeholder="Ex: CRM 12345"
                         value={
-                          editingItem
+                          (editingItem
                             ? editingItem.registrationNumber
-                            : newItem.registrationNumber
+                            : newItem.registrationNumber) || ""
                         }
                         onChange={(e) =>
                           editingItem
@@ -9741,9 +9741,9 @@ const ProfessionalsManagementView = () => {
                         type="text"
                         placeholder="Ex: Seg, Qua, Sex"
                         value={
-                          editingItem
+                          (editingItem
                             ? editingItem.availableDays
-                            : newItem.availableDays
+                            : newItem.availableDays) || ""
                         }
                         onChange={(e) =>
                           editingItem
@@ -9768,7 +9768,7 @@ const ProfessionalsManagementView = () => {
                           type="text"
                           placeholder="Ex: R$ 150,00"
                           value={
-                            editingItem ? editingItem.price : newItem.price
+                            (editingItem ? editingItem.price : newItem.price) || ""
                           }
                           onChange={(e) =>
                             editingItem
@@ -9791,7 +9791,7 @@ const ProfessionalsManagementView = () => {
                         <input
                           type="text"
                           placeholder="Ex: São Paulo"
-                          value={editingItem ? editingItem.city : newItem.city}
+                          value={(editingItem ? editingItem.city : newItem.city) || ""}
                           onChange={(e) =>
                             editingItem
                               ? setEditingItem({
@@ -10744,10 +10744,18 @@ const PartnersView = ({
   }, [partners, searchQuery, selectedCategory]);
 
   const filteredCategories = useMemo(() => {
-    return categories.filter((cat) =>
+    const partnerCats = categories.map((cat) => ({
+      ...cat,
+      categoryType: "partner" as const,
+    }));
+    const liberalCats = liberalCategories.map((cat) => ({
+      ...cat,
+      categoryType: "liberal" as const,
+    }));
+    return [...partnerCats, ...liberalCats].filter((cat) =>
       (cat.name || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [categories, searchQuery]);
+  }, [categories, liberalCategories, searchQuery]);
 
   const filteredProfessionals = useMemo(() => {
     return professionals.filter((prof) => {
@@ -10781,6 +10789,10 @@ const PartnersView = ({
 
   const getPartnersCount = (categoryName: string) => {
     return partners.filter((p) => p.category === categoryName).length;
+  };
+
+  const getLiberalProfsCount = (categoryName: string) => {
+    return liberalProfessionals.filter((p) => p.category === categoryName && p.active !== false).length;
   };
 
   const handleGetDiscount = async (partner: any) => {
@@ -12052,10 +12064,10 @@ const PartnersView = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-vitta-text-primary">
-                {filteredCategories.length} Categorias de Parcerias
+                {filteredCategories.length} Categorias
               </h2>
               <p className="text-vitta-text-secondary">
-                Navegue pelas categorias de estabelecimentos conveniados
+                Navegue pelas categorias de estabelecimentos conveniados e profissionais liberais
               </p>
             </div>
           </div>
@@ -12068,11 +12080,19 @@ const PartnersView = ({
             </div>
           ) : filteredCategories.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredCategories.map((cat) => (
+              {filteredCategories.map((cat: any) => (
                 <motion.div
                   key={cat.id}
                   whileHover={{ y: -8 }}
-                  onClick={() => setSelectedCategory(cat)}
+                  onClick={() => {
+                    if (cat.categoryType === "partner") {
+                      setSelectedCategory(cat);
+                      setActiveSubTab("empresas");
+                    } else {
+                      setSelectedLiberalCategory(cat.name);
+                      setActiveSubTab("profissionais-liberais");
+                    }
+                  }}
                   className="group cursor-pointer bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden flex flex-col h-full"
                 >
                   <div
@@ -12089,11 +12109,24 @@ const PartnersView = ({
                       getIcon(cat.icon)
                     )}
                     <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider">
-                      {getPartnersCount(cat.name)} parceiros
+                      {cat.categoryType === "partner" ? (
+                        <span>{getPartnersCount(cat.name)} parceiros</span>
+                      ) : (
+                        <span>{getLiberalProfsCount(cat.name)} profissionais</span>
+                      )}
                     </div>
                   </div>
                   <div className="p-6 flex-1 flex flex-col justify-between">
                     <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                          cat.categoryType === "partner" 
+                            ? "bg-vitta-accent/10 text-vitta-accent" 
+                            : "bg-vitta-green-bg text-vitta-green"
+                        }`}>
+                          {cat.categoryType === "partner" ? "Empresa/Parceiro" : "Profissional Liberal"}
+                        </span>
+                      </div>
                       <h3 className="font-bold text-lg text-vitta-text-primary mb-1">
                         {cat.name}
                       </h3>
@@ -12102,7 +12135,7 @@ const PartnersView = ({
                       </p>
                     </div>
                     <span className="text-[10px] text-vitta-accent font-bold uppercase mt-4 block group-hover:underline">
-                      Ver Estabelecimentos →
+                      {cat.categoryType === "partner" ? "Ver Estabelecimentos →" : "Ver Profissionais →"}
                     </span>
                   </div>
                 </motion.div>
@@ -15219,11 +15252,15 @@ const OffersManagementView = ({
   const [offers, setOffers] = useState<any[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [partners, setPartners] = useState<any[]>([]);
+  const [liberalProfessionals, setLiberalProfessionals] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [generatedCoupon, setGeneratedCoupon] = useState<string>("");
   const [copied, setCopied] = useState(false);
+
+  const [partnerSearch, setPartnerSearch] = useState("");
+  const [isOpenPartnerDropdown, setIsOpenPartnerDropdown] = useState(false);
 
   const handleGenerateCoupon = (offerId: string) => {
     const code = `VITTA-OFFER-${Math.random().toString(36).substring(3, 9).toUpperCase()}`;
@@ -15297,12 +15334,54 @@ const OffersManagementView = ({
       },
     );
 
+    const unsubscribeLiberalProfessionals = onSnapshot(
+      collection(db, "liberal_professionals"),
+      (snapshot) => {
+        setLiberalProfessionals(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+        );
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, "liberal_professionals");
+      },
+    );
+
     return () => {
       unsubscribeOffers();
       unsubscribeProfessionals();
       unsubscribePartners();
+      unsubscribeLiberalProfessionals();
     };
   }, []);
+
+  const filteredSearchPartners = useMemo(() => {
+    const queryText = partnerSearch.toLowerCase().trim();
+    
+    const filteredProfs = professionals.filter(p => 
+      p.name && p.name.toLowerCase().includes(queryText)
+    );
+    
+    const filteredEstabs = partners.filter(p => 
+      p.name && p.name.toLowerCase().includes(queryText)
+    );
+    
+    const filteredLiberal = liberalProfessionals.filter(p => 
+      p.name && p.name.toLowerCase().includes(queryText)
+    );
+    
+    return {
+      professionals: filteredProfs,
+      establishments: filteredEstabs,
+      liberalProfessionals: filteredLiberal,
+      totalCount: filteredProfs.length + filteredEstabs.length + filteredLiberal.length
+    };
+  }, [professionals, partners, liberalProfessionals, partnerSearch]);
+
+  const handleSelectPartner = (name: string) => {
+    setNewItem(prev => ({ ...prev, partner: name }));
+    setPartnerSearch(name);
+    setIsOpenPartnerDropdown(false);
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15359,6 +15438,7 @@ const OffersManagementView = ({
         expiryDate: "",
         isBanner: false,
       });
+      setPartnerSearch("");
       addToast(
         `Oferta ${editingItem ? "atualizada" : "criada"} com sucesso.`,
         "success",
@@ -15389,6 +15469,7 @@ const OffersManagementView = ({
       expiryDate: offer.expiryDate || "",
       isBanner: offer.isBanner || false,
     });
+    setPartnerSearch(offer.partner || "");
     setIsCreating(true);
   };
 
@@ -15438,6 +15519,7 @@ const OffersManagementView = ({
                 expiryDate: "",
                 isBanner: false,
               });
+              setPartnerSearch("");
             }}
             className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
           >
@@ -15488,36 +15570,134 @@ const OffersManagementView = ({
                   className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
                   Parceiro
                 </label>
-                <select
-                  required
-                  value={newItem.partner}
-                  onChange={(e) =>
-                    setNewItem({ ...newItem, partner: e.target.value })
-                  }
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
-                >
-                  <option value="" disabled>
-                    Selecione um Parceiro
-                  </option>
-                  <optgroup label="Profissionais">
-                    {professionals.map((prof) => (
-                      <option key={prof.id} value={prof.name}>
-                        {prof.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Estabelecimentos">
-                    {partners.map((partner) => (
-                      <option key={partner.id} value={partner.name}>
-                        {partner.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                <div className="relative z-20">
+                  <input
+                    type="text"
+                    placeholder="Buscar ou selecionar parceiro..."
+                    required
+                    value={partnerSearch}
+                    onChange={(e) => {
+                      setPartnerSearch(e.target.value);
+                      setNewItem({ ...newItem, partner: e.target.value });
+                      setIsOpenPartnerDropdown(true);
+                    }}
+                    onFocus={() => setIsOpenPartnerDropdown(true)}
+                    className="w-full pl-10 pr-10 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-vitta-text-muted pointer-events-none">
+                    <Search size={16} />
+                  </div>
+                  {partnerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPartnerSearch("");
+                        setNewItem({ ...newItem, partner: "" });
+                      }}
+                      className="absolute right-10 top-1/2 -translate-y-1/2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsOpenPartnerDropdown(!isOpenPartnerDropdown)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-vitta-text-muted hover:text-vitta-text-primary transition-colors"
+                  >
+                    <ChevronDown size={16} className={`transition-transform duration-200 ${isOpenPartnerDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+
+                {isOpenPartnerDropdown && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10 cursor-default" 
+                      onClick={() => setIsOpenPartnerDropdown(false)} 
+                    />
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-vitta-surface border border-vitta-border rounded-xl shadow-xl max-h-60 overflow-y-auto z-30 divide-y divide-vitta-border">
+                      {filteredSearchPartners.totalCount === 0 ? (
+                        <div className="p-4 text-xs text-vitta-text-muted text-center">
+                          Nenhum parceiro encontrado.
+                        </div>
+                      ) : (
+                        <>
+                          {filteredSearchPartners.establishments.length > 0 && (
+                            <div className="p-2">
+                              <div className="text-[10px] font-bold text-vitta-accent uppercase tracking-widest px-2 py-1">
+                                Estabelecimentos / Parceiros
+                              </div>
+                              {filteredSearchPartners.establishments.map((partner) => (
+                                <button
+                                  key={partner.id}
+                                  type="button"
+                                  onClick={() => handleSelectPartner(partner.name)}
+                                  className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-vitta-surface-2 transition-colors flex items-center justify-between ${
+                                    newItem.partner === partner.name ? 'bg-vitta-accent/5 font-bold text-vitta-accent' : 'text-vitta-text-primary'
+                                  }`}
+                                >
+                                  <span>{partner.name}</span>
+                                  <span className="text-[9px] bg-vitta-accent/10 text-vitta-accent px-1.5 py-0.5 rounded uppercase font-bold">
+                                    Empresa
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {filteredSearchPartners.professionals.length > 0 && (
+                            <div className="p-2">
+                              <div className="text-[10px] font-bold text-vitta-green uppercase tracking-widest px-2 py-1">
+                                Corpo Clínico / Médicos
+                              </div>
+                              {filteredSearchPartners.professionals.map((prof) => (
+                                <button
+                                  key={prof.id}
+                                  type="button"
+                                  onClick={() => handleSelectPartner(prof.name)}
+                                  className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-vitta-surface-2 transition-colors flex items-center justify-between ${
+                                    newItem.partner === prof.name ? 'bg-vitta-green/5 font-bold text-vitta-green' : 'text-vitta-text-primary'
+                                  }`}
+                                >
+                                  <span>{prof.name}</span>
+                                  <span className="text-[9px] bg-vitta-green/10 text-vitta-green px-1.5 py-0.5 rounded uppercase font-bold">
+                                    Médico
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {filteredSearchPartners.liberalProfessionals.length > 0 && (
+                            <div className="p-2">
+                              <div className="text-[10px] font-bold text-amber-500 uppercase tracking-widest px-2 py-1">
+                                Profissionais Liberais
+                              </div>
+                              {filteredSearchPartners.liberalProfessionals.map((libProf) => (
+                                <button
+                                  key={libProf.id}
+                                  type="button"
+                                  onClick={() => handleSelectPartner(libProf.name)}
+                                  className={`w-full text-left px-3 py-2 rounded-lg text-xs hover:bg-vitta-surface-2 transition-colors flex items-center justify-between ${
+                                    newItem.partner === libProf.name ? 'bg-amber-500/5 font-bold text-amber-600' : 'text-vitta-text-primary'
+                                  }`}
+                                >
+                                  <span>{libProf.name}</span>
+                                  <span className="text-[9px] bg-amber-500/10 text-amber-700 px-1.5 py-0.5 rounded uppercase font-bold">
+                                    Liberal
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -16114,6 +16294,8 @@ const PartnershipsView = ({
   const [isCreating, setIsCreating] = useState<"partner" | "category" | null>(
     null,
   );
+  const [loadingCep, setLoadingCep] = useState(false);
+
   const [newItem, setNewItem] = useState({
     name: "",
     category: "",
@@ -16125,7 +16307,93 @@ const PartnershipsView = ({
     icon: "Heart",
     color: "bg-vitta-green",
     description: "",
+    cep: "",
+    logradouro: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    city: "",
+    uf: "",
   });
+
+  const buildAddressString = (item: {
+    logradouro?: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    city?: string;
+    uf?: string;
+    cep?: string;
+  }) => {
+    const parts = [];
+    if (item.logradouro) {
+      let streetPart = item.logradouro;
+      if (item.numero) {
+        streetPart += `, ${item.numero}`;
+      }
+      if (item.complemento) {
+        streetPart += ` - ${item.complemento}`;
+      }
+      parts.push(streetPart);
+    }
+    if (item.bairro) parts.push(item.bairro);
+    if (item.city) {
+      let cityPart = item.city;
+      if (item.uf) {
+        cityPart += `/${item.uf}`;
+      }
+      parts.push(cityPart);
+    }
+    if (item.cep) parts.push(`CEP ${item.cep}`);
+    return parts.join(" - ");
+  };
+
+  const handlePartnershipCepChange = async (cepValue: string) => {
+    const cleaned = cepValue.replace(/\D/g, "");
+
+    if (editingItem) {
+      setEditingItem((prev: any) => ({ ...prev, cep: cepValue }));
+    } else {
+      setNewItem((prev: any) => ({ ...prev, cep: cepValue }));
+    }
+
+    if (cleaned.length === 8) {
+      setLoadingCep(true);
+      try {
+        const response = await fetch(
+          `https://viacep.com.br/ws/${cleaned}/json/`,
+        );
+        const data = await response.json();
+        if (!data.erro) {
+          if (editingItem) {
+            setEditingItem((prev: any) => ({
+              ...prev,
+              logradouro: data.logradouro || "",
+              bairro: data.bairro || "",
+              city: data.localidade || "",
+              uf: data.uf || "",
+            }));
+          } else {
+            setNewItem((prev: any) => ({
+              ...prev,
+              logradouro: data.logradouro || "",
+              bairro: data.bairro || "",
+              city: data.localidade || "",
+              uf: data.uf || "",
+            }));
+          }
+          addToast("CEP localizado com sucesso!", "success");
+        } else {
+          addToast("CEP não encontrado.", "error");
+        }
+      } catch (err) {
+        console.error("Erro ao buscar CEP:", err);
+        addToast("Erro ao buscar CEP.", "error");
+      } finally {
+        setLoadingCep(false);
+      }
+    }
+  };
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -16271,6 +16539,9 @@ const PartnershipsView = ({
     try {
       const { id, type, ...data } = editingItem;
       const collectionName = type === "partner" ? "partners" : "categories";
+      if (type === "partner") {
+        data.address = buildAddressString(editingItem);
+      }
       await setDoc(doc(db, collectionName, id), data, { merge: true });
       await logAdminAction(
         `UPDATE_${type.toUpperCase()}`,
@@ -16298,19 +16569,27 @@ const PartnershipsView = ({
     e.preventDefault();
     try {
       if (isCreating === "partner") {
+        const computedAddress = buildAddressString(newItem);
         await addDoc(collection(db, "partners"), {
           name: newItem.name,
           category:
             newItem.category ||
             (categories.length > 0 ? categories[0].name : "Geral"),
           discount: newItem.discount,
-          address: newItem.address || "",
+          address: computedAddress,
           phone: newItem.phone || "",
           rating: 5.0,
           reviews: 0,
           imageUrl:
             newItem.imageUrl || "https://picsum.photos/seed/partner/400/300",
           createdAt: new Date().toISOString(),
+          cep: newItem.cep || "",
+          logradouro: newItem.logradouro || "",
+          numero: newItem.numero || "",
+          complemento: newItem.complemento || "",
+          bairro: newItem.bairro || "",
+          city: newItem.city || "",
+          uf: newItem.uf || "",
         });
         await logAdminAction(
           "CREATE_PARTNER",
@@ -16350,6 +16629,13 @@ const PartnershipsView = ({
         icon: "Heart",
         color: "bg-vitta-green",
         description: "",
+        cep: "",
+        logradouro: "",
+        numero: "",
+        complemento: "",
+        bairro: "",
+        city: "",
+        uf: "",
       });
       addToast(
         `${isCreating === "partner" ? "Parceiro" : "Categoria"} criado com sucesso.`,
@@ -16410,7 +16696,7 @@ const PartnershipsView = ({
                   <input
                     type="text"
                     required
-                    value={editingItem ? editingItem.name : newItem.name}
+                    value={(editingItem ? editingItem.name : newItem.name) || ""}
                     onChange={(e) =>
                       editingItem
                         ? setEditingItem({
@@ -16429,7 +16715,7 @@ const PartnershipsView = ({
                   </label>
                   <select
                     value={
-                      editingItem ? editingItem.category : newItem.category
+                      (editingItem ? editingItem.category : newItem.category) || ""
                     }
                     onChange={(e) =>
                       editingItem
@@ -16456,7 +16742,7 @@ const PartnershipsView = ({
                   <input
                     type="text"
                     value={
-                      editingItem ? editingItem.discount : newItem.discount
+                      (editingItem ? editingItem.discount : newItem.discount) || ""
                     }
                     onChange={(e) =>
                       editingItem
@@ -16476,7 +16762,7 @@ const PartnershipsView = ({
                   <input
                     type="text"
                     value={
-                      editingItem ? editingItem.phone || "" : newItem.phone
+                      (editingItem ? editingItem.phone || "" : newItem.phone) || ""
                     }
                     onChange={(e) =>
                       editingItem
@@ -16489,25 +16775,174 @@ const PartnershipsView = ({
                     className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                    Endereço
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      editingItem ? editingItem.address || "" : newItem.address
-                    }
-                    onChange={(e) =>
-                      editingItem
-                        ? setEditingItem({
-                            ...editingItem,
-                            address: e.target.value,
-                          })
-                        : setNewItem({ ...newItem, address: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
-                  />
+                {/* Campos Completos de Endereço */}
+                <div className="space-y-4 pt-2 border-t border-vitta-border">
+                  <h4 className="text-xs font-bold text-vitta-accent uppercase tracking-wider">
+                    Endereço Completo
+                  </h4>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2 col-span-1 relative">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        CEP
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="00000-000"
+                          value={
+                            editingItem
+                              ? editingItem.cep || ""
+                              : newItem.cep || ""
+                          }
+                          onChange={(e) => handlePartnershipCepChange(e.target.value)}
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                        />
+                        {loadingCep && (
+                          <div className="absolute right-2.5 top-3.5">
+                            <div className="w-4 h-4 border-2 border-vitta-accent border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 col-span-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        Rua / Logradouro
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Rua, Avenida..."
+                        value={
+                          editingItem
+                            ? (editingItem.logradouro !== undefined ? editingItem.logradouro : (editingItem.address || ""))
+                            : newItem.logradouro || ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem
+                            ? setEditingItem({ ...editingItem, logradouro: val })
+                            : setNewItem({ ...newItem, logradouro: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        Número
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Nº"
+                        value={
+                          editingItem
+                            ? editingItem.numero || ""
+                            : newItem.numero || ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem
+                            ? setEditingItem({ ...editingItem, numero: val })
+                            : setNewItem({ ...newItem, numero: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        Complemento
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Sala, Andar..."
+                        value={
+                          editingItem
+                            ? editingItem.complemento || ""
+                            : newItem.complemento || ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem
+                            ? setEditingItem({ ...editingItem, complemento: val })
+                            : setNewItem({ ...newItem, complemento: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Bairro
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Bairro"
+                      value={
+                        editingItem
+                          ? editingItem.bairro || ""
+                          : newItem.bairro || ""
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        editingItem
+                          ? setEditingItem({ ...editingItem, bairro: val })
+                          : setNewItem({ ...newItem, bairro: val });
+                      }}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2 col-span-2">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        Cidade
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Cidade"
+                        value={
+                          editingItem
+                            ? editingItem.city || ""
+                            : newItem.city || ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          editingItem
+                            ? setEditingItem({ ...editingItem, city: val })
+                            : setNewItem({ ...newItem, city: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                        UF
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="SP"
+                        maxLength={2}
+                        value={
+                          editingItem
+                            ? editingItem.uf || ""
+                            : newItem.uf || ""
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          editingItem
+                            ? setEditingItem({ ...editingItem, uf: val })
+                            : setNewItem({ ...newItem, uf: val });
+                        }}
+                        className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary text-center uppercase"
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
@@ -16519,7 +16954,7 @@ const PartnershipsView = ({
                     value={
                       editingItem
                         ? editingItem.imageUrl || ""
-                        : newItem.imageUrl
+                        : newItem.imageUrl || ""
                     }
                     onChange={(e) =>
                       editingItem
@@ -16793,19 +17228,31 @@ const PartnershipsView = ({
                         <Trash2 size={18} />
                       </button>
                     </div>
-                  ) : partner.phone ? (
-                    <div className="pt-4" onClick={(e) => e.stopPropagation()}>
-                      <a
-                        href={`https://wa.me/${partner.phone.replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20as%20ofertas%20do%20convênio%20ViTTA.`}
-                        target="_blank"
-                        referrerPolicy="no-referrer"
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all cursor-pointer"
+                  ) : (
+                    <div className="pt-4 flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => {
+                          setSelectedPartnerDetail(partner);
+                          setGeneratedCoupon("");
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-vitta-accent/10 hover:bg-vitta-accent/20 text-vitta-accent border border-vitta-accent/20 rounded-xl text-sm font-bold transition-all cursor-pointer"
                       >
-                        <Phone size={14} />
-                        WhatsApp
-                      </a>
+                        <Info size={14} />
+                        Ver Detalhes
+                      </button>
+                      {partner.phone ? (
+                        <a
+                          href={`https://wa.me/${partner.phone.replace(/\D/g, "")}?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20as%20ofertas%20do%20convênio%20ViTTA.`}
+                          target="_blank"
+                          referrerPolicy="no-referrer"
+                          className="w-full flex items-center justify-center gap-2 py-2.5 bg-vitta-green text-white rounded-xl text-sm font-bold hover:bg-vitta-green/90 transition-all cursor-pointer"
+                        >
+                          <Phone size={14} />
+                          WhatsApp
+                        </a>
+                      ) : null}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -18877,7 +19324,7 @@ const UsersView = () => {
                   </label>
                   <input
                     type="text"
-                    value={editingUser.name}
+                    value={editingUser.name || ""}
                     onChange={(e) =>
                       setEditingUser({ ...editingUser, name: e.target.value })
                     }
@@ -18890,7 +19337,7 @@ const UsersView = () => {
                   </label>
                   <input
                     type="email"
-                    value={editingUser.email}
+                    value={editingUser.email || ""}
                     onChange={(e) =>
                       setEditingUser({ ...editingUser, email: e.target.value })
                     }
@@ -18903,7 +19350,7 @@ const UsersView = () => {
                       Status
                     </label>
                     <select
-                      value={editingUser.status}
+                      value={editingUser.status || "Ativo"}
                       onChange={(e) =>
                         setEditingUser({
                           ...editingUser,
@@ -18921,7 +19368,7 @@ const UsersView = () => {
                       Plano
                     </label>
                     <select
-                      value={editingUser.plan}
+                      value={editingUser.plan || "Free"}
                       onChange={(e) =>
                         setEditingUser({ ...editingUser, plan: e.target.value })
                       }
