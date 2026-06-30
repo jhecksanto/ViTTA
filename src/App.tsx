@@ -9070,6 +9070,10 @@ const ProfessionalsManagementView = () => {
     localidade: "",
     uf: "",
     feeRate: 0,
+    schedule: { weekly: {}, blockedDates: [] } as {
+      weekly: Record<string, Array<{ start: string; end: string }>>;
+      blockedDates: string[];
+    },
   });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -9210,6 +9214,151 @@ const ProfessionalsManagementView = () => {
       }
     }
   };
+
+  const computeAvailableDaysFromSchedule = (weekly: Record<string, Array<{ start: string; end: string }>>) => {
+    const dayAbbreviationMap: Record<string, string> = {
+      monday: "Seg",
+      tuesday: "Ter",
+      wednesday: "Qua",
+      thursday: "Qui",
+      friday: "Sex",
+      saturday: "Sáb",
+      sunday: "Dom"
+    };
+    
+    const daysOfWeekOrder = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    
+    const activeDaysAbbrev = daysOfWeekOrder
+      .filter(day => weekly?.[day] && weekly[day].length > 0)
+      .map(day => dayAbbreviationMap[day]);
+      
+    if (activeDaysAbbrev.length === 0) return "";
+    return activeDaysAbbrev.join(", ");
+  };
+
+  const handleFormAddSlot = (day: string) => {
+    if (editingItem) {
+      const currentSchedule = editingItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = currentSchedule.weekly?.[day] || [];
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: [...currentDaySchedule, { start: "08:00", end: "12:00" }],
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setEditingItem({
+        ...editingItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    } else {
+      const currentSchedule = newItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = currentSchedule.weekly?.[day] || [];
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: [...currentDaySchedule, { start: "08:00", end: "12:00" }],
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setNewItem({
+        ...newItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    }
+  };
+
+  const handleFormRemoveSlot = (day: string, index: number) => {
+    if (editingItem) {
+      const currentSchedule = editingItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = [...(currentSchedule.weekly?.[day] || [])];
+      currentDaySchedule.splice(index, 1);
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: currentDaySchedule,
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setEditingItem({
+        ...editingItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    } else {
+      const currentSchedule = newItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = [...(currentSchedule.weekly?.[day] || [])];
+      currentDaySchedule.splice(index, 1);
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: currentDaySchedule,
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setNewItem({
+        ...newItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    }
+  };
+
+  const handleFormUpdateSlot = (
+    day: string,
+    index: number,
+    field: "start" | "end",
+    value: string,
+  ) => {
+    if (editingItem) {
+      const currentSchedule = editingItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = [...(currentSchedule.weekly?.[day] || [])];
+      currentDaySchedule[index] = {
+        ...currentDaySchedule[index],
+        [field]: value,
+      };
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: currentDaySchedule,
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setEditingItem({
+        ...editingItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    } else {
+      const currentSchedule = newItem.schedule || { weekly: {}, blockedDates: [] };
+      const currentDaySchedule = [...(currentSchedule.weekly?.[day] || [])];
+      currentDaySchedule[index] = {
+        ...currentDaySchedule[index],
+        [field]: value,
+      };
+      const updatedWeekly = {
+        ...currentSchedule.weekly,
+        [day]: currentDaySchedule,
+      };
+      const updatedAvailableDays = computeAvailableDaysFromSchedule(updatedWeekly);
+      setNewItem({
+        ...newItem,
+        schedule: {
+          ...currentSchedule,
+          weekly: updatedWeekly,
+        },
+        availableDays: updatedAvailableDays
+      });
+    }
+  };
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -9380,6 +9529,7 @@ const ProfessionalsManagementView = () => {
           feeRate: feeRateVal,
           registrationNumber: newItem.registrationNumber,
           availableDays: newItem.availableDays,
+          schedule: newItem.schedule || { weekly: {}, blockedDates: [] },
           price: newItem.price,
           city: newItem.city,
           rating: 5.0,
@@ -9452,6 +9602,7 @@ const ProfessionalsManagementView = () => {
         localidade: "",
         uf: "",
         feeRate: 0,
+        schedule: { weekly: {}, blockedDates: [] },
       });
       addToast(
         `${isCreating === "professional" ? "Profissional" : "Categoria"} criado com sucesso.`,
@@ -9480,7 +9631,11 @@ const ProfessionalsManagementView = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-md rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col"
+              className={`bg-vitta-surface w-full rounded-xl shadow-2xl border border-vitta-border overflow-hidden max-h-[90vh] flex flex-col transition-all duration-300 ${
+                isCreating === "professional" || (editingItem && editingItem.type === "professional")
+                  ? "max-w-4xl"
+                  : "max-w-md"
+              }`}
             >
               <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2 shrink-0">
                 <h3 className="text-xl font-bold text-vitta-text-primary">
@@ -9502,502 +9657,618 @@ const ProfessionalsManagementView = () => {
                 onSubmit={editingItem ? handleSaveEdit : handleCreate}
                 className="p-6 space-y-4 overflow-y-auto"
               >
-                {(isCreating === "professional" ||
-                  (editingItem && editingItem.type === "professional")) && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 mr-2">
-                      Foto de Perfil do Profissional
-                    </label>
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() =>
-                        document.getElementById("prof-img-file-input")?.click()
-                      }
-                      className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
-                        isDragging
-                          ? "border-vitta-green bg-vitta-green/5"
-                          : "border-vitta-border bg-vitta-surface-2 hover:border-vitta-green/40 hover:bg-vitta-surface-3"
-                      }`}
-                    >
-                      <input
-                        id="prof-img-file-input"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleFileChange}
-                      />
-
-                      {editingItem?.imageUrl || newItem.imageUrl ? (
-                        <div className="relative group/img">
-                          <img
-                            src={
-                              editingItem
-                                ? editingItem.imageUrl
-                                : newItem.imageUrl
-                            }
-                            alt="Preview do Profissional"
-                            className="w-20 h-20 rounded-xl object-cover border border-vitta-border shadow-md"
+                {isCreating === "professional" || (editingItem && editingItem.type === "professional") ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    {/* Left Column: Information Fields */}
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 mr-2">
+                          Foto de Perfil do Profissional
+                        </label>
+                        <div
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                          onClick={() =>
+                            document.getElementById("prof-img-file-input")?.click()
+                          }
+                          className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                            isDragging
+                              ? "border-vitta-green bg-vitta-green/5"
+                              : "border-vitta-border bg-vitta-surface-2 hover:border-vitta-green/40 hover:bg-vitta-surface-3"
+                          }`}
+                        >
+                          <input
+                            id="prof-img-file-input"
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFileChange}
                           />
-                          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-all">
-                            <Upload size={16} className="text-white" />
+
+                          {editingItem?.imageUrl || newItem.imageUrl ? (
+                            <div className="relative group/img">
+                              <img
+                                src={
+                                  editingItem
+                                    ? editingItem.imageUrl
+                                    : newItem.imageUrl
+                                }
+                                alt="Preview do Profissional"
+                                className="w-20 h-20 rounded-xl object-cover border border-vitta-border shadow-md"
+                              />
+                              <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-all">
+                                <Upload size={16} className="text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-14 h-14 rounded-xl bg-vitta-surface border border-vitta-border flex items-center justify-center text-vitta-text-muted">
+                              <User size={24} />
+                            </div>
+                          )}
+
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-vitta-text-primary">
+                              Arraste ou clique para enviar
+                            </p>
+                            <p className="text-[10px] text-vitta-text-muted mt-0.5">
+                              Formatos PNG, JPG ou WEBP até 2MB
+                            </p>
                           </div>
                         </div>
-                      ) : (
-                        <div className="w-14 h-14 rounded-xl bg-vitta-surface border border-vitta-border flex items-center justify-center text-vitta-text-muted">
-                          <User size={24} />
-                        </div>
-                      )}
-
-                      <div className="text-center">
-                        <p className="text-xs font-bold text-vitta-text-primary">
-                          Arraste ou clique para enviar
-                        </p>
-                        <p className="text-[10px] text-vitta-text-muted mt-0.5">
-                          Formatos PNG, JPG ou WEBP até 2MB
-                        </p>
                       </div>
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                    Nome
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={(editingItem ? editingItem.name : newItem.name) || ""}
-                    onChange={(e) =>
-                      editingItem
-                        ? setEditingItem({
-                            ...editingItem,
-                            name: e.target.value,
-                          })
-                        : setNewItem({ ...newItem, name: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                    autoFocus
-                  />
-                </div>
-                {(isCreating === "professional" ||
-                  (editingItem && editingItem.type === "professional")) && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Especialidade
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={
-                          (editingItem
-                            ? editingItem.specialty
-                            : newItem.specialty) || ""
-                        }
-                        onChange={(e) =>
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                specialty: e.target.value,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                specialty: e.target.value,
-                              })
-                        }
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Desconto ViTTA Health
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: 20% OFF"
-                        value={
-                          (editingItem
-                            ? editingItem.vittaHealthDiscount
-                            : newItem.vittaHealthDiscount) || ""
-                        }
-                        onChange={(e) =>
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                vittaHealthDiscount: e.target.value,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                vittaHealthDiscount: e.target.value,
-                              })
-                        }
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Taxa Fee (%)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="Ex: 10"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value={
-                          editingItem
-                            ? (editingItem.feeRate !== undefined ? editingItem.feeRate : "")
-                            : (newItem.feeRate !== undefined ? newItem.feeRate : "")
-                        }
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          const rateVal = isNaN(val) ? 0 : val;
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                feeRate: rateVal,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                feeRate: rateVal,
-                              });
-                        }}
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Número do Registro
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: CRM 12345"
-                        value={
-                          (editingItem
-                            ? editingItem.registrationNumber
-                            : newItem.registrationNumber) || ""
-                        }
-                        onChange={(e) =>
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                registrationNumber: e.target.value,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                registrationNumber: e.target.value,
-                              })
-                        }
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        E-mail do Profissional (para Vínculo de Conta)
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="Ex: profissional@email.com"
-                        value={
-                          editingItem
-                            ? editingItem.email || ""
-                            : newItem.email || ""
-                        }
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          editingItem
-                            ? setEditingItem({ ...editingItem, email: val })
-                            : setNewItem({ ...newItem, email: val });
-                        }}
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        WhatsApp de Direcionamento (com DDD)
-                      </label>
-                      <input
-                        id="professional-whatsapp-input"
-                        type="text"
-                        placeholder="Ex: 5528999881386"
-                        value={
-                          editingItem
-                            ? editingItem.whatsapp || ""
-                            : newItem.whatsapp || ""
-                        }
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          editingItem
-                            ? setEditingItem({ ...editingItem, whatsapp: val })
-                            : setNewItem({ ...newItem, whatsapp: val });
-                        }}
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                        Dias de Atendimento
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Seg, Qua, Sex"
-                        value={
-                          (editingItem
-                            ? editingItem.availableDays
-                            : newItem.availableDays) || ""
-                        }
-                        onChange={(e) =>
-                          editingItem
-                            ? setEditingItem({
-                                ...editingItem,
-                                availableDays: e.target.value,
-                              })
-                            : setNewItem({
-                                ...newItem,
-                                availableDays: e.target.value,
-                              })
-                        }
-                        className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                          Valor (Opcional)
+                          Nome
                         </label>
                         <input
                           type="text"
-                          placeholder="Ex: R$ 150,00"
+                          required
+                          value={(editingItem ? editingItem.name : newItem.name) || ""}
+                          onChange={(e) =>
+                            editingItem
+                              ? setEditingItem({
+                                  ...editingItem,
+                                  name: e.target.value,
+                                })
+                              : setNewItem({ ...newItem, name: e.target.value })
+                          }
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                          Especialidade
+                        </label>
+                        <input
+                          type="text"
+                          required
                           value={
-                            (editingItem ? editingItem.price : newItem.price) || ""
+                            (editingItem
+                              ? editingItem.specialty
+                              : newItem.specialty) || ""
                           }
                           onChange={(e) =>
                             editingItem
                               ? setEditingItem({
                                   ...editingItem,
-                                  price: e.target.value,
+                                  specialty: e.target.value,
                                 })
                               : setNewItem({
                                   ...newItem,
-                                  price: e.target.value,
+                                  specialty: e.target.value,
                                 })
                           }
                           className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
                       </div>
+
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                          Cidade Principal
+                          Desconto ViTTA Health
                         </label>
                         <input
                           type="text"
-                          placeholder="Ex: São Paulo"
-                          value={(editingItem ? editingItem.city : newItem.city) || ""}
+                          placeholder="Ex: 20% OFF"
+                          value={
+                            (editingItem
+                              ? editingItem.vittaHealthDiscount
+                              : newItem.vittaHealthDiscount) || ""
+                          }
                           onChange={(e) =>
                             editingItem
                               ? setEditingItem({
                                   ...editingItem,
-                                  city: e.target.value,
+                                  vittaHealthDiscount: e.target.value,
                                 })
-                              : setNewItem({ ...newItem, city: e.target.value })
+                              : setNewItem({
+                                  ...newItem,
+                                  vittaHealthDiscount: e.target.value,
+                                })
                           }
                           className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
                       </div>
-                    </div>
 
-                    {/* Complete Address Fields - Prefilled through CEP */}
-                    <div className="space-y-4 pt-4 border-t border-vitta-border mt-3">
-                      <p className="text-xs font-bold text-vitta-text-primary px-1">
-                        Endereço de Atendimento
-                      </p>
-
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-1 space-y-2">
-                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            CEP
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              placeholder="00000-000"
-                              value={
-                                editingItem
-                                  ? editingItem.cep || ""
-                                  : newItem.cep || ""
-                              }
-                              onChange={(e) => handleCepChange(e.target.value)}
-                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                            />
-                            {loadingCep && (
-                              <div className="absolute right-2.5 top-3.5">
-                                <div className="w-4 h-4 border-2 border-vitta-green border-t-transparent rounded-full animate-spin" />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="col-span-2 space-y-2">
-                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Rua / Logradouro
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Rua, Avenida..."
-                            value={
-                              editingItem
-                                ? editingItem.logradouro || ""
-                                : newItem.logradouro || ""
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              editingItem
-                                ? setEditingItem({
-                                    ...editingItem,
-                                    logradouro: val,
-                                  })
-                                : setNewItem({ ...newItem, logradouro: val });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                          Taxa Fee (%)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Ex: 10"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={
+                            editingItem
+                              ? (editingItem.feeRate !== undefined ? editingItem.feeRate : "")
+                              : (newItem.feeRate !== undefined ? newItem.feeRate : "")
+                          }
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const rateVal = isNaN(val) ? 0 : val;
+                            editingItem
+                              ? setEditingItem({
+                                  ...editingItem,
+                                  feeRate: rateVal,
+                                })
+                              : setNewItem({
+                                  ...newItem,
+                                  feeRate: rateVal,
+                                });
+                          }}
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                        />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Número
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Nº"
-                            value={
-                              editingItem
-                                ? editingItem.numero || ""
-                                : newItem.numero || ""
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              editingItem
-                                ? setEditingItem({
-                                    ...editingItem,
-                                    numero: val,
-                                  })
-                                : setNewItem({ ...newItem, numero: val });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Complemento
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Apt, Bloco..."
-                            value={
-                              editingItem
-                                ? editingItem.complemento || ""
-                                : newItem.complemento || ""
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              editingItem
-                                ? setEditingItem({
-                                    ...editingItem,
-                                    complemento: val,
-                                  })
-                                : setNewItem({ ...newItem, complemento: val });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                          Número do Registro
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: CRM 12345"
+                          value={
+                            (editingItem
+                              ? editingItem.registrationNumber
+                              : newItem.registrationNumber) || ""
+                          }
+                          onChange={(e) =>
+                            editingItem
+                              ? setEditingItem({
+                                  ...editingItem,
+                                  registrationNumber: e.target.value,
+                                })
+                              : setNewItem({
+                                  ...newItem,
+                                  registrationNumber: e.target.value,
+                                })
+                          }
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                        />
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="space-y-2 col-span-1">
-                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Bairro
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Bairro"
-                            value={
-                              editingItem
-                                ? editingItem.bairro || ""
-                                : newItem.bairro || ""
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              editingItem
-                                ? setEditingItem({
-                                    ...editingItem,
-                                    bairro: val,
-                                  })
-                                : setNewItem({ ...newItem, bairro: val });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                          E-mail do Profissional (para Vínculo de Conta)
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="Ex: profissional@email.com"
+                          value={
+                            editingItem
+                              ? editingItem.email || ""
+                              : newItem.email || ""
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            editingItem
+                              ? setEditingItem({ ...editingItem, email: val })
+                              : setNewItem({ ...newItem, email: val });
+                          }}
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                        />
+                      </div>
 
-                        <div className="space-y-2 col-span-1">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                          WhatsApp de Direcionamento (com DDD)
+                        </label>
+                        <input
+                          id="professional-whatsapp-input"
+                          type="text"
+                          placeholder="Ex: 5528999881386"
+                          value={
+                            editingItem
+                              ? editingItem.whatsapp || ""
+                              : newItem.whatsapp || ""
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            editingItem
+                              ? setEditingItem({ ...editingItem, whatsapp: val })
+                              : setNewItem({ ...newItem, whatsapp: val });
+                          }}
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 flex justify-between">
+                          <span>Dias de Atendimento</span>
+                          <span className="text-[9px] text-vitta-accent font-normal italic lowercase">
+                            (sincronizado automaticamente)
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Seg, Qua, Sex"
+                          value={
+                            (editingItem
+                              ? editingItem.availableDays
+                              : newItem.availableDays) || ""
+                          }
+                          onChange={(e) =>
+                            editingItem
+                              ? setEditingItem({
+                                  ...editingItem,
+                                  availableDays: e.target.value,
+                                })
+                              : setNewItem({
+                                  ...newItem,
+                                  availableDays: e.target.value,
+                                })
+                          }
+                          className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary bg-opacity-50"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
                           <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Cidade
+                            Valor (Opcional)
                           </label>
                           <input
                             type="text"
-                            placeholder="Cidade"
+                            placeholder="Ex: R$ 150,00"
                             value={
-                              editingItem
-                                ? editingItem.city || ""
-                                : newItem.city || ""
+                              (editingItem ? editingItem.price : newItem.price) || ""
                             }
-                            onChange={(e) => {
-                              const val = e.target.value;
+                            onChange={(e) =>
                               editingItem
                                 ? setEditingItem({
                                     ...editingItem,
-                                    city: val,
-                                    localidade: val,
+                                    price: e.target.value,
                                   })
                                 : setNewItem({
                                     ...newItem,
-                                    city: val,
-                                    localidade: val,
-                                  });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                                    price: e.target.value,
+                                  })
+                            }
+                            className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                           />
                         </div>
-
-                        <div className="space-y-2 col-span-1">
+                        <div className="space-y-2">
                           <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                            Estado (UF)
+                            Cidade Principal
                           </label>
                           <input
                             type="text"
-                            placeholder="UF"
-                            maxLength={2}
+                            placeholder="Ex: São Paulo"
                             value={
-                              editingItem
-                                ? editingItem.uf || ""
-                                : newItem.uf || ""
+                              (editingItem ? editingItem.city : newItem.city) || ""
                             }
-                            onChange={(e) => {
-                              const val = e.target.value.toUpperCase();
+                            onChange={(e) =>
                               editingItem
-                                ? setEditingItem({ ...editingItem, uf: val })
-                                : setNewItem({ ...newItem, uf: val });
-                            }}
-                            className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                                ? setEditingItem({
+                                    ...editingItem,
+                                    city: e.target.value,
+                                  })
+                                : setNewItem({ ...newItem, city: e.target.value })
+                            }
+                            className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                           />
                         </div>
                       </div>
+
+                      {/* Complete Address Fields - Prefilled through CEP */}
+                      <div className="space-y-4 pt-4 border-t border-vitta-border mt-3">
+                        <p className="text-xs font-bold text-vitta-text-primary px-1">
+                          Endereço de Atendimento
+                        </p>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="col-span-1 space-y-2">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              CEP
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="00000-000"
+                                value={
+                                  editingItem
+                                    ? editingItem.cep || ""
+                                    : newItem.cep || ""
+                                }
+                                onChange={(e) => handleCepChange(e.target.value)}
+                                className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                              />
+                              {loadingCep && (
+                                <div className="absolute right-2.5 top-3.5">
+                                  <div className="w-4 h-4 border-2 border-vitta-green border-t-transparent rounded-full animate-spin" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="col-span-2 space-y-2">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Rua / Logradouro
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Rua, Avenida..."
+                              value={
+                                editingItem
+                                  ? editingItem.logradouro || ""
+                                  : newItem.logradouro || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                editingItem
+                                  ? setEditingItem({
+                                      ...editingItem,
+                                      logradouro: val,
+                                    })
+                                  : setNewItem({ ...newItem, logradouro: val });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Número
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Nº"
+                              value={
+                                editingItem
+                                  ? editingItem.numero || ""
+                                  : newItem.numero || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                editingItem
+                                  ? setEditingItem({
+                                      ...editingItem,
+                                      numero: val,
+                                    })
+                                  : setNewItem({ ...newItem, numero: val });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Complemento
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Apt, Bloco..."
+                              value={
+                                editingItem
+                                  ? editingItem.complemento || ""
+                                  : newItem.complemento || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                editingItem
+                                  ? setEditingItem({
+                                      ...editingItem,
+                                      complemento: val,
+                                    })
+                                  : setNewItem({ ...newItem, complemento: val });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="space-y-2 col-span-1">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Bairro
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Bairro"
+                              value={
+                                editingItem
+                                  ? editingItem.bairro || ""
+                                  : newItem.bairro || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                editingItem
+                                  ? setEditingItem({
+                                      ...editingItem,
+                                      bairro: val,
+                                    })
+                                  : setNewItem({ ...newItem, bairro: val });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+
+                          <div className="space-y-2 col-span-1">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Cidade
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Cidade"
+                              value={
+                                editingItem
+                                  ? editingItem.city || ""
+                                  : newItem.city || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                editingItem
+                                  ? setEditingItem({
+                                      ...editingItem,
+                                      city: val,
+                                      localidade: val,
+                                    })
+                                  : setNewItem({
+                                      ...newItem,
+                                      city: val,
+                                      localidade: val,
+                                    });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+
+                          <div className="space-y-2 col-span-1">
+                            <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                              Estado (UF)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="UF"
+                              maxLength={2}
+                              value={
+                                editingItem
+                                  ? editingItem.uf || ""
+                                  : newItem.uf || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value.toUpperCase();
+                                editingItem
+                                  ? setEditingItem({ ...editingItem, uf: val })
+                                  : setNewItem({ ...newItem, uf: val });
+                              }}
+                              className="w-full px-3 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </>
+
+                    {/* Right Column: Turnos e Horários de Atendimento Semanal */}
+                    <div className="space-y-4 border-t lg:border-t-0 lg:border-l border-vitta-border pt-6 lg:pt-0 lg:pl-6">
+                      <div className="flex justify-between items-center pb-2 border-b border-vitta-border">
+                        <h4 className="text-xs font-bold text-vitta-text-primary uppercase tracking-wider flex items-center gap-2">
+                          <CalendarClock size={16} className="text-vitta-accent" />
+                          Turnos de Atendimento Semanal
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-vitta-text-secondary leading-relaxed">
+                        Defina os turnos semanais de atendimento deste profissional. Os dias com turnos cadastrados atualizarão automaticamente o campo "Dias de Atendimento".
+                      </p>
+
+                      <div className="space-y-3 max-h-[110vh] overflow-y-auto no-scrollbar pr-1">
+                        {Object.entries({
+                          monday: "Segunda-feira",
+                          tuesday: "Terça-feira",
+                          wednesday: "Quarta-feira",
+                          thursday: "Quinta-feira",
+                          friday: "Sexta-feira",
+                          saturday: "Sábado",
+                          sunday: "Domingo",
+                        }).map(([key, label]) => {
+                          const currentSchedule = (editingItem ? editingItem.schedule : newItem.schedule) || { weekly: {}, blockedDates: [] };
+                          const daySlots = currentSchedule.weekly?.[key] || [];
+                          return (
+                            <div
+                              key={key}
+                              className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border space-y-2.5"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-vitta-text-primary">
+                                  {label}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleFormAddSlot(key)}
+                                  className="text-[10px] font-bold text-vitta-accent hover:underline flex items-center gap-1 bg-vitta-accent/10 px-2 py-0.5 rounded"
+                                >
+                                  <PlusCircle size={12} />
+                                  Add Turno
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {daySlots.map((slot, idx) => (
+                                  <div key={idx} className="flex items-center gap-2">
+                                    <div className="flex-1 grid grid-cols-2 gap-1.5">
+                                      <input
+                                        type="time"
+                                        value={slot.start}
+                                        onChange={(e) => handleFormUpdateSlot(key, idx, "start", e.target.value)}
+                                        className="w-full px-2 py-1 bg-vitta-surface border border-vitta-border rounded text-xs text-vitta-text-primary"
+                                      />
+                                      <input
+                                        type="time"
+                                        value={slot.end}
+                                        onChange={(e) => handleFormUpdateSlot(key, idx, "end", e.target.value)}
+                                        className="w-full px-2 py-1 bg-vitta-surface border border-vitta-border rounded text-xs text-vitta-text-primary"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFormRemoveSlot(key, idx)}
+                                      className="p-1 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                                    >
+                                      <MinusCircle size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                                {daySlots.length === 0 && (
+                                  <p className="text-[10px] text-vitta-text-muted italic">
+                                    Indisponível neste dia
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Categories-only edit/create form
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Nome da Categoria
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={(editingItem ? editingItem.name : newItem.name) || ""}
+                      onChange={(e) =>
+                        editingItem
+                          ? setEditingItem({
+                              ...editingItem,
+                              name: e.target.value,
+                            })
+                          : setNewItem({ ...newItem, name: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
+                      autoFocus
+                    />
+                  </div>
                 )}
                 <div className="flex gap-3 pt-4">
                   <button
@@ -10135,6 +10406,8 @@ const ProfessionalsManagementView = () => {
                         bairro: prof.bairro || "",
                         localidade: prof.localidade || "",
                         uf: prof.uf || "",
+                        schedule: prof.schedule || { weekly: {}, blockedDates: [] },
+                        feeRate: prof.feeRate !== undefined ? prof.feeRate : 0,
                       })
                     }
                     className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
