@@ -83,7 +83,7 @@ const NotificationCenter = ({ userId }: { userId: string }) => {
 
   const getIcon = (type: string) => {
     switch (type) {
-      case 'exam': return <ClipboardList className="text-vitta-blue" size={18} />;
+      case 'exam': return <ClipboardList className="text-vitta-accent" size={18} />;
       case 'appointment': return <Calendar className="text-vitta-green" size={18} />;
       case 'system': return <Info className="text-vitta-accent" size={18} />;
       default: return <Bell size={18} />;
@@ -156,7 +156,7 @@ const NotificationCenter = ({ userId }: { userId: string }) => {
                         className={`p-4 hover:bg-vitta-surface-1 transition-colors cursor-pointer group flex gap-3 ${!n.read ? 'bg-vitta-accent/[0.02]' : ''}`}
                       >
                         <div className={`mt-1 flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
-                          n.type === 'exam' ? 'bg-vitta-blue/10' : 
+                          n.type === 'exam' ? 'bg-vitta-accent/10' : 
                           n.type === 'appointment' ? 'bg-vitta-green/10' : 
                           'bg-vitta-accent/10'
                         }`}>

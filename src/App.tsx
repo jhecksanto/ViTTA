@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Heart,
   Moon,
+  Crown,
+  Package,
   Footprints,
   Droplets,
   Star,
@@ -191,6 +193,7 @@ import {
   getDocFromServer,
   getDocFromCache,
   increment,
+  writeBatch,
 } from "firebase/firestore";
 import { Medication, HealthGoal } from "./types";
 import AuditLogsList from "./components/Admin/AuditLogsList";
@@ -11207,7 +11210,7 @@ const PartnersView = ({
           <p className="text-sm font-bold text-vitta-text-primary">
             {activeSubTab === "empresas" && "Todos os Parceiros & Empresas"}
             {activeSubTab === "profissionais" && "Corpo Médico Credenciado"}
-            {activeSubTab === "vitta-health" && "Membros ViTTA Health"}
+            {activeSubTab === "vitta-health" && "ViTTA Health"}
             {activeSubTab === "profissionais-liberais" && "Profissionais Liberais cadastrados"}
             {activeSubTab === "categorias" && "Lista de Categorias de Benefício"}
           </p>
@@ -13580,48 +13583,183 @@ const SettingsView = ({
   };
 
   return (
-    <div className="max-w-4xl space-y-8">
+    <div className="w-full max-w-7xl mx-auto space-y-8">
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">
             Meu Perfil
           </h1>
-          <p className="text-vitta-text-secondary">
+          <p className="text-vitta-text-secondary text-sm">
             Gerencie suas informações pessoais, endereço e documentos.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-vitta-surface px-4 py-2 rounded-2xl border border-vitta-border shadow-sm">
-          <div
-            className={`w-3 h-3 rounded-full animate-pulse ${
-              profileData.kycStatus === "verified"
-                ? "bg-vitta-green"
-                : profileData.kycStatus === "under_review"
-                  ? "bg-vitta-accent"
-                  : profileData.kycStatus === "rejected"
-                    ? "bg-vitta-danger"
-                    : "bg-vitta-text-muted"
-            }`}
-          />
-          <div>
-            <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
-              Status da Conta
-            </p>
-            <p className="text-xs font-black text-vitta-text-primary capitalize">
-              {profileData.kycStatus === "verified"
-                ? "Verificada"
-                : profileData.kycStatus === "under_review"
-                  ? "Em Análise"
-                  : profileData.kycStatus === "rejected"
-                    ? "Rejeitada"
-                    : "Pendente"}
-            </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Tipo de Usuário */}
+          <div className="flex items-center gap-3 bg-vitta-surface px-4 py-2.5 rounded-2xl border border-vitta-border shadow-sm">
+            <div className={`w-3 h-3 rounded-full ${
+              (userData?.role || "user") === "admin"
+                ? "bg-vitta-purple"
+                : (userData?.role || "user") === "professional"
+                  ? "bg-vitta-green"
+                  : (userData?.role || "user") === "conveniado"
+                    ? "bg-vitta-accent"
+                    : (userData?.role || "user") === "liberal"
+                      ? "bg-amber-500"
+                      : "bg-vitta-text-secondary"
+            }`} />
+            <div>
+              <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-widest leading-none mb-1">
+                Tipo de Usuário
+              </p>
+              <p className="text-xs font-black text-vitta-text-primary leading-none">
+                {(() => {
+                  switch (userData?.role || "user") {
+                    case "admin":
+                      return "Admin Master";
+                    case "professional":
+                      return "Profissional";
+                    case "conveniado":
+                      return "Conveniado";
+                    case "liberal":
+                      return "Profissional Liberal";
+                    case "user":
+                    default:
+                      return "Cliente/Paciente";
+                  }
+                })()}
+              </p>
+            </div>
+            {(userData?.role || "user") === "admin" ? (
+              <ShieldCheck size={18} className="text-vitta-purple" />
+            ) : (userData?.role || "user") === "professional" ? (
+              <Stethoscope size={18} className="text-vitta-green" />
+            ) : (
+              <User size={18} className="text-vitta-text-muted" />
+            )}
           </div>
-          {profileData.kycStatus === "verified" && (
-            <ShieldCheck size={18} className="text-vitta-green" />
-          )}
+
+          {/* Status da Conta */}
+          <div className="flex items-center gap-3 bg-vitta-surface px-4 py-2.5 rounded-2xl border border-vitta-border shadow-sm">
+            <div
+              className={`w-3 h-3 rounded-full animate-pulse ${
+                profileData.kycStatus === "verified"
+                  ? "bg-vitta-green"
+                  : profileData.kycStatus === "under_review"
+                    ? "bg-vitta-accent"
+                    : profileData.kycStatus === "rejected"
+                      ? "bg-vitta-danger"
+                      : "bg-vitta-text-muted"
+              }`}
+            />
+            <div>
+              <p className="text-[10px] font-black text-vitta-text-muted uppercase tracking-widest leading-none mb-1">
+                Status da Conta
+              </p>
+              <p className="text-xs font-black text-vitta-text-primary leading-none capitalize">
+                {profileData.kycStatus === "verified"
+                  ? "Verificada"
+                  : profileData.kycStatus === "under_review"
+                    ? "Em Análise"
+                    : profileData.kycStatus === "rejected"
+                      ? "Rejeitada"
+                      : "Pendente"}
+              </p>
+            </div>
+            {profileData.kycStatus === "verified" && (
+              <ShieldCheck size={18} className="text-vitta-green" />
+            )}
+          </div>
         </div>
       </section>
+
+      {/* Subscription Card */}
+      {(() => {
+        const userPlan = userData?.plan || 'Membro Free';
+        const userPlanStatus = userData?.status || 'Ativo';
+        
+        const getPlanVisuals = (planName: string) => {
+          const name = planName || "Membro Free";
+          if (name.toLowerCase().includes("premium")) {
+            return {
+              bg: "bg-gradient-to-br from-indigo-50/80 to-violet-50/30 dark:from-indigo-950/20 dark:to-violet-950/10",
+              border: "border-indigo-100 dark:border-indigo-500/20",
+              text: "text-indigo-950 dark:text-indigo-100",
+              icon: Crown,
+              iconColor: "text-indigo-600 dark:text-indigo-400",
+              badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400",
+              desc: "Você possui acesso completo à rede de especialistas ViTTA Health, prioridade em agendamentos de exames e benefícios exclusivos de parceiros.",
+              highlight: "Plano Premium Ativo"
+            };
+          } else if (name.toLowerCase().includes("básico") || name.toLowerCase().includes("basico")) {
+            return {
+              bg: "bg-gradient-to-br from-emerald-50/80 to-teal-50/30 dark:from-emerald-950/20 dark:to-teal-950/10",
+              border: "border-emerald-100 dark:border-emerald-500/20",
+              text: "text-emerald-950 dark:text-emerald-100",
+              icon: Sparkles,
+              iconColor: "text-emerald-600 dark:text-emerald-400",
+              badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+              desc: "Você possui acesso ao agendamento de consultas com profissionais de saúde parceiros e rede padrão de convênios ViTTA.",
+              highlight: "Plano Básico Ativo"
+            };
+          } else {
+            return {
+              bg: "bg-gradient-to-br from-slate-50/90 to-slate-100/50 dark:from-slate-900/60 dark:to-slate-800/30",
+              border: "border-slate-200 dark:border-slate-800",
+              text: "text-slate-800 dark:text-slate-200",
+              icon: Package,
+              iconColor: "text-slate-500",
+              badge: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+              desc: "Você está no plano de acesso público gratuito. Faça a adesão de um plano com nossos administradores para ter telemedicina e descontos ilimitados.",
+              highlight: "Acesso Público Gratuito"
+            };
+          }
+        };
+
+        const planVisuals = getPlanVisuals(userPlan);
+        const PlanIcon = planVisuals.icon;
+
+        return (
+          <div className={`p-6 rounded-[2rem] border ${planVisuals.border} ${planVisuals.bg} shadow-sm transition-all relative overflow-hidden`}>
+            <div className="absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 bg-indigo-500/5 dark:bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="p-3.5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50">
+                  <PlanIcon className={`${planVisuals.iconColor}`} size={28} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">Sua Assinatura ViTTA</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${planVisuals.badge}`}>
+                      {planVisuals.highlight}
+                    </span>
+                  </div>
+                  <h2 className={`text-xl font-black mt-1 ${planVisuals.text}`}>
+                    {userPlan}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
+                    {planVisuals.desc}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex flex-col items-start md:items-end justify-center shrink-0 min-w-[140px]">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status da Conta</span>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <div className={`w-2 h-2 rounded-full ${userPlanStatus === 'Ativo' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                    {userPlanStatus}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-slate-400 mt-1">
+                  ID: {user?.uid?.substring(0, 8)?.toUpperCase()}...
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
@@ -13695,6 +13833,31 @@ const SettingsView = ({
                     value={profileData.email}
                     disabled
                     className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-muted cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Tipo de Usuário
+                  </label>
+                  <input
+                    type="text"
+                    value={(() => {
+                      switch (userData?.role || "user") {
+                        case "admin":
+                          return "Admin Master";
+                        case "professional":
+                          return "Profissional";
+                        case "conveniado":
+                          return "Conveniado";
+                        case "liberal":
+                          return "Profissional Liberal";
+                        case "user":
+                        default:
+                          return "Cliente/Paciente";
+                      }
+                    })()}
+                    disabled
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm text-vitta-text-muted font-bold cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -14404,35 +14567,7 @@ const SettingsView = ({
             </div>
           </div>
 
-          {/* Danger Zone */}
-          <div className="bg-vitta-danger/5 p-8 rounded-xl border border-vitta-danger/20 space-y-4">
-            <h2 className="text-[10px] font-bold text-vitta-danger uppercase tracking-widest">
-              Zona de Perigo
-            </h2>
-            {profileData.deletionRequested ? (
-              <div className="p-4 bg-vitta-surface rounded-xl border border-vitta-danger/30">
-                <p className="text-xs font-bold text-vitta-danger">
-                  Solicitação de exclusão em processamento.
-                </p>
-                <p className="text-[10px] text-vitta-text-muted mt-1">
-                  Nossa equipe entrará em contato em breve.
-                </p>
-              </div>
-            ) : (
-              <>
-                <p className="text-xs text-vitta-text-muted">
-                  Uma vez solicitada, nossa equipe processará a exclusão dos
-                  seus dados.
-                </p>
-                <button
-                  onClick={handleRequestDeletion}
-                  className="w-full py-3 bg-vitta-surface border border-vitta-danger/30 text-vitta-danger rounded-xl text-xs font-bold hover:bg-vitta-danger/5 transition-colors"
-                >
-                  Solicitar Exclusão
-                </button>
-              </>
-            )}
-          </div>
+
         </div>
       </div>
       {isPasswordModalOpen && (
@@ -17102,7 +17237,7 @@ const PartnershipsView = ({
           }`}
         >
           <Activity size={18} />
-          Membros ViTTA Health
+          ViTTA Health
         </button>
       </div>
 
@@ -18519,6 +18654,435 @@ const ChatView = ({ user }: { user: any }) => {
   );
 };
 
+const NotificationsControlView = ({ user, userData }: { user: any; userData: any }) => {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [filterType, setFilterType] = useState<"all" | "appointment" | "exam" | "system">("all");
+  const [filterRead, setFilterRead] = useState<"all" | "unread">("all");
+  const [loading, setLoading] = useState(true);
+  const [prefs, setPrefs] = useState({
+    email: true,
+    sms: false,
+    push: true,
+    marketing: true,
+  });
+  const [savingPrefs, setSavingPrefs] = useState(false);
+  const { addToast } = useToast();
+
+  // Fetch notifications
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setNotifications(
+          snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Erro ao carregar notificações:", error);
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [user]);
+
+  // Load preferences from userData
+  useEffect(() => {
+    if (userData?.notificationPrefs) {
+      setPrefs({
+        email: userData.notificationPrefs.email !== undefined ? userData.notificationPrefs.email : true,
+        sms: userData.notificationPrefs.sms !== undefined ? userData.notificationPrefs.sms : false,
+        push: userData.notificationPrefs.push !== undefined ? userData.notificationPrefs.push : true,
+        marketing: userData.notificationPrefs.marketing !== undefined ? userData.notificationPrefs.marketing : true,
+      });
+    }
+  }, [userData]);
+
+  const handleTogglePref = async (key: keyof typeof prefs) => {
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setPrefs(updated);
+    setSavingPrefs(true);
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        notificationPrefs: updated,
+      });
+      addToast("Preferências de notificação atualizadas!", "success");
+    } catch (err) {
+      console.error("Erro ao salvar preferências:", err);
+      addToast("Erro ao salvar preferências.", "error");
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
+  const handleMarkAsRead = async (id: string, currentRead: boolean) => {
+    if (currentRead) return;
+    try {
+      await updateDoc(doc(db, "notifications", id), { read: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleReadStatus = async (id: string, currentRead: boolean) => {
+    try {
+      await updateDoc(doc(db, "notifications", id), { read: !currentRead });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "notifications", id));
+      addToast("Notificação excluída com sucesso.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao excluir notificação.", "error");
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    const unread = notifications.filter((n) => !n.read);
+    if (unread.length === 0) {
+      addToast("Todas as notificações já estão lidas.", "info");
+      return;
+    }
+    try {
+      const batch = writeBatch(db);
+      unread.forEach((n) => {
+        batch.update(doc(db, "notifications", n.id), { read: true });
+      });
+      await batch.commit();
+      addToast("Todas as notificações foram marcadas como lidas.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao marcar notificações como lidas.", "error");
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (notifications.length === 0) return;
+    if (!window.confirm("Deseja realmente limpar todo o seu histórico de notificações?")) return;
+    try {
+      const batch = writeBatch(db);
+      notifications.forEach((n) => {
+        batch.delete(doc(db, "notifications", n.id));
+      });
+      await batch.commit();
+      addToast("Histórico de notificações limpo.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao limpar histórico.", "error");
+    }
+  };
+
+  const filteredNotifications = notifications.filter((n) => {
+    const matchesType = filterType === "all" || n.type === filterType;
+    const matchesRead = filterRead === "all" || !n.read;
+    return matchesType && matchesRead;
+  });
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case "exam":
+        return <ClipboardList className="text-vitta-accent" size={20} />;
+      case "appointment":
+        return <Calendar className="text-vitta-green" size={20} />;
+      case "system":
+        return <Info className="text-vitta-accent" size={20} />;
+      default:
+        return <Bell className="text-vitta-text-muted" size={20} />;
+    }
+  };
+
+  return (
+    <div className="w-full max-w-7xl mx-auto space-y-8 pb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary flex items-center gap-3">
+            <Bell size={32} className="text-vitta-accent" />
+            Controle de Notificações
+          </h1>
+          <p className="text-vitta-text-secondary text-sm">
+            Gerencie seus alertas de consultas, exames, mensagens do sistema e canais de preferência.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {notifications.length > 0 && (
+            <>
+              <button
+                onClick={handleMarkAllAsRead}
+                className="px-4 py-2.5 bg-vitta-surface hover:bg-vitta-surface-2 text-vitta-accent border border-vitta-border rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Check size={14} />
+                Marcar todas lidas
+              </button>
+              <button
+                onClick={handleClearAll}
+                className="px-4 py-2.5 bg-vitta-danger/5 hover:bg-vitta-danger/10 text-vitta-danger border border-vitta-danger/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Trash2 size={14} />
+                Limpar Histórico
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left column: Preferences & Filters */}
+        <div className="space-y-6 lg:col-span-1">
+          {/* Preferences Card */}
+          <div className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-6">
+            <h3 className="font-bold text-vitta-text-primary text-sm uppercase tracking-wider border-b border-vitta-border pb-3 flex items-center gap-2">
+              <Settings size={16} className="text-vitta-accent" />
+              Canais de Envio
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-vitta-accent-bg flex items-center justify-center text-vitta-accent">
+                    <Mail size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-vitta-text-primary">E-mail</p>
+                    <p className="text-[10px] text-vitta-text-muted">Relatórios e alertas na caixa de entrada</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => handleTogglePref("email")}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${prefs.email ? "bg-vitta-accent" : "bg-vitta-border"}`}
+                >
+                  <motion.div
+                    animate={{ x: prefs.email ? 20 : 4 }}
+                    className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-vitta-green-bg flex items-center justify-center text-vitta-green">
+                    <Smartphone size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-vitta-text-primary">Mensagem SMS</p>
+                    <p className="text-[10px] text-vitta-text-muted">Notificações urgentes via celular</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => handleTogglePref("sms")}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${prefs.sms ? "bg-vitta-accent" : "bg-vitta-border"}`}
+                >
+                  <motion.div
+                    animate={{ x: prefs.sms ? 20 : 4 }}
+                    className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-vitta-purple-bg flex items-center justify-center text-vitta-purple">
+                    <Bell size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-vitta-text-primary">Alertas Push / Sistema</p>
+                    <p className="text-[10px] text-vitta-text-muted">Notificações em tempo real no app</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => handleTogglePref("push")}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${prefs.push ? "bg-vitta-accent" : "bg-vitta-border"}`}
+                >
+                  <motion.div
+                    animate={{ x: prefs.push ? 20 : 4 }}
+                    className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                    <Percent size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-vitta-text-primary">Ofertas & Campanhas</p>
+                    <p className="text-[10px] text-vitta-text-muted">Descontos e novidades especiais</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => handleTogglePref("marketing")}
+                  className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${prefs.marketing ? "bg-vitta-accent" : "bg-vitta-border"}`}
+                >
+                  <motion.div
+                    animate={{ x: prefs.marketing ? 20 : 4 }}
+                    className="absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering control */}
+          <div className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-4">
+            <h3 className="font-bold text-vitta-text-primary text-sm uppercase tracking-wider border-b border-vitta-border pb-3">
+              Filtros rápidos
+            </h3>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Tipo de Notificação</label>
+              <div className="flex flex-col gap-1.5">
+                {[
+                  { id: "all", label: "Todas" },
+                  { id: "appointment", label: "Consultas" },
+                  { id: "exam", label: "Exames" },
+                  { id: "system", label: "Sistema" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setFilterType(t.id as any)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      filterType === t.id
+                        ? "bg-vitta-accent-bg text-vitta-accent"
+                        : "hover:bg-vitta-surface-2 text-vitta-text-secondary"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-vitta-border">
+              <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">Visualização</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "all", label: "Ver Todas" },
+                  { id: "unread", label: "Não Lidas" },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setFilterRead(s.id as any)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all text-center cursor-pointer ${
+                      filterRead === s.id
+                        ? "bg-vitta-accent-bg text-vitta-accent"
+                        : "hover:bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right column: Notification Stream */}
+        <div className="lg:col-span-2">
+          {loading ? (
+            <div className="bg-vitta-surface p-12 rounded-2xl border border-vitta-border shadow-sm flex items-center justify-center">
+              <div className="w-10 h-10 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
+            </div>
+          ) : filteredNotifications.length === 0 ? (
+            <div className="bg-vitta-surface p-12 rounded-2xl border border-vitta-border shadow-sm text-center space-y-4">
+              <div className="w-16 h-16 bg-vitta-surface-2 rounded-full flex items-center justify-center text-vitta-text-muted mx-auto">
+                <Bell size={32} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-vitta-text-primary">Nenhuma notificação encontrada</h3>
+                <p className="text-xs text-vitta-text-secondary">
+                  Você não possui notificações com os filtros selecionados no momento.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredNotifications.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => handleMarkAsRead(n.id, n.read)}
+                  className={`bg-vitta-surface p-4 rounded-2xl border border-vitta-border shadow-sm hover:shadow-md transition-all flex items-start gap-4 cursor-pointer relative group ${
+                    !n.read ? "border-l-4 border-l-vitta-accent bg-vitta-accent-bg/5" : ""
+                  }`}
+                >
+                  <div
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                      n.type === "exam"
+                        ? "bg-vitta-accent-bg/30 text-vitta-accent"
+                        : n.type === "appointment"
+                          ? "bg-vitta-green-bg text-vitta-green"
+                          : "bg-vitta-accent-bg/30 text-vitta-accent"
+                    }`}
+                  >
+                    {getIcon(n.type)}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-6">
+                    <div className="flex items-center gap-2">
+                      <p className={`text-sm ${!n.read ? "font-bold text-vitta-text-primary" : "font-semibold text-vitta-text-secondary"}`}>
+                        {n.title}
+                      </p>
+                      {!n.read && (
+                        <span className="w-2 h-2 rounded-full bg-vitta-accent animate-pulse" />
+                      )}
+                    </div>
+                    <p className={`text-xs mt-1 leading-relaxed ${!n.read ? "text-vitta-text-primary" : "text-vitta-text-secondary"}`}>
+                      {n.message}
+                    </p>
+                    <p className="text-[10px] text-vitta-text-muted mt-2 font-medium">
+                      {n.createdAt?.toDate
+                        ? n.createdAt
+                            .toDate()
+                            .toLocaleDateString("pt-BR", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                        : "Agora"}
+                    </p>
+                  </div>
+                  <div className="absolute right-3 top-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleReadStatus(n.id, n.read);
+                      }}
+                      className="p-1.5 rounded-lg text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent/5 cursor-pointer"
+                      title={n.read ? "Marcar como não lida" : "Marcar como lida"}
+                    >
+                      <Check size={14} className={n.read ? "text-vitta-text-muted" : "text-vitta-accent"} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteNotification(n.id);
+                      }}
+                      className="p-1.5 rounded-lg text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/5 cursor-pointer"
+                      title="Excluir notificação"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SupportView = ({
   setActiveTab,
 }: {
@@ -18875,13 +19439,14 @@ const UsersView = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPlan, setFilterPlan] = useState<string>("Todos");
   const [filterStatus, setFilterStatus] = useState<string>("Todos");
+  const [registeredPlans, setRegisteredPlans] = useState<any[]>([]);
 
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
     password: "",
     status: "Ativo",
-    plan: "Básico",
+    plan: "Sem Plano",
     role: "user",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -18946,6 +19511,27 @@ const UsersView = () => {
       (error) => {
         handleFirestoreError(error, OperationType.GET, "users");
       },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, "subscription_plans"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const plansList = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name || "Sem nome",
+          };
+        });
+        setRegisteredPlans(plansList);
+      },
+      (error) => {
+        console.error("Erro ao carregar planos para usuários:", error);
+      }
     );
     return () => unsubscribe();
   }, []);
@@ -19270,8 +19856,12 @@ const UsersView = () => {
                       }
                       className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
-                      <option value="Básico">Básico</option>
-                      <option value="Premium">Premium</option>
+                      <option value="Sem Plano">Sem Plano</option>
+                      {registeredPlans.map((plan) => (
+                        <option key={plan.id} value={plan.name}>
+                          {plan.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -19368,15 +19958,18 @@ const UsersView = () => {
                       Plano
                     </label>
                     <select
-                      value={editingUser.plan || "Free"}
+                      value={editingUser.plan || "Sem Plano"}
                       onChange={(e) =>
                         setEditingUser({ ...editingUser, plan: e.target.value })
                       }
                       className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
                     >
-                      <option value="Free">Free</option>
-                      <option value="Básico">Básico</option>
-                      <option value="Premium">Premium</option>
+                      <option value="Sem Plano">Sem Plano</option>
+                      {registeredPlans.map((plan) => (
+                        <option key={plan.id} value={plan.name}>
+                          {plan.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -19580,9 +20173,12 @@ const UsersView = () => {
             className="px-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all"
           >
             <option value="Todos">Todos os Planos</option>
-            <option value="Free">Free</option>
-            <option value="Básico">Básico</option>
-            <option value="Premium">Premium</option>
+            <option value="Sem Plano">Sem Plano</option>
+            {registeredPlans.map((plan) => (
+              <option key={plan.id} value={plan.name}>
+                {plan.name}
+              </option>
+            ))}
           </select>
           <select
             value={filterStatus}
@@ -24853,6 +25449,8 @@ export default function App() {
         );
       case "chat":
         return <ChatView user={user} />;
+      case "notifications":
+        return <NotificationsControlView user={user} userData={userData} />;
       case "profile":
         return (
           <SettingsView
@@ -25037,6 +25635,15 @@ export default function App() {
                   }}
                 />
                 <SidebarItem
+                  icon={Bell}
+                  label="Notificações"
+                  active={activeTab === "notifications"}
+                  onClick={() => {
+                    setActiveTab("notifications");
+                    setIsSidebarOpen(false);
+                  }}
+                />
+                <SidebarItem
                   icon={User}
                   label="Perfil"
                   active={activeTab === "profile"}
@@ -25133,7 +25740,11 @@ export default function App() {
 
               {user && <NotificationCenter userId={user.uid} />}
             </div>
-            <div className="flex items-center gap-3 pl-4 border-l border-vitta-border">
+            <div 
+              onClick={() => setActiveTab("profile")}
+              className="flex items-center gap-3 pl-4 border-l border-vitta-border cursor-pointer hover:opacity-80 transition-all"
+              title="Ver Perfil"
+            >
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-vitta-text-primary">
                   {user.displayName || "Usuário"}
@@ -25152,7 +25763,7 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
