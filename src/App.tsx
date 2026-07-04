@@ -209,6 +209,7 @@ import KYCWizard from "./components/KYCWizard";
 import TelemedicineRoom from "./components/TelemedicineRoom";
 import { AdminWalletManagementView } from "./components/AdminWalletManagementView";
 import { enqueueOfflineAction } from "./lib/offlineQueue";
+import { galExams } from "./data/galExams";
 
 const Skeleton = ({
   className,
@@ -1979,8 +1980,6 @@ const PatientDashboardView = ({
       collection(db, "user_exams"),
       where("userId", "==", user.uid),
       where("status", "==", "ready"),
-      orderBy("updatedAt", "desc"),
-      limit(2),
     );
 
     const unsubscribeExams = onSnapshot(
@@ -1990,7 +1989,13 @@ const PatientDashboardView = ({
           id: doc.id,
           ...doc.data(),
         }));
-        setRecentExams(data);
+        // Sort by updatedAt desc and limit to 2 on client side safely
+        data.sort((a: any, b: any) => {
+          const timeA = a.updatedAt?.seconds || 0;
+          const timeB = b.updatedAt?.seconds || 0;
+          return timeB - timeA;
+        });
+        setRecentExams(data.slice(0, 2));
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "user_exams");
@@ -4202,9 +4207,40 @@ const ClinicalRecordModal = ({
     appointment.prescriptions || [],
   );
   const [patientHistory, setPatientHistory] = useState<any[]>([]);
-  const [modalTab, setModalTab] = useState<"clinical" | "history">("clinical");
+  const [modalTab, setModalTab] = useState<"clinical" | "certificate" | "history">("clinical");
   const [isSaving, setIsSaving] = useState(false);
   const { addToast } = useToast();
+
+  const [hasCertificate, setHasCertificate] = useState(
+    appointment.hasCertificate || false,
+  );
+  const [certificateDays, setCertificateDays] = useState(
+    appointment.certificateDays || "1",
+  );
+  const [certificateCid, setCertificateCid] = useState(
+    appointment.certificateCid || "",
+  );
+  const [certificateReason, setCertificateReason] = useState(
+    appointment.certificateReason || "",
+  );
+  const [certificateStartDate, setCertificateStartDate] = useState(
+    appointment.certificateStartDate || appointment.date || new Date().toISOString().split("T")[0],
+  );
+  const [certificateType, setCertificateType] = useState<"repouso" | "comparecimento" | "aptidao">(
+    appointment.certificateType || "repouso",
+  );
+  const [certificateCidConsent, setCertificateCidConsent] = useState(
+    appointment.certificateCidConsent !== undefined ? appointment.certificateCidConsent : true,
+  );
+  const [certificateStartTime, setCertificateStartTime] = useState(
+    appointment.certificateStartTime || appointment.time || "09:00",
+  );
+  const [certificateEndTime, setCertificateEndTime] = useState(
+    appointment.certificateEndTime || "",
+  );
+  const [certificatePatientDocument, setCertificatePatientDocument] = useState(
+    appointment.certificatePatientDocument || appointment.patientCpf || "",
+  );
 
   useEffect(() => {
     if (!appointment.userId) return;
@@ -4261,6 +4297,16 @@ const ClinicalRecordModal = ({
         clinicalNotes,
         anamnesis,
         prescriptions,
+        hasCertificate,
+        certificateDays,
+        certificateCid,
+        certificateReason,
+        certificateStartDate,
+        certificateType,
+        certificateCidConsent,
+        certificateStartTime,
+        certificateEndTime,
+        certificatePatientDocument,
         updatedAt: Timestamp.now(),
       });
       addToast("Registro clínico salvo com sucesso.", "success");
@@ -4349,6 +4395,120 @@ const ClinicalRecordModal = ({
     addToast("PDF gerado com sucesso.", "success");
   };
 
+  const generateCertificatePDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 150, 243); // Vitta Blue
+    doc.text("ViTTA - Atestado Médico", 105, 25, { align: "center" });
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Emissão: ${new Date().toLocaleDateString("pt-BR")}`, 105, 33, {
+      align: "center",
+    });
+
+    doc.setDrawColor(200);
+    doc.line(20, 40, pageWidth - 20, 40);
+
+    // Patient & Doctor Info
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Paciente:", 20, 52);
+    doc.setFont("helvetica", "normal");
+    doc.text(appointment.patientName || "Não informado", 45, 52);
+
+    if (certificatePatientDocument.trim()) {
+      doc.setFont("helvetica", "bold");
+      doc.text("CPF/Doc:", 20, 58);
+      doc.setFont("helvetica", "normal");
+      doc.text(certificatePatientDocument.trim(), 45, 58);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Médico:", 20, 66);
+    doc.setFont("helvetica", "normal");
+    doc.text(professional.name, 45, 66);
+    doc.text(
+      `${professional.specialty} - ${professional.registrationNumber || ""}`,
+      45,
+      72,
+    );
+
+    doc.line(20, 80, pageWidth - 20, 80);
+
+    // Atestado Content
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(33, 150, 243);
+    
+    let title = "ATESTADO MÉDICO";
+    if (certificateType === "comparecimento") {
+      title = "ATESTADO DE COMPARECIMENTO";
+    } else if (certificateType === "aptidao") {
+      title = "ATESTADO DE APTIDÃO FÍSICA";
+    }
+    doc.text(title, 105, 100, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "normal");
+
+    const formattedStartDate = certificateStartDate 
+      ? new Date(certificateStartDate + "T00:00:00").toLocaleDateString("pt-BR")
+      : new Date().toLocaleDateString("pt-BR");
+
+    const docText = certificatePatientDocument.trim() ? `, inscrito(a) sob o CPF/Documento nº ${certificatePatientDocument.trim()},` : "";
+
+    let textContent = "";
+    if (certificateType === "repouso") {
+      textContent = `Atesto para os devidos fins de direito que o(a) paciente ${appointment.patientName}${docText} foi atendido(a) sob meus cuidados profissionais no dia de hoje e necessita de ${certificateDays} dia(s) de repouso para recuperação de sua saúde, a partir da data de ${formattedStartDate}.`;
+    } else if (certificateType === "comparecimento") {
+      const startT = certificateStartTime.trim() || appointment.time || "09:00";
+      const periodText = certificateEndTime.trim()
+        ? `no período das ${startT} às ${certificateEndTime.trim()} horas`
+        : `às ${startT} horas`;
+      textContent = `Atesto para os devidos fins de comparecimento que o(a) paciente ${appointment.patientName}${docText} esteve em consulta médica sob meus cuidados profissionais no dia de hoje, ${periodText}.`;
+    } else if (certificateType === "aptidao") {
+      textContent = `Atesto para os devidos fins que o(a) paciente ${appointment.patientName}${docText} foi submetido(a) a exame físico clínico e de anamnese no dia de hoje, encontrando-se em perfeitas condições de saúde física e mental, estando APTO(A) para a realização de atividades físicas, laborais, práticas esportivas ou concursos, não apresentando contraindicações no momento.`;
+    }
+
+    if (certificateReason.trim()) {
+      textContent += `\n\nMotivo/Observação complementar: ${certificateReason}`;
+    }
+
+    if (certificateCid.trim() && certificateCidConsent) {
+      textContent += `\n\nCID-10 informado (com autorização expressa do paciente): ${certificateCid}`;
+    }
+
+    // Wrap text for pdf
+    const splitText = doc.splitTextToSize(textContent, pageWidth - 40);
+    doc.text(splitText, 20, 115);
+
+    // Footer - Simple signature area
+    const footerY = 220;
+    doc.setDrawColor(200);
+    doc.line(60, footerY, 150, footerY);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Dr(a). " + professional.name, 105, footerY + 6, {
+      align: "center",
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`${professional.specialty} - ${professional.registrationNumber || ""}`, 105, footerY + 12, {
+      align: "center",
+    });
+
+    doc.save(
+      `atestado_${appointment.patientName.replace(/\s+/g, "_").toLowerCase()}.pdf`,
+    );
+    addToast("Atestado Médico PDF gerado com sucesso.", "success");
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -4381,6 +4541,15 @@ const ClinicalRecordModal = ({
               <Download size={14} />
               Exportar Receita
             </button>
+            {hasCertificate && (
+              <button
+                onClick={generateCertificatePDF}
+                className="px-4 py-2 bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/20 rounded-xl text-xs font-bold hover:bg-vitta-accent hover:text-white transition-all flex items-center gap-2"
+              >
+                <Download size={14} />
+                Exportar Atestado
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors"
@@ -4396,6 +4565,12 @@ const ClinicalRecordModal = ({
             className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === "clinical" ? "border-vitta-accent text-vitta-accent" : "border-transparent text-vitta-text-secondary hover:text-vitta-text-primary"}`}
           >
             📋 Anamnese e Receita
+          </button>
+          <button
+            onClick={() => setModalTab("certificate")}
+            className={`pb-4 text-sm font-bold transition-all border-b-2 ${modalTab === "certificate" ? "border-vitta-accent text-vitta-accent" : "border-transparent text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+          >
+            📄 Atestado Médico
           </button>
           <button
             onClick={() => setModalTab("history")}
@@ -4529,6 +4704,237 @@ const ClinicalRecordModal = ({
             </div>
           )}
 
+          {modalTab === "certificate" && (
+            <div className="space-y-6 max-w-2xl mx-auto bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm">
+              <div className="flex items-center justify-between border-b border-vitta-border pb-4">
+                <div className="flex items-center gap-2">
+                  <FileText size={20} className="text-vitta-accent" />
+                  <div>
+                    <h4 className="font-bold text-vitta-text-primary text-sm md:text-base">
+                      Atestado Médico
+                    </h4>
+                    <p className="text-xs text-vitta-text-secondary">
+                      Gere atestados médicos de repouso ou comparecimento
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={hasCertificate}
+                    onChange={(e) => setHasCertificate(e.target.checked)}
+                    className="sr-only peer"
+                    disabled={appointment.status === "completed"}
+                  />
+                  <div className="w-11 h-6 bg-vitta-surface-3 rounded-full peer peer-focus:ring-2 peer-focus:ring-vitta-accent/20 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-vitta-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-vitta-accent"></div>
+                  <span className="ml-2 text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                    {hasCertificate ? "Ativado" : "Desativado"}
+                  </span>
+                </label>
+              </div>
+
+              {hasCertificate ? (
+                <div className="space-y-6 animate-in fade-in-50 duration-300">
+                  {/* Patient Document Field */}
+                  <div className="space-y-1.5 bg-vitta-surface-2 p-4 rounded-xl border border-vitta-border">
+                    <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider flex items-center gap-1">
+                      👤 CPF ou Documento de Identificação do Paciente
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 123.456.789-00 ou RG 12.345.678-9"
+                      value={certificatePatientDocument}
+                      onChange={(e) => setCertificatePatientDocument(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                      disabled={appointment.status === "completed"}
+                    />
+                    <p className="text-[10px] text-vitta-text-muted">
+                      Se informado, o documento constará formalmente no corpo e no cabeçalho do atestado.
+                    </p>
+                  </div>
+
+                  {/* Certificate Type Selection */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                      Tipo de Atestado
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setCertificateType("repouso")}
+                        className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                          certificateType === "repouso"
+                            ? "bg-vitta-accent/10 border-vitta-accent text-vitta-accent"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                        }`}
+                        disabled={appointment.status === "completed"}
+                      >
+                        <span className="font-bold text-xs md:text-sm">🏡 Repouso</span>
+                        <span className="text-[10px] opacity-80">Recomenda dias de afastamento laboral/atividades</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCertificateType("comparecimento")}
+                        className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                          certificateType === "comparecimento"
+                            ? "bg-vitta-accent/10 border-vitta-accent text-vitta-accent"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                        }`}
+                        disabled={appointment.status === "completed"}
+                      >
+                        <span className="font-bold text-xs md:text-sm">🏥 Comparecimento</span>
+                        <span className="text-[10px] opacity-80">Comprova presença em consulta médica</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCertificateType("aptidao")}
+                        className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-1 ${
+                          certificateType === "aptidao"
+                            ? "bg-vitta-accent/10 border-vitta-accent text-vitta-accent"
+                            : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                        }`}
+                        disabled={appointment.status === "completed"}
+                      >
+                        <span className="font-bold text-xs md:text-sm">💪 Aptidão Física</span>
+                        <span className="text-[10px] opacity-80">Atesta condições para atividade física/prática esportiva</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {certificateType === "repouso" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                          Quantidade de Dias
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="90"
+                          value={certificateDays}
+                          onChange={(e) => setCertificateDays(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                          disabled={appointment.status === "completed"}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                          A partir de (Data)
+                        </label>
+                        <input
+                          type="date"
+                          value={certificateStartDate}
+                          onChange={(e) => setCertificateStartDate(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                          disabled={appointment.status === "completed"}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {certificateType === "comparecimento" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                          Horário de Início
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 14:00"
+                          value={certificateStartTime}
+                          onChange={(e) => setCertificateStartTime(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                          disabled={appointment.status === "completed"}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                          Horário de Término (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 15:30"
+                          value={certificateEndTime}
+                          onChange={(e) => setCertificateEndTime(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                          disabled={appointment.status === "completed"}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CID and Consent */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                        CID-10 (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: J11, M54.5"
+                        value={certificateCid}
+                        onChange={(e) => setCertificateCid(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15 uppercase placeholder-vitta-text-muted"
+                        disabled={appointment.status === "completed"}
+                      />
+                    </div>
+                    {certificateCid.trim() && (
+                      <div className="sm:pt-8 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="cidConsent"
+                          checked={certificateCidConsent}
+                          onChange={(e) => setCertificateCidConsent(e.target.checked)}
+                          className="rounded border-vitta-border text-vitta-accent focus:ring-vitta-accent"
+                          disabled={appointment.status === "completed"}
+                        />
+                        <label htmlFor="cidConsent" className="text-xs text-vitta-text-secondary font-medium cursor-pointer">
+                          Paciente autoriza inclusão do CID no atestado
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reason / Observation */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-vitta-text-secondary uppercase tracking-wider">
+                      Observações / Justificativa (Opcional)
+                    </label>
+                    <textarea
+                      value={certificateReason}
+                      onChange={(e) => setCertificateReason(e.target.value)}
+                      placeholder="Alguma observação complementar ou motivo do atestado..."
+                      className="w-full h-[100px] p-4 bg-vitta-surface border border-vitta-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-vitta-accent/20 transition-all resize-none shadow-sm"
+                      disabled={appointment.status === "completed"}
+                    />
+                  </div>
+
+                  {/* Immediate Download Button */}
+                  <div className="pt-4 border-t border-vitta-border/40 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={generateCertificatePDF}
+                      className="px-4 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/15 transition-all flex items-center gap-2"
+                    >
+                      <Download size={14} />
+                      Exportar Atestado (PDF)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center border-2 border-dashed border-vitta-border rounded-2xl bg-vitta-surface-2 space-y-3">
+                  <FileText className="mx-auto text-vitta-text-muted opacity-40" size={44} />
+                  <p className="text-sm font-medium text-vitta-text-secondary">
+                    Nenhum atestado médico ativado para esta consulta.
+                  </p>
+                  <p className="text-xs text-vitta-text-muted">
+                    Ative o atestado usando a chave acima para preencher os dados de afastamento ou comparecimento.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {modalTab === "history" && (
             <div className="space-y-6">
               <h3 className="font-bold text-lg text-vitta-text-primary mb-4">
@@ -4587,6 +4993,25 @@ const ClinicalRecordModal = ({
                             <p className="text-sm text-vitta-text-secondary bg-vitta-surface-2 p-3 rounded-xl border border-vitta-border">
                               {hist.clinicalNotes}
                             </p>
+                          </div>
+                        )}
+                        {hist.hasCertificate && (
+                          <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-vitta-border/30">
+                            <h5 className="text-[10px] font-bold tracking-widest text-vitta-text-muted uppercase mb-2 flex items-center gap-1">
+                              <FileText size={12} className="text-vitta-accent" />
+                              Atestado Médico ({hist.certificateType === "repouso" ? "Repouso" : "Comparecimento"})
+                            </h5>
+                            <div className="text-xs text-vitta-text-secondary bg-vitta-surface-2 p-3 rounded-xl border border-vitta-border space-y-1">
+                              <p>
+                                <strong>Período/Modo:</strong> {hist.certificateType === "repouso" ? `${hist.certificateDays} dia(s) a partir de ${hist.certificateStartDate ? new Date(hist.certificateStartDate + "T00:00:00").toLocaleDateString("pt-BR") : ""}` : "Horário da consulta"}
+                              </p>
+                              {hist.certificateCid && hist.certificateCidConsent && (
+                                <p><strong>CID-10:</strong> {hist.certificateCid}</p>
+                              )}
+                              {hist.certificateReason && (
+                                <p><strong>Observações:</strong> {hist.certificateReason}</p>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -5764,13 +6189,161 @@ const ProfessionalDashboardView = ({
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [subTab, setSubTab] = useState<"agenda" | "profile" | "finance" | "settings">(
+  const [subTab, setSubTab] = useState<"agenda" | "historico" | "profile" | "finance" | "settings">(
     "agenda",
   );
+  const [historySearchPatient, setHistorySearchPatient] = useState("");
+  const [historyDateFilter, setHistoryDateFilter] = useState<string>("all");
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isManualBookingModalOpen, setIsManualBookingModalOpen] =
     useState(false);
   const { addToast } = useToast();
+
+  const filteredHistoryAppointments = useMemo(() => {
+    return appointments.filter((apt) => {
+      // 1. Filter by Patient Name
+      if (historySearchPatient.trim()) {
+        const patientName = (apt.patientName || "").toLowerCase();
+        if (!patientName.includes(historySearchPatient.toLowerCase().trim())) {
+          return false;
+        }
+      }
+
+      // 2. Filter by Date range
+      if (!apt.date) return false;
+      const aptDate = new Date(apt.date + "T00:00:00");
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+
+      if (historyDateFilter === "semana") {
+        const weekAgo = new Date(todayDate);
+        weekAgo.setDate(todayDate.getDate() - 7);
+        if (aptDate < weekAgo) {
+          return false;
+        }
+      } else if (historyDateFilter === "mes") {
+        const startOfMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+        if (aptDate < startOfMonth) {
+          return false;
+        }
+      } else if (historyDateFilter === "30dias") {
+        const d = new Date(todayDate);
+        d.setDate(todayDate.getDate() - 30);
+        if (aptDate < d) return false;
+      } else if (historyDateFilter === "60dias") {
+        const d = new Date(todayDate);
+        d.setDate(todayDate.getDate() - 60);
+        if (aptDate < d) return false;
+      } else if (historyDateFilter === "90dias") {
+        const d = new Date(todayDate);
+        d.setDate(todayDate.getDate() - 90);
+        if (aptDate < d) return false;
+      } else if (historyDateFilter === "personalizado") {
+        if (historyStartDate) {
+          const start = new Date(historyStartDate + "T00:00:00");
+          if (aptDate < start) return false;
+        }
+        if (historyEndDate) {
+          const end = new Date(historyEndDate + "T23:59:59");
+          if (aptDate > end) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [appointments, historySearchPatient, historyDateFilter, historyStartDate, historyEndDate]);
+
+  const [chartGroupMode, setChartGroupMode] = useState<"dia" | "semana" | "mes">("dia");
+
+  const productivityChartData = useMemo(() => {
+    const sourceData = filteredHistoryAppointments;
+    if (sourceData.length === 0) return [];
+
+    const counts: Record<string, { total: number; completed: number; key: string; dateObj: Date }> = {};
+
+    sourceData.forEach((apt) => {
+      if (!apt.date) return;
+      
+      const dateParts = apt.date.split("-");
+      if (dateParts.length !== 3) return;
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1;
+      const day = parseInt(dateParts[2], 10);
+      const dateObj = new Date(year, month, day);
+
+      let groupKey = "";
+      let label = "";
+
+      if (chartGroupMode === "dia") {
+        groupKey = apt.date;
+        label = `${String(day).padStart(2, "0")}/${String(month + 1).padStart(2, "0")}`;
+      } else if (chartGroupMode === "semana") {
+        const dayOfWeek = dateObj.getDay();
+        const startOfWeek = new Date(dateObj);
+        startOfWeek.setDate(dateObj.getDate() - dayOfWeek);
+        
+        const sy = startOfWeek.getFullYear();
+        const sm = startOfWeek.getMonth() + 1;
+        const sd = startOfWeek.getDate();
+        
+        groupKey = `${sy}-${String(sm).padStart(2, "0")}-${String(sd).padStart(2, "0")}`;
+        label = `Sem. ${String(sd).padStart(2, "0")}/${String(sm).padStart(2, "0")}`;
+      } else {
+        const monthNames = [
+          "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", 
+          "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+        ];
+        groupKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+        label = `${monthNames[month]}/${String(year).substring(2)}`;
+      }
+
+      const isCompleted = apt.status === "completed";
+
+      if (!counts[groupKey]) {
+        counts[groupKey] = {
+          total: 0,
+          completed: 0,
+          key: label,
+          dateObj,
+        };
+      }
+
+      counts[groupKey].total += 1;
+      if (isCompleted) {
+        counts[groupKey].completed += 1;
+      }
+    });
+
+    const sortedKeys = Object.keys(counts).sort();
+    return sortedKeys.map((k) => ({
+      name: counts[k].key,
+      total: counts[k].total,
+      completed: counts[k].completed,
+    }));
+  }, [filteredHistoryAppointments, chartGroupMode]);
+
+  const totalChartAppointments = useMemo(() => {
+    return productivityChartData.reduce((acc, curr) => acc + curr.total, 0);
+  }, [productivityChartData]);
+
+  const completedChartAppointments = useMemo(() => {
+    return productivityChartData.reduce((acc, curr) => acc + curr.completed, 0);
+  }, [productivityChartData]);
+
+  const completionRate = useMemo(() => {
+    if (totalChartAppointments === 0) return 0;
+    return Math.round((completedChartAppointments / totalChartAppointments) * 100);
+  }, [totalChartAppointments, completedChartAppointments]);
+
+  const sortedHistoryAppointments = useMemo(() => {
+    return [...filteredHistoryAppointments].sort((a, b) => {
+      const dateComp = (b.date || "").localeCompare(a.date || "");
+      if (dateComp !== 0) return dateComp;
+      return (b.time || "").localeCompare(a.time || "");
+    });
+  }, [filteredHistoryAppointments]);
 
   const [availableUnlinkedProfs, setAvailableUnlinkedProfs] = useState<any[]>([]);
   const [loadingUnlinked, setLoadingUnlinked] = useState(false);
@@ -5968,6 +6541,261 @@ const ProfessionalDashboardView = ({
   };
 
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [patientDetails, setPatientDetails] = useState<any>(null);
+  const [patientApts, setPatientApts] = useState<any[]>([]);
+  const [loadingPatientDetails, setLoadingPatientDetails] = useState(false);
+  const [patientModalTab, setPatientModalTab] = useState<"info" | "history" | "prescriptions" | "certificates">("info");
+
+  useEffect(() => {
+    if (!selectedPatient) {
+      setPatientDetails(null);
+      setPatientApts([]);
+      return;
+    }
+    const fetchPatientData = async () => {
+      setLoadingPatientDetails(true);
+      try {
+        if (selectedPatient.id) {
+          const userDoc = await getDoc(doc(db, "users", selectedPatient.id));
+          if (userDoc.exists()) {
+            setPatientDetails({ id: userDoc.id, ...userDoc.data() });
+          } else {
+            setPatientDetails({ name: selectedPatient.name, id: selectedPatient.id });
+          }
+        } else {
+          setPatientDetails({ name: selectedPatient.name });
+        }
+
+        let list: any[] = [];
+        if (selectedPatient.id) {
+          const q = query(
+            collection(db, "appointments"),
+            where("userId", "==", selectedPatient.id)
+          );
+          const snap = await getDocs(q);
+          list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else if (selectedPatient.name) {
+          const q = query(
+            collection(db, "appointments"),
+            where("patientName", "==", selectedPatient.name)
+          );
+          const snap = await getDocs(q);
+          list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+
+        list.sort((a: any, b: any) => {
+          const dateComp = (b.date || "").localeCompare(a.date || "");
+          if (dateComp !== 0) return dateComp;
+          return (b.time || "").localeCompare(a.time || "");
+        });
+        setPatientApts(list);
+      } catch (err) {
+        console.error("Erro ao buscar dados completos do paciente:", err);
+      } finally {
+        setLoadingPatientDetails(false);
+      }
+    };
+    fetchPatientData();
+    setPatientModalTab("info");
+  }, [selectedPatient]);
+
+  const downloadPatientPrescriptionPDF = (apt: any) => {
+    if (!apt.prescriptions || apt.prescriptions.length === 0) {
+      addToast("Nenhuma receita encontrada para esta consulta.", "info");
+      return;
+    }
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 150, 243); // Vitta Blue
+    doc.text("ViTTA - Prescrição Digital", 105, 20, { align: "center" });
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Data: ${apt.date ? new Date(apt.date + "T00:00:00").toLocaleDateString("pt-BR") : ""}`, 105, 28, {
+      align: "center",
+    });
+
+    doc.setDrawColor(200);
+    doc.line(20, 35, pageWidth - 20, 35);
+
+    // Patient & Doctor Info
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Paciente:", 20, 50);
+    doc.setFont("helvetica", "normal");
+    doc.text(apt.patientName || "Não informado", 45, 50);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Médico:", 20, 58);
+    doc.setFont("helvetica", "normal");
+    doc.text(professionalProfile?.name || "Dr(a). " + (user?.displayName || ""), 45, 58);
+    doc.text(
+      `${professionalProfile?.specialty || "Clínico Geral"} - ${professionalProfile?.registrationNumber || ""}`,
+      45,
+      64,
+    );
+
+    doc.line(20, 75, pageWidth - 20, 75);
+
+    // Prescriptions
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Receituário", 105, 90, { align: "center" });
+
+    let y = 105;
+    apt.prescriptions.forEach((p: any, i: number) => {
+      if (y > 250) {
+        doc.addPage();
+        y = 30;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${i + 1}. ${p.medicine}`, 25, y);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Dosagem: ${p.dosage}`, 30, y + 6);
+      doc.text(`Orientações: ${p.instructions}`, 30, y + 12);
+
+      y += 25;
+    });
+
+    // Footer - Simple signature area
+    const footerY = 270;
+    doc.line(60, footerY, 150, footerY);
+    doc.setFontSize(9);
+    doc.text("Assinatura Dr(a). " + (professionalProfile?.name || ""), 105, footerY + 5, {
+      align: "center",
+    });
+
+    doc.save(
+      `receita_${(apt.patientName || "paciente").replace(/\s+/g, "_").toLowerCase()}.pdf`,
+    );
+    addToast("PDF gerado com sucesso.", "success");
+  };
+
+  const downloadPatientCertificatePDF = (apt: any) => {
+    if (!apt.hasCertificate) {
+      addToast("Nenhum atestado encontrado para esta consulta.", "info");
+      return;
+    }
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 150, 243); // Vitta Blue
+    doc.text("ViTTA - Atestado Médico", 105, 25, { align: "center" });
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Emissão: ${apt.date ? new Date(apt.date + "T00:00:00").toLocaleDateString("pt-BR") : ""}`, 105, 33, {
+      align: "center",
+    });
+
+    doc.setDrawColor(200);
+    doc.line(20, 40, pageWidth - 20, 40);
+
+    // Patient & Doctor Info
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "bold");
+    doc.text("Paciente:", 20, 52);
+    doc.setFont("helvetica", "normal");
+    doc.text(apt.patientName || "Não informado", 45, 52);
+
+    if (apt.certificatePatientDocument) {
+      doc.setFont("helvetica", "bold");
+      doc.text("CPF/Doc:", 20, 58);
+      doc.setFont("helvetica", "normal");
+      doc.text(apt.certificatePatientDocument, 45, 58);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Médico:", 20, 66);
+    doc.setFont("helvetica", "normal");
+    doc.text(professionalProfile?.name || "Dr(a). " + (user?.displayName || ""), 45, 66);
+    doc.text(
+      `${professionalProfile?.specialty || "Clínico Geral"} - ${professionalProfile?.registrationNumber || ""}`,
+      45,
+      72,
+    );
+
+    doc.line(20, 80, pageWidth - 20, 80);
+
+    // Atestado Content
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(33, 150, 243);
+
+    let title = "ATESTADO MÉDICO";
+    if (apt.certificateType === "comparecimento") {
+      title = "ATESTADO DE COMPARECIMENTO";
+    } else if (apt.certificateType === "aptidao") {
+      title = "ATESTADO DE APTIDÃO FÍSICA";
+    }
+    doc.text(title, 105, 100, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "normal");
+
+    const formattedStartDate = apt.certificateStartDate 
+      ? new Date(apt.certificateStartDate + "T00:00:00").toLocaleDateString("pt-BR")
+      : (apt.date ? new Date(apt.date + "T00:00:00").toLocaleDateString("pt-BR") : new Date().toLocaleDateString("pt-BR"));
+
+    const docText = apt.certificatePatientDocument ? `, inscrito(a) sob o CPF/Documento nº ${apt.certificatePatientDocument},` : "";
+
+    let textContent = "";
+    if (apt.certificateType === "repouso" || !apt.certificateType) {
+      textContent = `Atesto para os devidos fins de direito que o(a) paciente ${apt.patientName}${docText} foi atendido(a) sob meus cuidados profissionais no dia de hoje e necessita de ${apt.certificateDays || 1} dia(s) de repouso para recuperação de sua saúde, a partir da data de ${formattedStartDate}.`;
+    } else if (apt.certificateType === "comparecimento") {
+      const startT = apt.certificateStartTime || apt.time || "09:00";
+      const periodText = apt.certificateEndTime
+        ? `no período das ${startT} às ${apt.certificateEndTime} horas`
+        : `às ${startT} horas`;
+      textContent = `Atesto para os devidos fins de comparecimento que o(a) paciente ${apt.patientName}${docText} esteve em consulta médica sob meus cuidados profissionais no dia de hoje, ${periodText}.`;
+    } else if (apt.certificateType === "aptidao") {
+      textContent = `Atesto para os devidos fins que o(a) paciente ${apt.patientName}${docText} foi submetido(a) a exame físico clínico e de anamnese no dia de hoje, encontrando-se em perfeitas condições de saúde física e mental, estando APTO(A) para a realização de atividades físicas, laborais, práticas esportivas ou concursos, não apresentando contraindicações no momento.`;
+    }
+
+    if (apt.certificateReason) {
+      textContent += `\n\nMotivo/Observação complementar: ${apt.certificateReason}`;
+    }
+
+    if (apt.certificateCid && (apt.certificateCidConsent !== false)) {
+      textContent += `\n\nCID-10 informado (com autorização expressa do paciente): ${apt.certificateCid}`;
+    }
+
+    // Wrap text for pdf
+    const splitText = doc.splitTextToSize(textContent, pageWidth - 40);
+    doc.text(splitText, 20, 115);
+
+    // Footer - Simple signature area
+    const footerY = 220;
+    doc.line(60, footerY, 150, footerY);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Dr(a). " + (professionalProfile?.name || ""), 105, footerY + 6, {
+      align: "center",
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`${professionalProfile?.specialty || "Clínico Geral"} - ${professionalProfile?.registrationNumber || ""}`, 105, footerY + 12, {
+      align: "center",
+    });
+
+    doc.save(
+      `atestado_${(apt.patientName || "paciente").replace(/\s+/g, "_").toLowerCase()}.pdf`,
+    );
+    addToast("Atestado PDF gerado com sucesso.", "success");
+  };
+
   const [selectedApt, setSelectedApt] = useState<any>(null);
   const [editingApt, setEditingApt] = useState<any>(null);
 
@@ -6291,6 +7119,12 @@ const ProfessionalDashboardView = ({
               className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "agenda" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
             >
               📋 Agenda-Dia
+            </button>
+            <button
+              onClick={() => setSubTab("historico")}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "historico" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+            >
+              📜 Histórico
             </button>
             <button
               onClick={() => setSubTab("profile")}
@@ -7034,6 +7868,388 @@ const ProfessionalDashboardView = ({
         </section>
       )}
 
+      {subTab === "historico" && (
+        <section className="space-y-6">
+          {/* Productivity Chart Card */}
+          <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="text-vitta-accent animate-pulse" size={20} />
+                  <h3 className="text-lg font-bold text-vitta-text-primary">
+                    Produtividade e Desempenho Clínico
+                  </h3>
+                </div>
+                <p className="text-xs text-vitta-text-secondary">
+                  Acompanhe a volumetria e taxa de conclusão dos atendimentos realizados.
+                </p>
+              </div>
+
+              {/* Chart Mode Toggle */}
+              <div className="flex bg-vitta-surface-2 p-1 rounded-xl shadow-inner gap-1 self-start sm:self-center">
+                <button
+                  onClick={() => setChartGroupMode("dia")}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    chartGroupMode === "dia"
+                      ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                      : "text-vitta-text-secondary hover:text-vitta-text-primary"
+                  }`}
+                >
+                  Dia
+                </button>
+                <button
+                  onClick={() => setChartGroupMode("semana")}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    chartGroupMode === "semana"
+                      ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                      : "text-vitta-text-secondary hover:text-vitta-text-primary"
+                  }`}
+                >
+                  Semana
+                </button>
+                <button
+                  onClick={() => setChartGroupMode("mes")}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    chartGroupMode === "mes"
+                      ? "bg-vitta-surface text-vitta-accent shadow-sm"
+                      : "text-vitta-text-secondary hover:text-vitta-text-primary"
+                  }`}
+                >
+                  Mês
+                </button>
+              </div>
+            </div>
+
+            {/* Performance Indicators Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 bg-vitta-surface-2 border border-vitta-border rounded-2xl">
+                <span className="text-[10px] font-bold text-vitta-text-secondary uppercase tracking-wider block">
+                  Total de Consultas
+                </span>
+                <span className="text-2xl font-black text-vitta-text-primary mt-1 block">
+                  {totalChartAppointments}
+                </span>
+              </div>
+              <div className="p-4 bg-vitta-green-bg/50 border border-vitta-green/10 rounded-2xl">
+                <span className="text-[10px] font-bold text-vitta-green uppercase tracking-wider block">
+                  Consultas Concluídas
+                </span>
+                <span className="text-2xl font-black text-vitta-green mt-1 block">
+                  {completedChartAppointments}
+                </span>
+              </div>
+              <div className="p-4 bg-vitta-accent-bg/50 border border-vitta-accent/10 rounded-2xl">
+                <span className="text-[10px] font-bold text-vitta-accent uppercase tracking-wider block">
+                  Taxa de Resolução
+                </span>
+                <span className="text-2xl font-black text-vitta-accent mt-1 block">
+                  {completionRate}%
+                </span>
+              </div>
+            </div>
+
+            {/* Recharts Render Area */}
+            {productivityChartData.length === 0 ? (
+              <div className="h-[260px] flex flex-col items-center justify-center bg-vitta-surface-2/40 border border-dashed border-vitta-border rounded-2xl text-center p-6">
+                <TrendingUp className="text-vitta-text-muted mb-2 opacity-50" size={32} />
+                <p className="text-sm font-bold text-vitta-text-secondary">Sem dados para plotagem</p>
+                <p className="text-xs text-vitta-text-muted mt-1">
+                  Não há consultas registradas para os filtros de busca aplicados.
+                </p>
+              </div>
+            ) : (
+              <div className="w-full h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={productivityChartData}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B6EF8" stopOpacity={0.25}/>
+                        <stop offset="95%" stopColor="#3B6EF8" stopOpacity={0.01}/>
+                      </linearGradient>
+                      <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#059669" stopOpacity={0.25}/>
+                        <stop offset="95%" stopColor="#059669" stopOpacity={0.01}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-vitta-border/50" opacity={0.4} />
+                    <XAxis 
+                      dataKey="name" 
+                      stroke="currentColor" 
+                      className="text-vitta-text-secondary" 
+                      fontSize={11} 
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis 
+                      stroke="currentColor" 
+                      className="text-vitta-text-secondary" 
+                      fontSize={11} 
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'var(--vitta-surface)', 
+                        borderColor: 'var(--vitta-border)', 
+                        borderRadius: '12px', 
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                        fontSize: '12px',
+                        color: 'var(--vitta-text-primary)'
+                      }} 
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="total" 
+                      stroke="#3B6EF8" 
+                      strokeWidth={2.5}
+                      fillOpacity={1} 
+                      fill="url(#colorTotal)" 
+                      name="Total de Consultas"
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="completed" 
+                      stroke="#059669" 
+                      strokeWidth={2.5}
+                      fillOpacity={1} 
+                      fill="url(#colorCompleted)" 
+                      name="Consultas Concluídas"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-vitta-border pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="text-vitta-accent" size={20} />
+                <h2 className="text-lg font-bold text-vitta-text-primary">
+                  Histórico Completo de Atendimentos
+                </h2>
+              </div>
+              <span className="text-xs font-semibold text-vitta-text-secondary bg-vitta-surface-2 border border-vitta-border px-3 py-1.5 rounded-xl">
+                Total Filtrado: <strong className="text-vitta-accent font-bold">{sortedHistoryAppointments.length}</strong> {sortedHistoryAppointments.length === 1 ? "atendimento" : "atendimentos"}
+              </span>
+            </div>
+
+            {/* Filters Area */}
+            <div className="p-5 bg-vitta-surface-2 border border-vitta-border rounded-2xl space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                {/* Search Patient Name */}
+                <div className="col-span-1 md:col-span-7 space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    Filtrar por Cliente/Paciente
+                  </label>
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3.5 top-3 text-vitta-text-muted" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome do paciente..."
+                      value={historySearchPatient}
+                      onChange={(e) => setHistorySearchPatient(e.target.value)}
+                      className="w-full pl-10 pr-10 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs md:text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15 placeholder-vitta-text-muted"
+                    />
+                    {historySearchPatient && (
+                      <button
+                        onClick={() => setHistorySearchPatient("")}
+                        className="absolute right-3.5 top-3 text-vitta-text-muted hover:text-vitta-text-primary"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Date Filter Dropdown */}
+                <div className="col-span-1 md:col-span-5 space-y-1.5">
+                  <label className="text-xs font-bold text-vitta-text-secondary">
+                    Período de Data
+                  </label>
+                  <select
+                    value={historyDateFilter}
+                    onChange={(e) => {
+                      setHistoryDateFilter(e.target.value);
+                      if (e.target.value !== "personalizado") {
+                        setHistoryStartDate("");
+                        setHistoryEndDate("");
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs md:text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15 h-[42px]"
+                  >
+                    <option value="all">Todas as Datas</option>
+                    <option value="semana">Semana (Últimos 7 dias)</option>
+                    <option value="mes">Mês Atual</option>
+                    <option value="30dias">Últimos 30 Dias</option>
+                    <option value="60dias">Últimos 60 Dias</option>
+                    <option value="90dias">Últimos 90 Dias</option>
+                    <option value="personalizado">Personalizado...</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Custom Date Inputs if selected */}
+              {historyDateFilter === "personalizado" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-vitta-border/30">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                      Data Inicial
+                    </label>
+                    <input
+                      type="date"
+                      value={historyStartDate}
+                      onChange={(e) => setHistoryStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs md:text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                      Data Final
+                    </label>
+                    <input
+                      type="date"
+                      value={historyEndDate}
+                      onChange={(e) => setHistoryEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs md:text-sm text-vitta-text-primary focus:outline-none focus:ring-2 focus:ring-vitta-accent/15"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Results Area */}
+            {sortedHistoryAppointments.length === 0 ? (
+              <div className="p-12 text-center bg-vitta-surface border border-dashed border-vitta-border rounded-2xl space-y-3">
+                <ClipboardList className="mx-auto text-vitta-text-muted" size={44} />
+                <p className="font-medium text-vitta-text-primary">
+                  Nenhum registro de atendimento encontrado.
+                </p>
+                <p className="text-xs text-vitta-text-secondary">
+                  Ajuste os filtros de busca ou altere o período selecionado.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {sortedHistoryAppointments.map((apt) => {
+                  return (
+                    <div
+                      key={apt.id}
+                      className="p-5 bg-vitta-surface border border-vitta-border rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-vitta-accent/25 hover:shadow-md transition-all duration-300"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-vitta-accent-bg rounded-xl flex items-center justify-center text-vitta-accent font-bold text-lg">
+                          {apt.patientName?.charAt(0) || "P"}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-vitta-text-primary text-sm md:text-base">
+                              {apt.patientName}
+                            </h3>
+                            {/* Modality Badge */}
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                              apt.modality === "telemedicine" || apt.modality === "online"
+                                ? "bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/10"
+                                : "bg-vitta-surface-3 text-vitta-text-secondary border border-vitta-border"
+                            }`}>
+                              {apt.modality === "telemedicine" || apt.modality === "online"
+                                ? "💻 Telemedicina"
+                                : "🏥 Presencial"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-vitta-text-secondary mt-1.5">
+                            <span className="font-bold text-vitta-text-primary bg-vitta-surface-2 border border-vitta-border px-2 py-0.5 rounded flex items-center gap-1">
+                              <Calendar size={12} className="text-vitta-accent" />
+                              {formatDateForDisplay(apt.date)} às {apt.time}
+                            </span>
+                            {/* Phone number if available */}
+                            {apt.patientPhone && (
+                              <span className="text-vitta-text-muted text-[11px]">
+                                • {apt.patientPhone}
+                              </span>
+                            )}
+                            {/* Email if available */}
+                            {apt.patientEmail && (
+                              <span className="text-vitta-text-muted text-[11px] hidden sm:inline">
+                                • {apt.patientEmail}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 md:self-center">
+                        {/* Status badge */}
+                        <div className="mr-2">
+                          {apt.status === "completed" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green border border-vitta-green/10">
+                              ✓ Concluído
+                            </span>
+                          )}
+                          {apt.status === "upcoming" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/10">
+                              ⏳ Confirmado
+                            </span>
+                          )}
+                          {apt.status === "in_progress" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green animate-pulse border border-vitta-green/20">
+                              ● Em Atendimento
+                            </span>
+                          )}
+                          {apt.status === "pending" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-amber-bg text-vitta-amber border border-vitta-amber/10">
+                              ☕ Aguardando
+                            </span>
+                          )}
+                          {apt.status === "cancelled" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-danger/10 text-vitta-danger border border-vitta-danger/10">
+                              ✕ Cancelado
+                            </span>
+                          )}
+                          {apt.status === "rejected" && (
+                            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-danger/10 text-vitta-danger border border-vitta-danger/10">
+                              ✕ Rejeitado
+                            </span>
+                          )}
+                        </div>
+
+                        {/* View Clinical Record (Prontuário) button */}
+                        <button
+                          onClick={() => setSelectedApt(apt)}
+                          className="px-3.5 py-2 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                          title="Acessar Prontuário / Evolução Clínica"
+                        >
+                          <ClipboardList size={14} />
+                          Prontuário
+                        </button>
+
+                        {/* View Patient Details button */}
+                        <button
+                          onClick={() =>
+                            setSelectedPatient({
+                              name: apt.patientName,
+                              id: apt.userId,
+                            })
+                          }
+                          className="p-2.5 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
+                          title="Visualizar Ficha Completa do Paciente"
+                        >
+                          <User size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {subTab === "settings" && <ProfessionalAgendaSettingsView professional={professionalProfile} />}
 
       {subTab === "finance" && <ProfessionalFinanceView user={user} />}
@@ -7041,82 +8257,476 @@ const ProfessionalDashboardView = ({
       {/* Patient Details Modal */}
       <AnimatePresence>
         {selectedPatient && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-vitta-text-primary/20 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-lg rounded-2xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-4xl h-[85vh] md:h-[80vh] flex flex-col rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
             >
-              <div className="p-6 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2">
+              {/* Header */}
+              <div className="p-5 border-b border-vitta-border flex justify-between items-center bg-vitta-surface-2">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-vitta-accent-bg rounded-xl text-vitta-accent">
-                    <User size={20} />
+                  <div className="p-2.5 bg-vitta-accent/10 text-vitta-accent rounded-xl">
+                    <User size={22} />
                   </div>
-                  <h3 className="text-xl font-bold text-vitta-text-primary">
-                    Ficha do Paciente
-                  </h3>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-vitta-text-primary flex items-center gap-2">
+                      Ficha Integrada do Paciente
+                    </h3>
+                    <p className="text-xs text-vitta-text-muted">
+                      Acesso completo ao prontuário, receitas e atestados
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedPatient(null)}
-                  className="p-2 hover:bg-vitta-surface-2 rounded-xl transition-colors"
+                  className="p-2 hover:bg-vitta-surface-3 rounded-xl transition-all"
                 >
-                  <X size={20} className="text-vitta-text-muted" />
+                  <X size={20} className="text-vitta-text-muted hover:text-vitta-text-primary" />
                 </button>
               </div>
-              <div className="p-6 space-y-6">
-                <div className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border">
-                  <div className="w-16 h-16 bg-vitta-accent rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-vitta-accent/20">
+
+              {/* Patient Basic Info Strip */}
+              <div className="px-6 py-4 bg-vitta-surface-2/50 border-b border-vitta-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-vitta-accent rounded-2xl flex items-center justify-center text-white text-xl font-black shadow-md shadow-vitta-accent/15">
                     {selectedPatient.name?.charAt(0) || "P"}
                   </div>
                   <div>
-                    <h4 className="text-lg font-bold text-vitta-text-primary">
+                    <h4 className="text-base font-bold text-vitta-text-primary leading-tight">
                       {selectedPatient.name}
                     </h4>
-                    <p className="text-sm text-vitta-text-secondary">
-                      ID: {selectedPatient.id}
-                    </p>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 mt-1 rounded-full text-[10px] font-extrabold bg-vitta-green-bg text-vitta-green border border-vitta-green/20">
+                      <span className="w-1.5 h-1.5 bg-vitta-green rounded-full animate-ping" />
+                      Paciente Ativo
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="p-4 rounded-xl bg-vitta-surface border border-vitta-border">
-                    <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mb-2">
-                      Informações Críticas
-                    </p>
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-vitta-text-secondary">
-                          Tipo de Plano:
-                        </span>
-                        <span className="font-bold text-vitta-text-primary">
-                          Vitta Premium
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-vitta-text-secondary">
-                          Última Consulta:
-                        </span>
-                        <span className="font-bold text-vitta-text-primary">
-                          15/04/2026
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-vitta-text-secondary">
-                          Alergias:
-                        </span>
-                        <span className="font-bold text-vitta-danger">
-                          Nenhuma relatada
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setPatientModalTab("info")}
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border ${
+                      patientModalTab === "info"
+                        ? "bg-vitta-accent text-white border-vitta-accent shadow-sm"
+                        : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                    }`}
+                  >
+                    <User size={14} />
+                    Ficha Cadastral
+                  </button>
+                  <button
+                    onClick={() => setPatientModalTab("history")}
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border ${
+                      patientModalTab === "history"
+                        ? "bg-vitta-accent text-white border-vitta-accent shadow-sm"
+                        : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                    }`}
+                  >
+                    <ClipboardList size={14} />
+                    Prontuários & Consultas ({patientApts.length})
+                  </button>
+                  <button
+                    onClick={() => setPatientModalTab("prescriptions")}
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border ${
+                      patientModalTab === "prescriptions"
+                        ? "bg-vitta-accent text-white border-vitta-accent shadow-sm"
+                        : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                    }`}
+                  >
+                    <Pill size={14} />
+                    Receitas ({patientApts.filter(a => a.prescriptions?.length > 0).length})
+                  </button>
+                  <button
+                    onClick={() => setPatientModalTab("certificates")}
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border ${
+                      patientModalTab === "certificates"
+                        ? "bg-vitta-accent text-white border-vitta-accent shadow-sm"
+                        : "bg-vitta-surface border-vitta-border text-vitta-text-secondary hover:bg-vitta-surface-2"
+                    }`}
+                  >
+                    <FileText size={14} />
+                    Atestados ({patientApts.filter(a => a.hasCertificate).length})
+                  </button>
                 </div>
               </div>
-              <div className="p-6 border-t border-vitta-border bg-vitta-surface-2">
+
+              {/* Scrollable Content Body */}
+              <div className="flex-1 overflow-y-auto p-6 bg-vitta-surface">
+                {loadingPatientDetails ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-10 h-10 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
+                      <p className="text-xs text-vitta-text-muted font-bold">Carregando ficha completa...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* INFO TAB */}
+                    {patientModalTab === "info" && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in-50 duration-200">
+                        <div className="space-y-5">
+                          <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest flex items-center gap-1.5 pb-2 border-b border-vitta-border">
+                            👤 Identificação Geral
+                          </h5>
+                          
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Nome Completo</p>
+                              <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary font-bold">
+                                {patientDetails?.name || selectedPatient.name}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">E-mail de Contato</p>
+                              <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary">
+                                {patientDetails?.email || "Não informado"}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">CPF</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary font-mono">
+                                  {patientDetails?.cpf || "Não informado"}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Telefone</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary">
+                                  {patientDetails?.phone || "Não informado"}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Data de Nascimento</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary">
+                                  {patientDetails?.birthDate || "Não informado"}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Gênero</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm text-vitta-text-primary">
+                                  {patientDetails?.gender || "Não informado"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-5">
+                          <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest flex items-center gap-1.5 pb-2 border-b border-vitta-border">
+                            🩺 Prontuário & Informações Clínicas
+                          </h5>
+
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Tipo Sanguíneo</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm font-bold text-vitta-accent">
+                                  {patientDetails?.bloodType || "Não informado"}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Plano / Convênio</p>
+                                <div className="px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm font-bold text-vitta-text-primary">
+                                  {patientDetails?.planType || "Vitta Premium"}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-[10px] font-bold text-vitta-text-muted uppercase px-1">Alergias Conhecidas</p>
+                              <div className={`px-4 py-2.5 border rounded-xl text-sm font-bold ${
+                                patientDetails?.allergies 
+                                  ? "bg-vitta-danger/5 border-vitta-danger/25 text-vitta-danger"
+                                  : "bg-vitta-surface-2 border-vitta-border text-vitta-text-secondary"
+                              }`}>
+                                {patientDetails?.allergies || "Nenhuma alergia conhecida relatada"}
+                              </div>
+                            </div>
+
+                            <div className="p-4 bg-vitta-accent/5 rounded-2xl border border-vitta-accent/10 space-y-2">
+                              <p className="text-xs font-bold text-vitta-accent uppercase tracking-wider flex items-center gap-1">
+                                📊 Resumo de Atendimento
+                              </p>
+                              <div className="grid grid-cols-2 gap-4 text-xs">
+                                <div>
+                                  <span className="text-vitta-text-muted block">Consultas Realizadas:</span>
+                                  <span className="font-bold text-vitta-text-primary text-sm">{patientApts.filter(a => a.status === "completed").length}</span>
+                                </div>
+                                <div>
+                                  <span className="text-vitta-text-muted block">Prescrições Ativas:</span>
+                                  <span className="font-bold text-vitta-text-primary text-sm">{patientApts.filter(a => a.prescriptions?.length > 0).length}</span>
+                                </div>
+                                <div>
+                                  <span className="text-vitta-text-muted block">Atestados Emitidos:</span>
+                                  <span className="font-bold text-vitta-text-primary text-sm">{patientApts.filter(a => a.hasCertificate).length}</span>
+                                </div>
+                                <div>
+                                  <span className="text-vitta-text-muted block">Último Acesso:</span>
+                                  <span className="font-bold text-vitta-text-primary text-sm">
+                                    {patientApts[0]?.date ? formatDateForDisplay(patientApts[0].date) : "Nenhum"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CLINICAL HISTORY TAB */}
+                    {patientModalTab === "history" && (
+                      <div className="space-y-4 animate-in fade-in-50 duration-200">
+                        <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest pb-1 border-b border-vitta-border">
+                          📋 Linha do Tempo e Evolução Clínica
+                        </h5>
+
+                        {patientApts.length === 0 ? (
+                          <div className="p-8 text-center bg-vitta-surface-2 rounded-2xl border border-vitta-border">
+                            <ClipboardList className="mx-auto text-vitta-text-muted mb-2 opacity-55" size={32} />
+                            <p className="text-sm font-bold text-vitta-text-secondary">Nenhuma consulta registrada</p>
+                            <p className="text-xs text-vitta-text-muted mt-1">Este paciente ainda não possui consultas finalizadas ou agendadas.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {patientApts.map((apt) => (
+                              <div key={apt.id} className="p-5 bg-vitta-surface-2 border border-vitta-border rounded-2xl flex flex-col gap-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-vitta-border/50 pb-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-vitta-surface-3 border border-vitta-border rounded-xl text-vitta-text-secondary">
+                                      <Calendar size={16} />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-vitta-text-primary">
+                                        Consulta em {formatDateForDisplay(apt.date)} às {apt.time}
+                                      </p>
+                                      <p className="text-xs text-vitta-text-muted">
+                                        Modalidade: {apt.modality === "telemedicine" ? "💻 Telemedicina" : "🏥 Presencial"}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    {apt.status === "completed" && (
+                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green border border-vitta-green/20">
+                                        ✓ Concluída
+                                      </span>
+                                    )}
+                                    {apt.status === "upcoming" && (
+                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/20">
+                                        ⏳ Confirmada
+                                      </span>
+                                    )}
+                                    {apt.status === "in_progress" && (
+                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green border border-vitta-green/20 animate-pulse">
+                                        ● Em Atendimento
+                                      </span>
+                                    )}
+                                    {apt.status === "pending" && (
+                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-amber-bg text-vitta-amber border border-vitta-amber/20">
+                                        ☕ Aguardando
+                                      </span>
+                                    )}
+                                    {apt.status === "cancelled" && (
+                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-danger/10 text-vitta-danger border border-vitta-danger/25">
+                                        ✕ Cancelada
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Anamnesis / Evolution section */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="p-3.5 bg-vitta-surface rounded-xl border border-vitta-border/85 space-y-1.5">
+                                    <p className="text-[10px] font-extrabold text-vitta-text-secondary uppercase tracking-wider">
+                                      🧠 Anamnese / Queixa Principal
+                                    </p>
+                                    <p className="text-xs text-vitta-text-primary leading-relaxed whitespace-pre-line">
+                                      {apt.anamnesis || "Nenhum dado de anamnese registrado nesta consulta."}
+                                    </p>
+                                  </div>
+
+                                  <div className="p-3.5 bg-vitta-surface rounded-xl border border-vitta-border/85 space-y-1.5">
+                                    <p className="text-[10px] font-extrabold text-vitta-text-secondary uppercase tracking-wider">
+                                      📝 Diagnóstico & Evolução Clínica
+                                    </p>
+                                    <p className="text-xs text-vitta-text-primary leading-relaxed whitespace-pre-line">
+                                      {apt.clinicalNotes || "Nenhuma anotação de evolução clínica registrada."}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* PRESCRIPTIONS TAB */}
+                    {patientModalTab === "prescriptions" && (
+                      <div className="space-y-4 animate-in fade-in-50 duration-200">
+                        <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest pb-1 border-b border-vitta-border">
+                          💊 Histórico de Receitas Emitidas
+                        </h5>
+
+                        {patientApts.filter(a => a.prescriptions?.length > 0).length === 0 ? (
+                          <div className="p-8 text-center bg-vitta-surface-2 rounded-2xl border border-vitta-border">
+                            <Pill className="mx-auto text-vitta-text-muted mb-2 opacity-55" size={32} />
+                            <p className="text-sm font-bold text-vitta-text-secondary">Nenhuma receita prescrita</p>
+                            <p className="text-xs text-vitta-text-muted mt-1">Este paciente ainda não recebeu receitas farmacológicas digitais.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {patientApts.filter(a => a.prescriptions?.length > 0).map((apt) => (
+                              <div key={apt.id} className="p-5 bg-vitta-surface-2 border border-vitta-border rounded-2xl space-y-4">
+                                <div className="flex items-center justify-between border-b border-vitta-border pb-3">
+                                  <div>
+                                    <p className="text-xs font-black text-vitta-accent uppercase tracking-wider">
+                                      Receita Digital
+                                    </p>
+                                    <p className="text-sm font-bold text-vitta-text-primary">
+                                      Emitida em {formatDateForDisplay(apt.date)}
+                                    </p>
+                                  </div>
+                                  
+                                  <button
+                                    onClick={() => downloadPatientPrescriptionPDF(apt)}
+                                    className="px-3.5 py-1.5 bg-vitta-accent text-white text-xs font-bold rounded-xl hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5 shadow-sm"
+                                  >
+                                    <Download size={13} />
+                                    Exportar Receita (PDF)
+                                  </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                  {apt.prescriptions.map((p: any, idx: number) => (
+                                    <div key={idx} className="p-3 bg-vitta-surface rounded-xl border border-vitta-border flex items-start gap-3">
+                                      <div className="p-2 bg-vitta-accent-bg text-vitta-accent rounded-xl">
+                                        <Pill size={14} />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <p className="text-sm font-bold text-vitta-text-primary">
+                                          {p.medicine}
+                                        </p>
+                                        <p className="text-xs text-vitta-text-secondary">
+                                          <span className="font-extrabold text-vitta-text-muted uppercase text-[9px] tracking-wider block">Dosagem</span>
+                                          {p.dosage || "Não informado"}
+                                        </p>
+                                        <p className="text-xs text-vitta-text-secondary">
+                                          <span className="font-extrabold text-vitta-text-muted uppercase text-[9px] tracking-wider block">Instruções de Uso</span>
+                                          {p.instructions || "Não informado"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CERTIFICATES TAB */}
+                    {patientModalTab === "certificates" && (
+                      <div className="space-y-4 animate-in fade-in-50 duration-200">
+                        <h5 className="text-xs font-black text-vitta-text-secondary uppercase tracking-widest pb-1 border-b border-vitta-border">
+                          📄 Histórico de Atestados Emitidos
+                        </h5>
+
+                        {patientApts.filter(a => a.hasCertificate).length === 0 ? (
+                          <div className="p-8 text-center bg-vitta-surface-2 rounded-2xl border border-vitta-border">
+                            <FileText className="mx-auto text-vitta-text-muted mb-2 opacity-55" size={32} />
+                            <p className="text-sm font-bold text-vitta-text-secondary">Nenhum atestado emitido</p>
+                            <p className="text-xs text-vitta-text-muted mt-1">Nenhum atestado médico foi emitido para este paciente.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {patientApts.filter(a => a.hasCertificate).map((apt) => (
+                              <div key={apt.id} className="p-5 bg-vitta-surface-2 border border-vitta-border rounded-2xl space-y-4">
+                                <div className="flex items-center justify-between border-b border-vitta-border pb-3">
+                                  <div>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/15 uppercase">
+                                      {apt.certificateType === "comparecimento" ? "🏥 Comparecimento" : apt.certificateType === "aptidao" ? "💪 Aptidão Física" : "🏡 Repouso"}
+                                    </span>
+                                    <p className="text-sm font-bold text-vitta-text-primary mt-1">
+                                      Emitido em {formatDateForDisplay(apt.date)}
+                                    </p>
+                                  </div>
+
+                                  <button
+                                    onClick={() => downloadPatientCertificatePDF(apt)}
+                                    className="px-3.5 py-1.5 bg-vitta-accent text-white text-xs font-bold rounded-xl hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5 shadow-sm"
+                                  >
+                                    <Download size={13} />
+                                    Exportar Atestado (PDF)
+                                  </button>
+                                </div>
+
+                                <div className="p-4 bg-vitta-surface rounded-xl border border-vitta-border space-y-3">
+                                  <div className="grid grid-cols-2 gap-4 text-xs">
+                                    {apt.certificateType === "repouso" || !apt.certificateType ? (
+                                      <div>
+                                        <span className="text-vitta-text-muted block">Duração do Repouso:</span>
+                                        <span className="font-bold text-vitta-text-primary">{apt.certificateDays || 1} dia(s)</span>
+                                      </div>
+                                    ) : null}
+
+                                    {apt.certificateType === "comparecimento" ? (
+                                      <div>
+                                        <span className="text-vitta-text-muted block">Período registrado:</span>
+                                        <span className="font-bold text-vitta-text-primary">
+                                          {apt.certificateStartTime || apt.time || "09:00"} {apt.certificateEndTime ? `às ${apt.certificateEndTime}` : ""}
+                                        </span>
+                                      </div>
+                                    ) : null}
+
+                                    <div>
+                                      <span className="text-vitta-text-muted block">Data de Início:</span>
+                                      <span className="font-bold text-vitta-text-primary">
+                                        {apt.certificateStartDate ? formatDateForDisplay(apt.certificateStartDate) : formatDateForDisplay(apt.date)}
+                                      </span>
+                                    </div>
+
+                                    {apt.certificateCid && (apt.certificateCidConsent !== false) ? (
+                                      <div>
+                                        <span className="text-vitta-text-muted block">CID-10 Informado:</span>
+                                        <span className="font-bold text-vitta-text-primary">{apt.certificateCid}</span>
+                                      </div>
+                                    ) : null}
+                                  </div>
+
+                                  {apt.certificateReason && (
+                                    <div className="pt-2 border-t border-vitta-border/50">
+                                      <span className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider block">Observações / Motivos:</span>
+                                      <p className="text-xs text-vitta-text-secondary mt-0.5 whitespace-pre-line">{apt.certificateReason}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-5 border-t border-vitta-border bg-vitta-surface-2 flex items-center justify-between gap-4">
+                <p className="text-[10px] text-vitta-text-muted">
+                  Registro sincronizado de forma segura com o prontuário eletrônico.
+                </p>
                 <button
                   onClick={() => setSelectedPatient(null)}
-                  className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
+                  className="px-6 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all shadow-md shadow-vitta-accent/15"
                 >
                   Fechar Ficha
                 </button>
@@ -8195,7 +9805,7 @@ const AdminView = ({ user, userData }: { user: any; userData?: any }) => {
           )}
           {subTab === "professionals" && <ProfessionalsManagementView />}
           {subTab === "exams" && <ExamsManagementView />}
-          {subTab === "user-exams" && <UserExamsManagementView />}
+          {subTab === "user-exams" && <UserExamsManagementView user={user} userData={userData} />}
           {subTab === "appointments" && <AdminAppointmentsView />}
           {subTab === "config" && <UserConfigView />}
           {subTab === "content" && <ContentManagerView />}
@@ -8638,7 +10248,6 @@ const ExamsView = ({ user }: { user: any }) => {
     const q = query(
       collection(db, "user_exams"),
       where("userId", "==", user.uid),
-      orderBy("createdAt", "desc"),
     );
 
     const unsubscribe = onSnapshot(
@@ -8648,6 +10257,12 @@ const ExamsView = ({ user }: { user: any }) => {
           id: doc.id,
           ...doc.data(),
         }));
+        // Sort by createdAt desc safely on client side
+        data.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
         setExams(data);
         setLoading(false);
       },
@@ -14916,12 +16531,41 @@ const SettingsView = ({
   );
 };
 
-const UserExamsManagementView = () => {
+const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any }) => {
   const { addToast } = useToast();
   const [userExams, setUserExams] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [examTypes, setExamTypes] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [examSearch, setExamSearch] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const hasUploadPermission = () => {
+    return userData?.role === "admin" || userData?.role === "professional" || user?.email === "jhecksanto@gmail.com";
+  };
+
+  const isPdfOrImage = (file: File) => {
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
+    if (file.type && allowedTypes.includes(file.type)) {
+      return true;
+    }
+    const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"];
+    const fileName = file.name.toLowerCase();
+    return allowedExtensions.some(ext => fileName.endsWith(ext));
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const [newItem, setNewItem] = useState({
     userId: "",
     examId: "",
@@ -14990,13 +16634,30 @@ const UserExamsManagementView = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItem.userId || !newItem.name) return;
+    if (!newItem.userId) {
+      addToast("Selecione um usuário para o exame.", "warning");
+      return;
+    }
+    if (!newItem.examId) {
+      addToast("Selecione o tipo de exame.", "warning");
+      return;
+    }
 
     try {
       setUploading("new");
       let resultUrl = newItem.resultUrl;
 
       if (selectedFile) {
+        if (!hasUploadPermission()) {
+          addToast("Você não tem permissão para anexar arquivos.", "error");
+          setUploading(null);
+          return;
+        }
+        if (!isPdfOrImage(selectedFile)) {
+          addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+          setUploading(null);
+          return;
+        }
         const storageRef = ref(
           storage,
           `exam_results/${newItem.userId}/${Date.now()}_${selectedFile.name}`,
@@ -15051,6 +16712,15 @@ const UserExamsManagementView = () => {
     userId: string,
     file: File,
   ) => {
+    if (!hasUploadPermission()) {
+      addToast("Você não tem permissão para anexar arquivos de resultados.", "error");
+      return;
+    }
+    if (!isPdfOrImage(file)) {
+      addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+      return;
+    }
+
     try {
       setUploading(userExamId);
       const storageRef = ref(
@@ -15198,47 +16868,139 @@ const UserExamsManagementView = () => {
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 relative" ref={dropdownRef}>
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
                   Tipo de Exame
                 </label>
-                <select
-                  required
-                  value={newItem.examId}
-                  onChange={(e) => {
-                    const selected = examTypes.find(
-                      (t) => t.id === e.target.value,
-                    );
-                    setNewItem({
-                      ...newItem,
-                      examId: e.target.value,
-                      name: selected?.name || "",
-                    });
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDropdownOpen(!isDropdownOpen);
+                    setExamSearch("");
                   }}
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  className="w-full flex justify-between items-center px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary text-left"
                 >
-                  <option value="" disabled>
-                    Selecione o Exame
-                  </option>
-                  {examTypes.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                  <span className={newItem.examId ? "text-vitta-text-primary" : "text-vitta-text-muted/60"}>
+                    {newItem.name || "Selecione o Exame"}
+                  </span>
+                  <ChevronDown
+                    size={18}
+                    className={`text-vitta-text-muted transition-transform duration-200 ${
+                      isDropdownOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-vitta-surface border border-vitta-border rounded-xl shadow-xl overflow-hidden flex flex-col max-h-80">
+                    <div className="p-2 border-b border-vitta-border bg-vitta-surface-2 sticky top-0 z-10 flex items-center gap-2">
+                      <Search size={16} className="text-vitta-text-muted shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Filtrar exames..."
+                        value={examSearch}
+                        onChange={(e) => setExamSearch(e.target.value)}
+                        className="w-full bg-transparent text-sm text-vitta-text-primary placeholder:text-vitta-text-muted/60 outline-none"
+                        autoFocus
+                      />
+                      {examSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setExamSearch("")}
+                          className="text-vitta-text-muted hover:text-vitta-text-primary"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="overflow-y-auto max-h-56 divide-y divide-vitta-border">
+                      {examTypes.filter((t) =>
+                        (t.name || "").toLowerCase().includes(examSearch.toLowerCase().trim())
+                      ).length > 0 ? (
+                        examTypes
+                          .filter((t) =>
+                            (t.name || "").toLowerCase().includes(examSearch.toLowerCase().trim())
+                          )
+                          .map((t) => {
+                            const isSelected = t.id === newItem.examId;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  setNewItem({
+                                    ...newItem,
+                                    examId: t.id,
+                                    name: t.name,
+                                  });
+                                  setIsDropdownOpen(false);
+                                }}
+                                className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center justify-between ${
+                                  isSelected
+                                    ? "bg-vitta-accent/10 text-vitta-accent font-bold"
+                                    : "text-vitta-text-primary hover:bg-vitta-surface-2"
+                                }`}
+                              >
+                                <span className="truncate">{t.name}</span>
+                                {isSelected && (
+                                  <Check size={16} className="text-vitta-accent shrink-0 ml-2" />
+                                )}
+                              </button>
+                            );
+                          })
+                      ) : (
+                        <div className="p-4 text-center text-sm text-vitta-text-muted">
+                          Nenhum exame encontrado
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                  Resultado (Opcional)
+                  Resultado (PDF ou Imagem - Opcional)
                 </label>
                 <input
+                  id="exam-result-file-input"
                   type="file"
                   accept=".pdf,image/*"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-vitta-accent file:text-white hover:file:bg-vitta-accent/90 transition-all text-vitta-text-primary"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file) {
+                      if (!isPdfOrImage(file)) {
+                        addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+                        e.target.value = "";
+                        setSelectedFile(null);
+                      } else {
+                        setSelectedFile(file);
+                      }
+                    } else {
+                      setSelectedFile(null);
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-vitta-accent file:text-white hover:file:bg-vitta-accent/90 transition-all text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 outline-none"
                 />
+                {selectedFile && (
+                  <div className="flex items-center justify-between p-2 bg-vitta-green-bg border border-vitta-green/20 rounded-xl mt-1 text-xs">
+                    <span className="text-vitta-text-primary font-medium truncate max-w-[200px]">
+                      Selected: {selectedFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFile(null);
+                        const inputEl = document.getElementById("exam-result-file-input") as HTMLInputElement;
+                        if (inputEl) inputEl.value = "";
+                      }}
+                      className="text-red-500 hover:text-red-700 font-bold ml-2 shrink-0"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
@@ -15446,6 +17208,7 @@ const ExamsManagementView = () => {
   const [exams, setExams] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [newItem, setNewItem] = useState({
     name: "",
     priceVitta: "",
@@ -15474,6 +17237,17 @@ const ExamsManagementView = () => {
     type: "info",
   });
 
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredExams = exams.filter((exam) => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return true;
+    return (
+      (exam.name || "").toLowerCase().includes(term) ||
+      (exam.description || "").toLowerCase().includes(term)
+    );
+  });
+
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "exams"),
@@ -15486,6 +17260,62 @@ const ExamsManagementView = () => {
     );
     return () => unsubscribe();
   }, []);
+
+  const handleImportGal = async () => {
+    if (isImporting) return;
+    setIsImporting(true);
+    try {
+      const existingNames = new Set(
+        exams.map((e) => (e.name || "").trim().toLowerCase())
+      );
+
+      const toImport = galExams.filter(
+        (item) => !existingNames.has(item.display.trim().toLowerCase())
+      );
+
+      if (toImport.length === 0) {
+        addToast(
+          "Todos os exames do catálogo GAL já estão cadastrados no sistema.",
+          "info"
+        );
+        setIsImporting(false);
+        return;
+      }
+
+      const batchSize = 400;
+      for (let i = 0; i < toImport.length; i += batchSize) {
+        const chunk = toImport.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach((item) => {
+          const newDocRef = doc(collection(db, "exams"));
+          batch.set(newDocRef, {
+            name: item.display,
+            priceVitta: "R$ 45,00",
+            priceParticular: "R$ 90,00",
+            description: `Código GAL: ${item.code}. Exame laboratorial do Gerenciador de Ambiente Laboratorial (GAL).`,
+            isActive: true,
+            createdAt: Timestamp.now(),
+          });
+        });
+        await batch.commit();
+      }
+
+      await logAdminAction(
+        "IMPORT_GAL_EXAMS",
+        `Importou ${toImport.length} exames do catálogo GAL`
+      );
+
+      addToast(
+        `${toImport.length} exames do catálogo GAL importados com sucesso!`,
+        "success"
+      );
+    } catch (err) {
+      console.error("Erro ao importar exames GAL:", err);
+      addToast("Erro ao importar catálogo de exames GAL.", "error");
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15594,17 +17424,31 @@ const ExamsManagementView = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-vitta-text-primary">
           Gestão de Exames
         </h2>
-        <button
-          onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-        >
-          <Plus size={20} />
-          Novo Exame
-        </button>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={handleImportGal}
+            disabled={isImporting}
+            className="flex items-center justify-center gap-2 px-5 py-3 bg-vitta-surface border border-vitta-border hover:bg-vitta-surface-2 text-vitta-text-primary rounded-xl font-bold transition-all shadow-sm disabled:opacity-50"
+          >
+            {isImporting ? (
+              <div className="w-5 h-5 border-2 border-vitta-accent/30 border-t-vitta-accent rounded-full animate-spin" />
+            ) : (
+              <Download size={20} className="text-vitta-accent" />
+            )}
+            {isImporting ? "Importando..." : "Importar Catálogo GAL"}
+          </button>
+          <button
+            onClick={() => setIsCreating(!isCreating)}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+          >
+            <Plus size={20} />
+            Novo Exame
+          </button>
+        </div>
       </div>
 
       {isCreating && (
@@ -15673,6 +17517,26 @@ const ExamsManagementView = () => {
         </motion.div>
       )}
 
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="relative w-full md:w-80">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted"
+            size={18}
+          />
+          <input
+            id="exam-search-input"
+            type="text"
+            placeholder="Buscar por nome ou descrição..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary placeholder:text-vitta-text-muted/60"
+          />
+        </div>
+        <div className="text-sm text-vitta-text-muted">
+          Exibindo <span className="font-semibold text-vitta-text-primary">{filteredExams.length}</span> de <span className="font-semibold">{exams.length}</span> exames
+        </div>
+      </div>
+
       <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
@@ -15695,75 +17559,86 @@ const ExamsManagementView = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-vitta-border">
-            {exams.map((exam) => (
-              <tr
-                key={exam.id}
-                className="hover:bg-vitta-surface-2 transition-colors"
-              >
-                <td className="px-8 py-4">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-sm text-vitta-text-primary">
-                      {exam.name}
+            {filteredExams.length > 0 ? (
+              filteredExams.map((exam) => (
+                <tr
+                  key={exam.id}
+                  className="hover:bg-vitta-surface-2 transition-colors"
+                >
+                  <td className="px-8 py-4">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-sm text-vitta-text-primary">
+                        {exam.name}
+                      </span>
+                      <span className="text-xs text-vitta-text-muted line-clamp-1">
+                        {exam.description}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-4 text-center">
+                    {exam.isActive !== false ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-vitta-green/10 text-vitta-green border border-vitta-green/20 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-vitta-green animate-pulse" />
+                        Ativo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/20 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        Inativo
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-8 py-4 text-center">
+                    <span className="text-sm font-bold text-vitta-green">
+                      {exam.priceVitta}
                     </span>
-                    <span className="text-xs text-vitta-text-muted line-clamp-1">
-                      {exam.description}
+                  </td>
+                  <td className="px-8 py-4 text-center">
+                    <span className="text-sm font-bold text-vitta-text-secondary">
+                      {exam.priceParticular}
                     </span>
-                  </div>
-                </td>
-                <td className="px-8 py-4 text-center">
-                  {exam.isActive !== false ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-vitta-green/10 text-vitta-green border border-vitta-green/20 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-vitta-green animate-pulse" />
-                      Ativo
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/20 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      Inativo
-                    </span>
-                  )}
-                </td>
-                <td className="px-8 py-4 text-center">
-                  <span className="text-sm font-bold text-vitta-green">
-                    {exam.priceVitta}
-                  </span>
-                </td>
-                <td className="px-8 py-4 text-center">
-                  <span className="text-sm font-bold text-vitta-text-secondary">
-                    {exam.priceParticular}
-                  </span>
-                </td>
-                <td className="px-8 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => startEdit(exam)}
-                      title="Editar Exame"
-                      className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
-                    >
-                      <Edit size={18} />
-                    </button>
-                    <button
-                      onClick={() => handleToggleActive(exam)}
-                      title={exam.isActive !== false ? "Desativar Exame" : "Ativar Exame"}
-                      className={`p-2 transition-colors ${
-                        exam.isActive !== false
-                          ? "text-vitta-text-muted hover:text-amber-500"
-                          : "text-vitta-text-muted hover:text-vitta-green"
-                      }`}
-                    >
-                      {exam.isActive !== false ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(exam.id)}
-                      title="Excluir Exame"
-                      className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
+                  </td>
+                  <td className="px-8 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => startEdit(exam)}
+                        title="Editar Exame"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(exam)}
+                        title={exam.isActive !== false ? "Desativar Exame" : "Ativar Exame"}
+                        className={`p-2 transition-colors ${
+                          exam.isActive !== false
+                            ? "text-vitta-text-muted hover:text-amber-500"
+                            : "text-vitta-text-muted hover:text-vitta-green"
+                        }`}
+                      >
+                        {exam.isActive !== false ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(exam.id)}
+                        title="Excluir Exame"
+                        className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-8 py-12 text-center text-vitta-text-muted text-sm"
+                >
+                  Nenhum tipo de exame encontrado para a busca realizada.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
