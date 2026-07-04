@@ -104,6 +104,7 @@ import {
   PlusCircle,
   MinusCircle,
   CalendarCheck,
+  CalendarPlus,
   CheckCircle2,
   Receipt,
   FileQuestion,
@@ -5055,11 +5056,15 @@ const ProfessionalManualBookingModal = ({
   onClose,
   professional,
   user,
+  initialUserId,
+  initialPatientName,
 }: {
   isOpen: boolean;
   onClose: () => void;
   professional: any;
   user: any;
+  initialUserId?: string;
+  initialPatientName?: string;
 }) => {
   const [patients, setPatients] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -5070,6 +5075,21 @@ const ProfessionalManualBookingModal = ({
   const [externalPatientName, setExternalPatientName] = useState("");
   const [externalPatientEmail, setExternalPatientEmail] = useState("");
   const [externalPatientPhone, setExternalPatientPhone] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialUserId && initialUserId !== "external") {
+        setSelectedUserId(initialUserId);
+        setSelectedPatientSource("registered");
+      } else if (initialPatientName) {
+        setExternalPatientName(initialPatientName);
+        setSelectedPatientSource("external");
+      } else {
+        setSelectedUserId("");
+        setExternalPatientName("");
+      }
+    }
+  }, [isOpen, initialUserId, initialPatientName]);
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split("T")[0];
@@ -6199,6 +6219,15 @@ const ProfessionalDashboardView = ({
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isManualBookingModalOpen, setIsManualBookingModalOpen] =
     useState(false);
+  const [manualBookingInitialPatient, setManualBookingInitialPatient] = useState<{
+    userId?: string;
+    patientName?: string;
+  } | null>(null);
+
+  const handleOpenManualBookingForPatient = (userId?: string, patientName?: string) => {
+    setManualBookingInitialPatient({ userId, patientName });
+    setIsManualBookingModalOpen(true);
+  };
   const { addToast } = useToast();
 
   const filteredHistoryAppointments = useMemo(() => {
@@ -6365,7 +6394,13 @@ const ProfessionalDashboardView = ({
         const snap = await getDocs(collection(db, "professionals"));
         const list = snap.docs
           .map((doc) => ({ id: doc.id, ...doc.data() as any }))
-          .filter((p) => !p.userId); // only profiles not yet claimed
+          .filter(
+            (p) =>
+              !p.userId &&
+              p.email &&
+              user?.email &&
+              p.email.toLowerCase().trim() === user.email.toLowerCase().trim()
+          ); // only profiles not yet claimed and matching user's email
         setAvailableUnlinkedProfs(list);
       } catch (err) {
         console.error("Error fetching unlinked professionals:", err);
@@ -6374,12 +6409,30 @@ const ProfessionalDashboardView = ({
       }
     };
     fetchUnlinked();
-  }, [professionalProfile, user.uid, overrideProfessionalId]);
+  }, [professionalProfile, user.uid, overrideProfessionalId, user.email]);
 
   const handleLinkProfile = async (profId: string) => {
     setIsLinkingInProcess(true);
     try {
-      await updateDoc(doc(db, "professionals", profId), {
+      const docRef = doc(db, "professionals", profId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        addToast("Perfil não encontrado.", "error");
+        return;
+      }
+      const profData = docSnap.data();
+      if (profData?.userId) {
+        addToast("Este perfil já está vinculado a outro usuário.", "error");
+        return;
+      }
+      const profEmail = (profData?.email || "").toLowerCase().trim();
+      const userEmail = (user?.email || "").toLowerCase().trim();
+      if (!profEmail || profEmail !== userEmail) {
+        addToast("Você só pode vincular um perfil que possua o mesmo e-mail de seu cadastro.", "error");
+        return;
+      }
+
+      await updateDoc(docRef, {
         userId: user.uid,
         email: user.email,
         updatedAt: Timestamp.now(),
@@ -6424,8 +6477,10 @@ const ProfessionalDashboardView = ({
           }
         },
         createdAt: new Date().toISOString(),
+        isApproved: false,
+        status: "Pendente",
       });
-      addToast("Perfil profissional criado e vinculado com sucesso!", "success");
+      addToast("Perfil profissional criado com sucesso! Aguarde a aprovação de um Usuário Admin.", "success");
     } catch (err) {
       console.error("Error creating and linking profile:", err);
       addToast("Erro ao criar perfil profissional.", "error");
@@ -6869,7 +6924,7 @@ const ProfessionalDashboardView = ({
                   Vincular Perfil Existente
                 </h3>
                 <p className="text-xs text-vitta-text-secondary leading-relaxed">
-                  Se um administrador já cadastrou seu nome, selecione seu perfil abaixo para associá-lo definitivamente ao seu usuário.
+                  Se um administrador já cadastrou seu nome, selecione seu perfil abaixo para associá-lo definitivamente ao seu usuário. <span className="font-semibold text-vitta-accent">Apenas perfis cadastrados com o seu e-mail ({user?.email}) são exibidos e podem ser vinculados.</span>
                 </p>
               </div>
 
@@ -7055,6 +7110,32 @@ const ProfessionalDashboardView = ({
     );
   }
 
+  if (professionalProfile.isApproved === false) {
+    return (
+      <div className="flex-1 p-4 md:p-10 flex flex-col items-center justify-center font-sans">
+        <div className="max-w-xl w-full bg-vitta-surface border border-vitta-border rounded-3xl p-6 md:p-10 space-y-6 shadow-xl text-center">
+          <div className="inline-flex p-4 bg-vitta-amber/10 text-vitta-amber rounded-full shadow-lg shadow-vitta-amber/5">
+            <Clock size={36} className="animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-vitta-text-primary">
+            Cadastro em Análise!
+          </h2>
+          <p className="text-sm text-vitta-text-secondary leading-relaxed">
+            Olá, <span className="font-semibold text-vitta-text-primary">{professionalProfile.name}</span>. Seu perfil profissional está cadastrado com sucesso e foi enviado para aprovação de um administrador da plataforma.
+          </p>
+          <div className="p-4 bg-vitta-surface-2 rounded-xl text-left border border-vitta-border space-y-2">
+            <p className="text-xs text-vitta-text-secondary"><strong className="text-vitta-text-primary">CRM/Registro:</strong> {professionalProfile.registrationNumber}</p>
+            <p className="text-xs text-vitta-text-secondary"><strong className="text-vitta-text-primary">Especialidade:</strong> {professionalProfile.specialty}</p>
+            <p className="text-xs text-vitta-text-secondary"><strong className="text-vitta-text-primary">Status:</strong> <span className="px-2 py-0.5 bg-vitta-amber/10 text-vitta-amber rounded font-bold text-[10px]">Aguardando Aprovação</span></p>
+          </div>
+          <p className="text-xs text-vitta-text-muted">
+            Você receberá uma notificação assim que seu perfil for aprovado por um Usuário Admin e liberado para atendimento.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const today = new Date().toISOString().split("T")[0];
   const stats = {
     todayCount: appointments.filter(
@@ -7097,8 +7178,13 @@ const ProfessionalDashboardView = ({
           <ProfessionalManualBookingModal
             isOpen={isManualBookingModalOpen}
             professional={professionalProfile}
-            onClose={() => setIsManualBookingModalOpen(false)}
+            onClose={() => {
+              setIsManualBookingModalOpen(false);
+              setManualBookingInitialPatient(null);
+            }}
             user={user}
+            initialUserId={manualBookingInitialPatient?.userId}
+            initialPatientName={manualBookingInitialPatient?.patientName}
           />
         )}
       </AnimatePresence>
@@ -7115,32 +7201,42 @@ const ProfessionalDashboardView = ({
         <div className="flex flex-col md:flex-row md:items-center gap-3 w-full xl:w-auto flex-wrap">
           <div className="flex flex-wrap bg-vitta-surface-2 p-1 rounded-xl shadow-inner w-full md:w-auto gap-1">
             <button
+              id="prof-tab-agenda"
               onClick={() => setSubTab("agenda")}
-              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "agenda" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center flex items-center justify-center gap-1.5 hover:scale-[1.02] active:scale-[0.98] ${subTab === "agenda" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
-              📋 Agenda-Dia
+              <span>📋 Agenda-Dia</span>
+              {appointments.filter((a) => a.status === "pending").length > 0 && (
+                <span className="bg-vitta-amber text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-sm animate-pulse">
+                  {appointments.filter((a) => a.status === "pending").length}
+                </span>
+              )}
             </button>
             <button
+              id="prof-tab-historico"
               onClick={() => setSubTab("historico")}
-              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "historico" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "historico" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
               📜 Histórico
             </button>
             <button
+              id="prof-tab-profile"
               onClick={() => setSubTab("profile")}
-              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "profile" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "profile" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
               👤 Perfil
             </button>
             <button
+              id="prof-tab-finance"
               onClick={() => setSubTab("finance")}
-              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "finance" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "finance" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
               💰 Financeiro
             </button>
             <button
+              id="prof-tab-settings"
               onClick={() => setSubTab("settings")}
-              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all text-center ${subTab === "settings" ? "bg-vitta-surface shadow-sm text-vitta-accent" : "text-vitta-text-secondary hover:text-vitta-text-primary"}`}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "settings" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
               ⚙️ Grade
             </button>
@@ -8218,6 +8314,17 @@ const ProfessionalDashboardView = ({
                         </div>
 
                         {/* View Clinical Record (Prontuário) button */}
+                        {apt.status === "completed" && (
+                          <button
+                            onClick={() => handleOpenManualBookingForPatient(apt.userId, apt.patientName)}
+                            className="px-3.5 py-2 bg-vitta-green/10 text-vitta-green hover:bg-vitta-green hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-vitta-green/20"
+                            title="Agendar nova consulta / retorno para este paciente"
+                          >
+                            <CalendarPlus size={14} />
+                            Agendar agora
+                          </button>
+                        )}
+
                         <button
                           onClick={() => setSelectedApt(apt)}
                           className="px-3.5 py-2 bg-vitta-accent/10 text-vitta-accent hover:bg-vitta-accent hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
@@ -8512,11 +8619,24 @@ const ProfessionalDashboardView = ({
                                     </div>
                                   </div>
 
-                                  <div>
+                                  <div className="flex flex-wrap items-center gap-2">
                                     {apt.status === "completed" && (
-                                      <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green border border-vitta-green/20">
-                                        ✓ Concluída
-                                      </span>
+                                      <>
+                                        <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-green-bg text-vitta-green border border-vitta-green/20">
+                                          ✓ Concluída
+                                        </span>
+                                        <button
+                                          onClick={() => {
+                                            setSelectedPatient(null);
+                                            handleOpenManualBookingForPatient(apt.userId, apt.patientName);
+                                          }}
+                                          className="px-3 py-1 bg-vitta-accent text-white hover:opacity-95 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm shadow-vitta-accent/15"
+                                          title="Agendar retorno de consulta para este paciente"
+                                        >
+                                          <CalendarPlus size={12} />
+                                          Agendar agora
+                                        </button>
+                                      </>
                                     )}
                                     {apt.status === "upcoming" && (
                                       <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-vitta-accent-bg text-vitta-accent border border-vitta-accent/20">
@@ -11177,6 +11297,8 @@ const ProfessionalsManagementView = () => {
           localidade: newItem.localidade || "",
           uf: newItem.uf || "",
           createdAt: new Date().toISOString(),
+          isApproved: true,
+          status: "Ativo",
         });
 
         // Mirror/Sync feeRate to the Users table (both professional and conveniado roles matching this email)
@@ -11527,6 +11649,31 @@ const ProfessionalsManagementView = () => {
                           className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary"
                         />
                       </div>
+
+                      {editingItem && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                            Aprovação Admin (Status)
+                          </label>
+                          <select
+                            value={
+                              editingItem.isApproved !== false ? "Aprovado" : "Pendente"
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value === "Aprovado";
+                              setEditingItem({
+                                ...editingItem,
+                                isApproved: val,
+                                status: val ? "Ativo" : "Pendente",
+                              });
+                            }}
+                            className="w-full px-4 py-3 bg-vitta-surface-2 border-none rounded-xl text-sm focus:ring-2 focus:ring-vitta-green/20 transition-all text-vitta-text-primary h-[46px]"
+                          >
+                            <option value="Aprovado">Aprovado (Ativo)</option>
+                            <option value="Pendente">Aguardando Aprovação (Pendente)</option>
+                          </select>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1 flex justify-between">
@@ -12196,6 +12343,7 @@ const ProfessionalsView = ({
 
   const filteredProfessionals = useMemo(() => {
     return professionals.filter((prof) => {
+      if (prof.isApproved === false) return false;
       const matchesSearch =
         prof.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         prof.specialty.toLowerCase().includes(searchQuery.toLowerCase());
@@ -12206,7 +12354,11 @@ const ProfessionalsView = ({
   }, [professionals, searchQuery, selectedSpecialty]);
 
   const specialties = useMemo(() => {
-    const specs = new Set(professionals.map((p) => p.specialty));
+    const specs = new Set(
+      professionals
+        .filter((p) => p.isApproved !== false)
+        .map((p) => p.specialty)
+    );
     return ["Todos", ...Array.from(specs)];
   }, [professionals]);
 
@@ -12635,7 +12787,12 @@ const PartnersView = ({
   }, [sortedSavings]);
 
   const specialtiesList = useMemo(() => {
-    const specs = new Set(professionals.map((p) => p.specialty).filter(Boolean));
+    const specs = new Set(
+      professionals
+        .filter((p) => p.isApproved !== false)
+        .map((p) => p.specialty)
+        .filter(Boolean)
+    );
     return ["Todos", ...Array.from(specs)];
   }, [professionals]);
 
@@ -12666,6 +12823,7 @@ const PartnersView = ({
 
   const filteredProfessionals = useMemo(() => {
     return professionals.filter((prof) => {
+      if (prof.isApproved === false) return false;
       const matchesSearch =
         (prof.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (prof.specialty || "").toLowerCase().includes(searchQuery.toLowerCase());
@@ -19076,6 +19234,7 @@ const PartnershipsView = ({
   });
 
   const filteredProfessionals = professionals.filter((prof) => {
+    if (prof.isApproved === false) return false;
     const matchesSearch =
       prof.name.toLowerCase().includes(profSearchQuery.toLowerCase()) ||
       prof.specialty.toLowerCase().includes(profSearchQuery.toLowerCase());
@@ -21610,6 +21769,31 @@ const SupportView = ({
         ))}
       </div>
 
+      {/* Terms and Privacy Policy Card */}
+      <div className="bg-vitta-surface border border-vitta-border rounded-2xl shadow-sm p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4 text-left">
+          <div className="w-14 h-14 bg-vitta-accent/10 rounded-xl flex items-center justify-center text-vitta-accent shrink-0">
+            <ShieldCheck size={28} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-vitta-text-primary">
+              Termos de Uso e Políticas de Privacidade
+            </h3>
+            <p className="text-vitta-text-secondary text-sm leading-relaxed max-w-xl">
+              Entenda como garantimos a segurança de seus dados pessoais e de saúde sob conformidade com a LGPD e as diretrizes de conduta em nossa plataforma.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setActiveTab("terms")}
+          className="w-full md:w-auto px-6 py-3 bg-vitta-surface-2 hover:bg-vitta-surface text-vitta-text-primary border border-vitta-border hover:border-vitta-accent/50 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 group whitespace-nowrap shadow-sm hover:shadow-md"
+        >
+          <FileText size={16} className="text-vitta-accent" />
+          Acessar Documentos
+          <ChevronRight size={14} className="text-vitta-text-muted group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      </div>
+
       {/* FAQ Section */}
       <div className="space-y-8 pt-4">
         <h2 className="text-3xl font-bold text-vitta-text-primary px-4">
@@ -21649,6 +21833,166 @@ const SupportView = ({
         <p className="text-vitta-text-muted text-[10px]">
           © 2026 ViTTA. Todos os direitos reservados.
         </p>
+      </div>
+    </div>
+  );
+};
+
+const TermsAndPrivacyView = ({
+  setActiveTab,
+}: {
+  setActiveTab: (tab: string) => void;
+}) => {
+  return (
+    <div className="space-y-8 pb-10">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => setActiveTab("support")}
+          className="p-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface-2 transition-all"
+          title="Voltar para Suporte"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h1 className="text-3xl font-bold text-vitta-text-primary tracking-tight">
+            Documentos Legais
+          </h1>
+          <p className="text-sm text-vitta-text-secondary">
+            Termos de Uso e Política de Privacidade da plataforma ViTTA
+          </p>
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Card 1: Termos de Uso */}
+        <div className="bg-vitta-surface border border-vitta-border rounded-2xl p-8 shadow-sm space-y-6">
+          <div className="flex items-center gap-3 border-b border-vitta-border pb-4">
+            <div className="w-10 h-10 bg-vitta-accent/10 rounded-lg flex items-center justify-center text-vitta-accent">
+              <FileText size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-vitta-text-primary">
+                Termos de Uso
+              </h2>
+              <p className="text-xs text-vitta-text-secondary">
+                Última atualização: 2026-07-04
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-5 text-sm text-vitta-text-secondary leading-relaxed overflow-y-auto max-h-[60vh] pr-2">
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                1. Aceitação dos Termos
+              </h3>
+              <p>
+                Ao acessar e utilizar a plataforma ViTTA, você concorda em cumprir e estar legalmente vinculado a estes Termos de Uso. Estes termos aplicam-se a todos os usuários da plataforma, incluindo pacientes, conveniados, profissionais de saúde e profissionais liberais.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                2. Cadastro de Contas e Segurança
+              </h3>
+              <p>
+                Para usufruir dos recursos da plataforma, o usuário deve criar uma conta fornecendo dados corretos, completos e atualizados. A segurança das credenciais e senhas de acesso é de inteira responsabilidade do usuário. Atividades realizadas em sua conta serão de sua responsabilidade exclusiva.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                3. Descrição dos Serviços
+              </h3>
+              <p>
+                O ViTTA é uma solução digital que permite a facilitação de agendamentos, telemedicina de alta resolução, gestão de carteira e descontos exclusivos em serviços de saúde. Os serviços estão sujeitos à disponibilidade técnica dos prestadores credenciados.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                4. Diretrizes de Uso e Conduta
+              </h3>
+              <p>
+                Os usuários concordam em não violar sistemas de segurança, tentar fraudar cupons, desrespeitar profissionais na sala de telemedicina ou utilizar robôs de extração de dados. Qualquer uso indevido resultará na suspensão imediata da conta do infrator.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                5. Alterações nos Termos
+              </h3>
+              <p>
+                O ViTTA reserva-se o direito de alterar estes Termos de Uso a qualquer momento, visando refletir melhorias no sistema ou adequações legais. Notificações sobre alterações relevantes serão encaminhadas para o e-mail cadastrado ou exibidas na tela de login.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Política de Privacidade */}
+        <div className="bg-vitta-surface border border-vitta-border rounded-2xl p-8 shadow-sm space-y-6">
+          <div className="flex items-center gap-3 border-b border-vitta-border pb-4">
+            <div className="w-10 h-10 bg-vitta-green/10 rounded-lg flex items-center justify-center text-vitta-green">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-vitta-text-primary">
+                Política de Privacidade
+              </h2>
+              <p className="text-xs text-vitta-text-secondary">
+                Última atualização: 2026-07-04
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-5 text-sm text-vitta-text-secondary leading-relaxed overflow-y-auto max-h-[60vh] pr-2">
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                1. Informações que Coletamos
+              </h3>
+              <p>
+                Coletamos dados cadastrais (como nome, CPF, e-mail, telefone), registros de saúde gerados em consultas por profissionais (como prontuários, receitas, exames) e logs de navegação técnica para otimização de segurança e performance.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                2. Base Legal e Finalidade do Tratamento
+              </h3>
+              <p>
+                Todo o tratamento de dados pessoais no ViTTA é realizado com base na Lei Geral de Proteção de Dados (LGPD), estritamente para a prestação dos serviços de saúde agendados, autenticação segura, e faturamento de procedimentos e descontos corporativos.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                3. Security e Criptografia
+              </h3>
+              <p>
+                Dados de saúde são confidenciais e sensíveis. Armazenamos e trafegamos estas informações sob protocolos avançados de criptografia ponta a ponta e camadas robustas de autenticação, impedindo o acesso não autorizado por terceiros.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                4. Compartilhamento de Dados
+              </h3>
+              <p>
+                Suas informações cadastrais e dados de saúde somente serão transmitidos para médicos, profissionais de saúde ou clínicas expressamente selecionados e agendados por você. Seus dados nunca serão compartilhados para fins comerciais ou vendidos.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-vitta-text-primary text-base mb-1">
+                5. Seus Direitos
+              </h3>
+              <p>
+                Como titular de dados pessoais, a LGPD garante a você o direito de confirmar a existência de tratamento, acessar seus dados, retificar dados incompletos ou inexatos, e requerer a eliminação completa (salvo prazos legais de manutenção de prontuário).
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -26722,6 +27066,9 @@ const LoginView = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devNote, setDevNote] = useState<string | null>(null);
+  const [role, setRole] = useState<"user" | "conveniado" | "professional" | "liberal" | "">("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState<"terms" | "privacy" | null>(null);
   const inputRefs = [
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
@@ -26835,6 +27182,17 @@ const LoginView = ({
         await signInWithEmailAndPassword(auth, email, password);
         addToast("Bem-vindo de volta!", "success");
       } else {
+        if (!role) {
+          setError("Por favor, escolha o seu tipo de perfil.");
+          setIsLoading(false);
+          return;
+        }
+        if (!acceptTerms) {
+          setError("Você deve aceitar os Termos de Uso e Política de Privacidade para continuar.");
+          setIsLoading(false);
+          return;
+        }
+
         const result = await createUserWithEmailAndPassword(
           auth,
           email,
@@ -26850,7 +27208,7 @@ const LoginView = ({
           uid: user.uid,
           name: name || "Usuário",
           email: user.email,
-          role: "user",
+          role: role,
           status: "Ativo",
           plan: "Free",
           createdAt: Timestamp.now(),
@@ -27039,6 +27397,41 @@ const LoginView = ({
                 </div>
               )}
 
+              {view === "signup" && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Tipo de Perfil <span className="text-vitta-danger">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {[
+                      { id: "user", label: "Cliente/Paciente", icon: "👤", desc: "Acesso a consultas" },
+                      { id: "conveniado", label: "Conveniado (Empresas)", icon: "🏢", desc: "Benefício corporativo" },
+                      { id: "professional", label: "Profissional de Saúde", icon: "🩺", desc: "Médicos, enfermeiros" },
+                      { id: "liberal", label: "Profissional Liberal", icon: "💼", desc: "Dentistas, terapeutas" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setRole(opt.id as any)}
+                        className={`p-3 text-left rounded-xl border transition-all duration-200 flex flex-col gap-1 ${
+                          role === opt.id
+                            ? "border-vitta-accent bg-vitta-accent/5 ring-1 ring-vitta-accent text-vitta-text-primary"
+                            : "border-vitta-border bg-vitta-surface-2 hover:border-vitta-accent/30 text-vitta-text-secondary"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <span>{opt.icon}</span>
+                          <span className="truncate">{opt.label}</span>
+                        </div>
+                        <span className="text-[10px] text-vitta-text-muted leading-tight">
+                          {opt.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
                   E-mail
@@ -27078,6 +27471,41 @@ const LoginView = ({
                   />
                 </div>
               </div>
+
+              {view === "signup" && (
+                <div className="flex items-start gap-2.5 px-1 py-1">
+                  <input
+                    id="accept-terms-checkbox"
+                    type="checkbox"
+                    required
+                    checked={acceptTerms}
+                    onChange={(e) => setAcceptTerms(e.target.checked)}
+                    className="w-4 h-4 rounded border-vitta-border text-vitta-accent focus:ring-vitta-accent/20 mt-0.5 cursor-pointer"
+                  />
+                  <label
+                    htmlFor="accept-terms-checkbox"
+                    className="text-xs text-vitta-text-secondary leading-normal select-none cursor-pointer text-left"
+                  >
+                    Li e concordo com os{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsModal("terms")}
+                      className="text-vitta-accent font-bold hover:underline"
+                    >
+                      Termos de Uso
+                    </button>{" "}
+                    e{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowTermsModal("privacy")}
+                      className="text-vitta-accent font-bold hover:underline"
+                    >
+                      Política de Privacidade
+                    </button>
+                    .
+                  </label>
+                </div>
+              )}
 
               {view === "login" && (
                 <div className="flex items-center justify-between px-1">
@@ -27183,6 +27611,77 @@ const LoginView = ({
           )}
         </div>
       </div>
+
+      {showTermsModal && (
+        <div className="fixed inset-0 z-[110] bg-vitta-text-primary/40 backdrop-blur-md flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-vitta-surface w-full max-w-xl max-h-[80vh] rounded-3xl shadow-2xl border border-vitta-border overflow-hidden flex flex-col"
+          >
+            <div className="p-6 border-b border-vitta-border flex items-center justify-between bg-vitta-surface-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="text-vitta-accent" size={24} />
+                <h3 className="text-lg font-bold text-vitta-text-primary">
+                  {showTermsModal === "terms" ? "Termos de Uso" : "Política de Privacidade"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(null)}
+                className="p-1.5 hover:bg-vitta-border/30 rounded-full transition-colors text-vitta-text-secondary"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 text-sm text-vitta-text-secondary leading-relaxed max-h-[50vh] text-left">
+              {showTermsModal === "terms" ? (
+                <>
+                  <p className="font-bold text-vitta-text-primary">1. Aceitação dos Termos</p>
+                  <p>Ao utilizar a plataforma ViTTA, você concorda plenamente com as regras, termos e condições estabelecidos neste documento. Caso não concorde com qualquer termo, solicitamos que não continue o cadastro ou utilização de nossos serviços.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">2. Perfis de Usuário e Cadastro</p>
+                  <p>O ViTTA possui múltiplos tipos de perfis de usuário, incluindo Clientes/Pacientes, Conveniados de Empresas parceiras, Profissionais de Saúde credenciados e Profissionais Liberais. Você declara ser o titular legítimo das informações inseridas em seu cadastro e se compromete a mantê-las atualizadas.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">3. Agendamentos e Serviços Médicos</p>
+                  <p>A plataforma funciona como facilitadora de agendamentos e prestadora de telemedicina. O cancelamento de consultas deve seguir as políticas da clínica com antecedência de até 24 horas. O ViTTA não atua em casos de extrema urgência e emergência médica direta fora de seu escopo.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">4. Propriedade Intelectual e Segurança</p>
+                  <p>Todos os direitos sobre o design, marcas, dados, e códigos do ViTTA são reservados. O usuário é o único responsável pela guarda e confidencialidade de sua senha de acesso.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-bold text-vitta-text-primary">1. Coleta e Uso de Dados</p>
+                  <p>Coletamos informações pessoais essenciais para o seu atendimento e identificação, tais como nome completo, e-mail, telefone, além de dados de prontuário eletrônico confidencial gerados em consultas na plataforma.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">2. Conformidade com a LGPD</p>
+                  <p>Tratamos todos os seus dados pessoais em estrita conformidade com a Lei Geral de Proteção de Dados Pessoais (LGPD). Seus dados médicos e receitas são armazenados de forma criptografada sob total confidencialidade.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">3. Compartilhamento de Dados</p>
+                  <p>Dados confidential de saúde (prontuário, prescrições, exames) só são compartilhados com os profissionais de saúde diretamente envolvidos em seu cuidado e agendamento. Seus dados nunca serão compartilhados para fins comerciais ou vendidos a terceiros.</p>
+                  
+                  <p className="font-bold text-vitta-text-primary">4. Direitos de Acesso e Exclusão</p>
+                  <p>Você possui o direito de requisitar uma cópia de seus dados coletados, bem como solicitar a exclusão de sua conta e informações vinculadas, respeitando as exigências legais de guarda de prontuários médicos.</p>
+                </>
+              )}
+            </div>
+            <div className="p-6 border-t border-vitta-border bg-vitta-surface-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setAcceptTerms(true);
+                  setShowTermsModal(null);
+                }}
+                className="px-5 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5 shadow-md shadow-vitta-accent/15"
+              >
+                <Check size={14} />
+                Entendi e Aceito
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
@@ -27910,6 +28409,8 @@ export default function App() {
         );
       case "support":
         return <SupportView setActiveTab={setActiveTab} />;
+      case "terms":
+        return <TermsAndPrivacyView setActiveTab={setActiveTab} />;
       case "exams":
         return <ExamsView user={user} />;
       case "offers":
