@@ -95,12 +95,18 @@ service cloud.firestore {
 
     match /professionals/{professionalId} {
       allow read: if true; // Public list
-      allow create: if isAdmin();
+      allow create: if isAuthenticated() && (
+        isAdmin() || (
+          request.resource.data.userId == request.auth.uid && 
+          request.resource.data.isApproved == false
+        )
+      );
       allow delete: if isAdmin();
       allow update: if isAdmin() || (
         isAuthenticated() && (
-          request.auth.token.email == resource.data.email ||
-          (resource.data.userId == request.auth.uid)
+          (resource.data.userId == request.auth.uid || request.auth.token.email == resource.data.email) &&
+          (!('isApproved' in request.resource.data) || !('isApproved' in resource.data) || request.resource.data.isApproved == resource.data.isApproved) &&
+          (!('status' in request.resource.data) || !('status' in resource.data) || request.resource.data.status == resource.data.status)
         )
       );
     }

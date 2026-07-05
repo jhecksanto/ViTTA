@@ -766,7 +766,7 @@ const BookingModal = ({
     return 0;
   };
 
-  const rawPriceNumeric = parseFloat((professional?.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+  const rawPriceNumeric = parseFloat(String(professional?.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
   const discountPct = parseDiscountPercentage(professional?.vittaHealthDiscount);
   const discountAmount = (rawPriceNumeric * discountPct) / 100;
   const finalConvenioPrice = rawPriceNumeric - discountAmount;
@@ -9750,8 +9750,8 @@ const AdminView = ({ user, userData }: { user: any; userData?: any }) => {
                     </button>
                   </div>
                   <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
-                    {professionals.length > 0 ? (
-                      professionals.map((prof, idx) => (
+                    {professionals.filter((p) => p.isApproved !== false).length > 0 ? (
+                      professionals.filter((p) => p.isApproved !== false).map((prof, idx) => (
                         <div
                           key={prof.id}
                           className={`p-4 flex items-center gap-3 ${idx !== professionals.length - 1 ? "border-b border-vitta-border" : ""}`}
@@ -10791,7 +10791,7 @@ const AvailabilityPlannerModal = ({ isOpen, onClose, professional }: any) => {
 
 const ProfessionalsManagementView = () => {
   const { addToast } = useToast();
-  const [activeSubTab, setActiveSubTab] = useState<"list" | "categories">(
+  const [activeSubTab, setActiveSubTab] = useState<"list" | "categories" | "pending">(
     "list",
   );
   const [professionals, setProfessionals] = useState<any[]>([]);
@@ -11201,6 +11201,23 @@ const ProfessionalsManagementView = () => {
         }
       },
     });
+  };
+
+  const handleApproveProfessional = async (id: string, name: string) => {
+    try {
+      await updateDoc(doc(db, "professionals", id), {
+        isApproved: true,
+        status: "Ativo",
+      });
+      await logAdminAction(
+        "APPROVE_PROFESSIONAL",
+        `Aprovou o profissional: ${name} (ID: ${id})`,
+      );
+      addToast(`Profissional ${name} aprovado com sucesso.`, "success");
+    } catch (err) {
+      console.error("Erro ao aprovar profissional:", err);
+      addToast("Erro ao aprovar profissional.", "error");
+    }
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -12083,12 +12100,12 @@ const ProfessionalsManagementView = () => {
         </div>
         <button
           onClick={() =>
-            setIsCreating(activeSubTab === "list" ? "professional" : "category")
+            setIsCreating(activeSubTab === "categories" ? "category" : "professional")
           }
           className="flex items-center gap-2 px-6 py-3 bg-vitta-green text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20"
         >
           <Plus size={20} />
-          {activeSubTab === "list" ? "Novo Profissional" : "Nova Categoria"}
+          {activeSubTab === "categories" ? "Nova Categoria" : "Novo Profissional"}
         </button>
       </div>
 
@@ -12102,7 +12119,18 @@ const ProfessionalsManagementView = () => {
           }`}
         >
           <Users size={18} />
-          Profissionais ({professionals.length})
+          Profissionais ({professionals.filter((p) => p.isApproved !== false).length})
+        </button>
+        <button
+          onClick={() => setActiveSubTab("pending")}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold ${
+            activeSubTab === "pending"
+              ? "border-vitta-green text-vitta-green"
+              : "border-transparent text-vitta-text-secondary hover:text-vitta-text-primary"
+          }`}
+        >
+          <Clock size={18} />
+          Aprovações Pendentes ({professionals.filter((p) => p.isApproved === false).length})
         </button>
         <button
           onClick={() => setActiveSubTab("categories")}
@@ -12117,9 +12145,9 @@ const ProfessionalsManagementView = () => {
         </button>
       </div>
 
-      {activeSubTab === "list" ? (
+      {activeSubTab === "list" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {professionals.map((prof) => (
+          {professionals.filter((p) => p.isApproved !== false).map((prof) => (
             <motion.div
               key={prof.id}
               whileHover={{ y: -4 }}
@@ -12255,7 +12283,149 @@ const ProfessionalsManagementView = () => {
             </motion.div>
           ))}
         </div>
-      ) : (
+      )}
+
+      {activeSubTab === "pending" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {professionals.filter((p) => p.isApproved === false).map((prof) => (
+            <motion.div
+              key={prof.id}
+              whileHover={{ y: -4 }}
+              className="bg-vitta-surface p-6 rounded-2xl border border-vitta-border shadow-sm space-y-4 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0">
+                <span className="px-3 py-1 bg-vitta-amber/15 text-vitta-amber text-[10px] font-bold uppercase rounded-bl-xl tracking-wider">
+                  Pendente
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={prof.imageUrl || "https://picsum.photos/seed/doc/150/150"}
+                    alt={prof.name}
+                    className="w-14 h-14 rounded-xl object-cover"
+                  />
+                  <div>
+                    <h3 className="font-bold text-vitta-text-primary pr-12">
+                      {prof.name}
+                    </h3>
+                    <p className="text-xs text-vitta-text-secondary">
+                      {prof.specialty}
+                    </p>
+                    {prof.registrationNumber && (
+                      <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest mt-1">
+                        {prof.registrationNumber}
+                      </p>
+                    )}
+                    {prof.price && (
+                      <p className="text-xs font-bold text-vitta-text-primary mt-1">
+                        Valor:{" "}
+                        <span className="text-vitta-green font-extrabold">
+                          {prof.price}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => handleApproveProfessional(prof.id, prof.name)}
+                    title="Aprovar Profissional"
+                    className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-xl transition-all"
+                  >
+                    <CheckCircle2 size={18} />
+                  </button>
+                  <button
+                    onClick={() =>
+                      setEditingItem({
+                        type: "professional",
+                        id: prof.id,
+                        name: prof.name,
+                        specialty: prof.specialty,
+                        vittaHealthDiscount: prof.vittaHealthDiscount || "",
+                        registrationNumber: prof.registrationNumber || "",
+                        price: prof.price || "",
+                        city: prof.city || "",
+                        availableDays: prof.availableDays || "",
+                        imageUrl: prof.imageUrl || "",
+                        whatsapp: prof.whatsapp || "",
+                        email: prof.email || "",
+                        cep: prof.cep || "",
+                        logradouro: prof.logradouro || "",
+                        numero: prof.numero || "",
+                        complemento: prof.complemento || "",
+                        bairro: prof.bairro || "",
+                        localidade: prof.localidade || "",
+                        uf: prof.uf || "",
+                        schedule: prof.schedule || { weekly: {}, blockedDates: [] },
+                        feeRate: prof.feeRate !== undefined ? prof.feeRate : 0,
+                      })
+                    }
+                    className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProfessional(prof.id)}
+                    className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-vitta-border pt-3 space-y-2 text-xs">
+                {prof.email && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <Mail size={14} className="text-vitta-text-muted shrink-0" />
+                    <span className="truncate max-w-[200px]" title={prof.email}>{prof.email}</span>
+                  </div>
+                )}
+                {prof.city && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <MapPin
+                      size={14}
+                      className="text-vitta-text-muted shrink-0"
+                    />
+                    <span>{prof.city}</span>
+                  </div>
+                )}
+                {prof.whatsapp && (
+                  <div className="flex items-center gap-2 text-vitta-text-secondary">
+                    <Phone size={14} className="text-vitta-green shrink-0" />
+                    <span>
+                      WhatsApp:{" "}
+                      <strong className="font-medium text-vitta-text-primary">
+                        {prof.whatsapp}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="pt-4 border-t border-vitta-border flex justify-between items-center gap-3">
+                <button
+                  onClick={() => handleApproveProfessional(prof.id, prof.name)}
+                  className="w-full py-2.5 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-vitta-green/10"
+                >
+                  <Check size={14} />
+                  Aprovar Cadastro
+                </button>
+              </div>
+            </motion.div>
+          ))}
+          {professionals.filter((p) => p.isApproved === false).length === 0 && (
+            <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
+              <ShieldCheck size={48} className="text-vitta-text-muted mb-3" />
+              <p className="text-vitta-text-primary font-bold">Nenhuma aprovação pendente</p>
+              <p className="text-xs text-vitta-text-secondary max-w-xs mt-1">Todos os perfis profissionais cadastrados estão atualmente aprovados e ativos.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSubTab === "categories" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {categories.map((category) => (
             <motion.div
@@ -13432,7 +13602,7 @@ const PartnersView = ({
           ) : filteredProfessionals.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProfessionals.map((prof) => {
-                const priceMatch = (prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+                const priceMatch = String(prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
                 const rawPrice = parseFloat(priceMatch) || 150;
                 
                 const discountMatch = (prof.vittaHealthDiscount || "20%").match(/(\d+)/);
@@ -13528,10 +13698,10 @@ const PartnersView = ({
                 <Skeleton key={index} className="h-64" />
               ))}
             </div>
-          ) : professionals.length > 0 ? (
+          ) : professionals.filter((p) => p.isApproved !== false).length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {professionals.map((prof) => {
-                const priceMatch = (prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+              {professionals.filter((p) => p.isApproved !== false).map((prof) => {
+                const priceMatch = String(prof.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
                 const rawPrice = parseFloat(priceMatch) || 150;
                 
                 const discountMatch = (prof.vittaHealthDiscount || "20%").match(/(\d+)/);
@@ -14219,7 +14389,7 @@ const PartnersView = ({
 
       {/* --- MODAL DETALHES DO PROFISSIONAL --- */}
       {selectedProfessional && (() => {
-        const priceMatch = (selectedProfessional.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
+        const priceMatch = String(selectedProfessional.price || "R$ 150,00").replace(/[^\d,.-]/g, "").replace(",", ".");
         const rawPriceValue = parseFloat(priceMatch) || 150;
         
         const discMatch = (selectedProfessional.vittaHealthDiscount || "20%").match(/(\d+)/);
@@ -14330,7 +14500,7 @@ const PartnersView = ({
 
       {/* --- MODAL DETALHES DO PROFISSIONAL LIBERAL --- */}
       {selectedUserLiberalProf && (() => {
-        const priceMatch = (selectedUserLiberalProf.price || "").replace(/[^\d,.-]/g, "").replace(",", ".");
+        const priceMatch = String(selectedUserLiberalProf.price || "").replace(/[^\d,.-]/g, "").replace(",", ".");
         const rawPriceValue = parseFloat(priceMatch);
         const hasValidPrice = !isNaN(rawPriceValue) && rawPriceValue > 0;
         
@@ -18061,7 +18231,7 @@ const OffersManagementView = ({
     const queryText = partnerSearch.toLowerCase().trim();
     
     const filteredProfs = professionals.filter(p => 
-      p.name && p.name.toLowerCase().includes(queryText)
+      p.isApproved !== false && p.name && p.name.toLowerCase().includes(queryText)
     );
     
     const filteredEstabs = partners.filter(p => 
@@ -28077,6 +28247,12 @@ export default function App() {
     let unsubscribeUserData: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Unsubscribe from any previous user snapshot listener to avoid memory leaks or unauthorized background reads on logout/user change
+      if (unsubscribeUserData) {
+        unsubscribeUserData();
+        unsubscribeUserData = null;
+      }
+
       setUser(firebaseUser);
 
       if (firebaseUser) {
