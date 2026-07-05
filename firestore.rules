@@ -49,8 +49,11 @@ service cloud.firestore {
       allow get: if isOwner(userId) || (isAuthenticated() && (
         isTokenAdmin() ||
         (request.auth.uid != userId && 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "professional" ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "liberal"
+         ))
       ));
       allow create: if isAuthenticated(); // Allow creation during signup
       allow update: if isOwner(userId) || (isAuthenticated() && (
@@ -59,7 +62,13 @@ service cloud.firestore {
          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
       ));
-      allow list: if isTokenAdmin(); // Only token admins can list all users to avoid O(n) cost explosion
+      allow list: if isTokenAdmin() || (isAuthenticated() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "professional" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "liberal" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        )
+      ));
     }
 
     match /appointments/{appointmentId} {

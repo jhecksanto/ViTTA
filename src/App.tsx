@@ -6215,7 +6215,7 @@ const ProfessionalDashboardView = ({
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [subTab, setSubTab] = useState<"agenda" | "historico" | "profile" | "finance" | "settings">(
+  const [subTab, setSubTab] = useState<"agenda" | "historico" | "profile" | "finance" | "settings" | "users">(
     "agenda",
   );
   const [historySearchPatient, setHistorySearchPatient] = useState("");
@@ -7245,6 +7245,13 @@ const ProfessionalDashboardView = ({
               className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "settings" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
             >
               ⚙️ Grade
+            </button>
+            <button
+              id="prof-tab-users"
+              onClick={() => setSubTab("users")}
+              className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all duration-200 text-center hover:scale-[1.02] active:scale-[0.98] ${subTab === "users" ? "bg-vitta-surface shadow-sm text-vitta-accent border border-vitta-border/30" : "text-vitta-text-secondary hover:text-vitta-text-primary hover:bg-vitta-surface/50"}`}
+            >
+              👥 Usuários
             </button>
           </div>
           {subTab === "agenda" && (
@@ -8366,6 +8373,8 @@ const ProfessionalDashboardView = ({
       {subTab === "settings" && <ProfessionalAgendaSettingsView professional={professionalProfile} />}
 
       {subTab === "finance" && <ProfessionalFinanceView user={user} />}
+
+      {subTab === "users" && <UsersView isAdmin={false} />}
 
       {/* Patient Details Modal */}
       <AnimatePresence>
@@ -9875,7 +9884,7 @@ const AdminView = ({ user, userData }: { user: any; userData?: any }) => {
             </div>
           )}
           {subTab === "analytics" && <AdminAnalytics />}
-          {subTab === "users" && <UsersView />}
+          {subTab === "users" && <UsersView isAdmin={true} />}
           {subTab === "medical-panel" && (
             <div className="space-y-6">
               <div className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -22417,7 +22426,7 @@ const KYCDocumentViewer = ({
   );
 };
 
-const UsersView = () => {
+const UsersView = ({ isAdmin = false }: { isAdmin?: boolean }) => {
   const { addToast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -23176,13 +23185,15 @@ const UsersView = () => {
             <option value="Ativo">Ativos</option>
             <option value="Inativo">Inativos</option>
           </select>
-          <button
-            onClick={() => setIsCreatingUser(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
-          >
-            <Plus size={20} />
-            Novo
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setIsCreatingUser(true)}
+              className="flex items-center gap-2 px-6 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20"
+            >
+              <Plus size={20} />
+              Novo
+            </button>
+          )}
         </div>
       </div>
 
@@ -23205,9 +23216,11 @@ const UsersView = () => {
               <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest">
                 Plano
               </th>
-              <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
-                Ações
-              </th>
+              {isAdmin && (
+                <th className="px-6 py-4 text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest text-right">
+                  Ações
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-vitta-border">
@@ -23278,102 +23291,104 @@ const UsersView = () => {
                   <td className="px-6 py-4 text-sm text-vitta-text-secondary font-medium">
                     {user.plan}
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      {(user.kycStatus === "pending" ||
-                        user.kycStatus === "under_review" ||
-                        user.documentFrontUrl) && (
-                        <button
-                          onClick={() => setAuditingUser(user)}
-                          title="Auditar documentos"
-                          className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-colors"
-                        >
-                          <ShieldCheck size={18} />
-                        </button>
-                      )}
+                  {isAdmin && (
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        {(user.kycStatus === "pending" ||
+                          user.kycStatus === "under_review" ||
+                          user.documentFrontUrl) && (
+                          <button
+                            onClick={() => setAuditingUser(user)}
+                            title="Auditar documentos"
+                            className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-colors"
+                          >
+                            <ShieldCheck size={18} />
+                          </button>
+                        )}
 
-                      {/* Alterar Status (Desativar / Ativar) Shortcut */}
-                      {user.status === "Ativo" ? (
-                        <button
-                          onClick={async () => {
-                            try {
-                              await updateDoc(doc(db, "users", user.id), {
-                                status: "Inativo",
-                              });
-                              await logAdminAction(
-                                "DEACTIVATE_USER",
-                                `Desativou o usuário: ${user.email || user.id}`,
-                              );
-                              addToast(
-                                "Usuário desativado com sucesso.",
-                                "success",
-                              );
-                            } catch (err) {
-                              handleFirestoreError(
-                                err,
-                                OperationType.UPDATE,
-                                `users/${user.id}`,
-                              );
-                              addToast("Erro ao desativar usuário.", "error");
-                            }
-                          }}
-                          title="Desativar Usuário"
-                          className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl"
-                        >
-                          <UserX size={16} />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={async () => {
-                            try {
-                              await updateDoc(doc(db, "users", user.id), {
-                                status: "Ativo",
-                              });
-                              await logAdminAction(
-                                "ACTIVATE_USER",
-                                `Ativou o usuário: ${user.email || user.id}`,
-                              );
-                              addToast(
-                                "Usuário ativado com sucesso.",
-                                "success",
-                              );
-                            } catch (err) {
-                              handleFirestoreError(
-                                err,
-                                OperationType.UPDATE,
-                                `users/${user.id}`,
-                              );
-                              addToast("Erro ao ativar usuário.", "error");
-                            }
-                          }}
-                          title="Ativar Usuário"
-                          className="p-2 text-vitta-text-muted hover:text-vitta-green transition-colors hover:bg-green-50 dark:hover:bg-green-950/20 rounded-xl"
-                        >
-                          <UserCheck size={16} />
-                        </button>
-                      )}
+                        {/* Alterar Status (Desativar / Ativar) Shortcut */}
+                        {user.status === "Ativo" ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, "users", user.id), {
+                                  status: "Inativo",
+                                });
+                                await logAdminAction(
+                                  "DEACTIVATE_USER",
+                                  `Desativou o usuário: ${user.email || user.id}`,
+                                );
+                                addToast(
+                                  "Usuário desativado com sucesso.",
+                                  "success",
+                                );
+                              } catch (err) {
+                                handleFirestoreError(
+                                  err,
+                                  OperationType.UPDATE,
+                                  `users/${user.id}`,
+                                );
+                                addToast("Erro ao desativar usuário.", "error");
+                              }
+                            }}
+                            title="Desativar Usuário"
+                            className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl"
+                          >
+                            <UserX size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, "users", user.id), {
+                                  status: "Ativo",
+                                });
+                                await logAdminAction(
+                                  "ACTIVATE_USER",
+                                  `Ativou o usuário: ${user.email || user.id}`,
+                                );
+                                addToast(
+                                  "Usuário ativado com sucesso.",
+                                  "success",
+                                );
+                              } catch (err) {
+                                handleFirestoreError(
+                                  err,
+                                  OperationType.UPDATE,
+                                  `users/${user.id}`,
+                                );
+                                addToast("Erro ao ativar usuário.", "error");
+                              }
+                            }}
+                            title="Ativar Usuário"
+                            className="p-2 text-vitta-text-muted hover:text-vitta-green transition-colors hover:bg-green-50 dark:hover:bg-green-950/20 rounded-xl"
+                          >
+                            <UserCheck size={16} />
+                          </button>
+                        )}
 
-                      <button
-                        onClick={() => setEditingUser(user)}
-                        className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
-                      >
-                        <Edit size={16} />
-                      </button>
+                        <button
+                          onClick={() => setEditingUser(user)}
+                          className="p-2 text-vitta-text-muted hover:text-vitta-accent transition-colors"
+                        >
+                          <Edit size={16} />
+                        </button>
 
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+                        <button
+                          onClick={() => handleDelete(user.id)}
+                          className="p-2 text-vitta-text-muted hover:text-vitta-danger transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             ) : (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={isAdmin ? 6 : 5}
                   className="px-6 py-10 text-center text-vitta-text-muted"
                 >
                   Nenhum usuário encontrado com os filtros aplicados.
