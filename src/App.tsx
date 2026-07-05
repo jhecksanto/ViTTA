@@ -15937,36 +15937,39 @@ const SettingsView = ({
           const name = planName || "Membro Free";
           if (name.toLowerCase().includes("premium")) {
             return {
-              bg: "bg-gradient-to-br from-indigo-50/80 to-violet-50/30 dark:from-indigo-950/20 dark:to-violet-950/10",
-              border: "border-indigo-100 dark:border-indigo-500/20",
-              text: "text-indigo-950 dark:text-indigo-100",
+              bg: "bg-gradient-to-br from-vitta-purple-bg/80 to-vitta-purple-bg/30 dark:from-vitta-purple/10 dark:to-vitta-purple/5",
+              border: "border-vitta-purple/20 dark:border-vitta-purple/30",
+              text: "text-vitta-text-primary",
               icon: Crown,
-              iconColor: "text-indigo-600 dark:text-indigo-400",
-              badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400",
+              iconColor: "text-vitta-purple",
+              badge: "bg-vitta-purple/15 text-vitta-purple dark:bg-vitta-purple/20 dark:text-vitta-purple",
               desc: "Você possui acesso completo à rede de especialistas ViTTA Health, prioridade em agendamentos de exames e benefícios exclusivos de parceiros.",
-              highlight: "Plano Premium Ativo"
+              highlight: "Plano Premium Ativo",
+              circle: "bg-vitta-purple/5"
             };
           } else if (name.toLowerCase().includes("básico") || name.toLowerCase().includes("basico")) {
             return {
-              bg: "bg-gradient-to-br from-emerald-50/80 to-teal-50/30 dark:from-emerald-950/20 dark:to-teal-950/10",
-              border: "border-emerald-100 dark:border-emerald-500/20",
-              text: "text-emerald-950 dark:text-emerald-100",
+              bg: "bg-gradient-to-br from-vitta-green-bg/80 to-vitta-green-bg/30 dark:from-vitta-green/10 dark:to-vitta-green/5",
+              border: "border-vitta-green/20 dark:border-vitta-green/30",
+              text: "text-vitta-text-primary",
               icon: Sparkles,
-              iconColor: "text-emerald-600 dark:text-emerald-400",
-              badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+              iconColor: "text-vitta-green",
+              badge: "bg-vitta-green/15 text-vitta-green dark:bg-vitta-green/20 dark:text-vitta-green",
               desc: "Você possui acesso ao agendamento de consultas com profissionais de saúde parceiros e rede padrão de convênios ViTTA.",
-              highlight: "Plano Básico Ativo"
+              highlight: "Plano Básico Ativo",
+              circle: "bg-vitta-green/5"
             };
           } else {
             return {
-              bg: "bg-gradient-to-br from-slate-50/90 to-slate-100/50 dark:from-slate-900/60 dark:to-slate-800/30",
-              border: "border-slate-200 dark:border-slate-800",
-              text: "text-slate-800 dark:text-slate-200",
+              bg: "bg-gradient-to-br from-vitta-surface-2/80 to-vitta-surface-2/30 dark:from-vitta-surface-2/40 dark:to-vitta-surface-2/10",
+              border: "border-vitta-border",
+              text: "text-vitta-text-primary",
               icon: Package,
-              iconColor: "text-slate-500",
-              badge: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+              iconColor: "text-vitta-text-secondary",
+              badge: "bg-vitta-surface-2 text-vitta-text-secondary border border-vitta-border/60",
               desc: "Você está no plano de acesso público gratuito. Faça a adesão de um plano com nossos administradores para ter telemedicina e descontos ilimitados.",
-              highlight: "Acesso Público Gratuito"
+              highlight: "Acesso Público Gratuito",
+              circle: "bg-vitta-accent/5"
             };
           }
         };
@@ -15976,16 +15979,16 @@ const SettingsView = ({
 
         return (
           <div className={`p-6 rounded-[2rem] border ${planVisuals.border} ${planVisuals.bg} shadow-sm transition-all relative overflow-hidden`}>
-            <div className="absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 bg-indigo-500/5 dark:bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
+            <div className={`absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 ${planVisuals.circle} rounded-full blur-2xl pointer-events-none`} />
             
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
               <div className="flex items-center gap-4">
-                <div className="p-3.5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700/50">
+                <div className="p-3.5 bg-vitta-surface rounded-2xl shadow-sm border border-vitta-border/50">
                   <PlanIcon className={`${planVisuals.iconColor}`} size={28} />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold tracking-wider text-slate-400 uppercase">Sua Assinatura ViTTA</span>
+                    <span className="text-xs font-bold tracking-wider text-vitta-text-secondary uppercase">Sua Assinatura ViTTA</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${planVisuals.badge}`}>
                       {planVisuals.highlight}
                     </span>
@@ -15993,21 +15996,21 @@ const SettingsView = ({
                   <h2 className={`text-xl font-black mt-1 ${planVisuals.text}`}>
                     {userPlan}
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
+                  <p className="text-xs text-vitta-text-secondary mt-1.5 max-w-2xl leading-relaxed">
                     {planVisuals.desc}
                   </p>
                 </div>
               </div>
               
               <div className="flex flex-col items-start md:items-end justify-center shrink-0 min-w-[140px]">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status da Conta</span>
+                <span className="text-[10px] font-bold text-vitta-text-secondary uppercase tracking-widest">Status da Conta</span>
                 <div className="flex items-center gap-1.5 mt-1">
-                  <div className={`w-2 h-2 rounded-full ${userPlanStatus === 'Ativo' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  <div className={`w-2 h-2 rounded-full ${userPlanStatus === 'Ativo' ? 'bg-vitta-green animate-pulse' : 'bg-vitta-danger'}`} />
+                  <span className="text-sm font-bold text-vitta-text-primary">
                     {userPlanStatus}
                   </span>
                 </div>
-                <span className="text-[10px] font-medium text-slate-400 mt-1">
+                <span className="text-[10px] font-medium text-vitta-text-muted mt-1">
                   ID: {user?.uid?.substring(0, 8)?.toUpperCase()}...
                 </span>
               </div>
