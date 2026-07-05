@@ -5,7 +5,7 @@ const PRE_CACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.ico',
+  '/vitta_logo.jpg',
 ];
 
 // Install event

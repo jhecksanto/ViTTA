@@ -1,0 +1,41 @@
+{
+  "name": "ViTTA CONVÊNIOS",
+  "short_name": "ViTTA",
+  "description": "Acesso a consultas, exames, telemedicina e benefícios exclusivos da rede ViTTA Health.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#3B6EF8",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/vitta_logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/vitta_logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["medical", "health"],
+  "shortcuts": [
+    {
+      "name": "Consultas",
+      "short_name": "Consultas",
+      "description": "Agendar ou visualizar consultas",
+      "url": "/?tab=appointments",
+      "icons": [{ "src": "/vitta_logo.jpg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Exames",
+      "short_name": "Exames",
+      "description": "Ver meus exames",
+      "url": "/?tab=exams",
+      "icons": [{ "src": "/vitta_logo.jpg", "sizes": "192x192" }]
+    }
+  ]
+}

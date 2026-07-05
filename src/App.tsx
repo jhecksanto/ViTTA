@@ -27950,6 +27950,41 @@ export default function App() {
   const [radioVolume, setRadioVolume] = useState(0.5);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as any);
+
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone;
+    if (isStandalone) {
+      setShowInstallBanner(false);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as any);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null);
+    setShowInstallBanner(false);
+    if (outcome === "accepted") {
+      addToast("Instalação do app ViTTA Health iniciada com sucesso!", "success");
+    }
+  };
+
   useEffect(() => {
     if (!isAuthReady || !user) return;
     const unsubscribe = onSnapshot(
@@ -28860,6 +28895,14 @@ export default function App() {
                     }}
                   />
                 )}
+                {showInstallBanner && deferredPrompt && (
+                  <SidebarItem
+                    icon={Smartphone}
+                    label="Instalar Aplicativo"
+                    active={false}
+                    onClick={handleInstallApp}
+                  />
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-vitta-danger hover:bg-vitta-danger/10 mx-2"
@@ -29024,6 +29067,44 @@ export default function App() {
         onClose={() => setIsHelpCenterOpen(false)}
         userEmail={user?.email || null}
       />
+
+      {/* PWA Floating Install Banner */}
+      <AnimatePresence>
+        {showInstallBanner && deferredPrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-vitta-surface border border-vitta-border rounded-2xl shadow-xl p-5 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 border-l-4 border-l-vitta-accent"
+          >
+            <div className="p-3 bg-vitta-accent-bg text-vitta-accent rounded-xl hidden md:block shrink-0">
+              <Smartphone size={24} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-bold text-vitta-text-primary">
+                Instale o App ViTTA Health! 📱
+              </h3>
+              <p className="text-xs text-vitta-text-secondary mt-1 leading-relaxed">
+                Acesse agendamentos, rádio, carteiras e benefícios offline com um clique.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-2 md:mt-0 shrink-0">
+              <button
+                onClick={() => setShowInstallBanner(false)}
+                className="px-3 py-1.5 text-xs font-semibold text-vitta-text-secondary hover:text-vitta-text-primary rounded-lg hover:bg-vitta-surface-2 transition-colors"
+              >
+                Depois
+              </button>
+              <button
+                onClick={handleInstallApp}
+                className="px-4 py-1.5 text-xs font-bold bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-lg shadow-md shadow-vitta-accent/10 transition-colors"
+              >
+                Instalar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
