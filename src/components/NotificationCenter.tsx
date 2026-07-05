@@ -26,7 +26,7 @@ interface Notification {
   createdAt: any;
 }
 
-const NotificationCenter = ({ userId }: { userId: string }) => {
+const NotificationCenter = ({ userId, onViewAll }: { userId: string; onViewAll?: () => void }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -208,16 +208,17 @@ const NotificationCenter = ({ userId }: { userId: string }) => {
                 )}
               </div>
 
-              {notifications.length > 0 && (
-                <div className="p-3 bg-vitta-surface-1 border-t border-vitta-border text-center">
-                  <button 
-                    onClick={() => setIsOpen(false)}
-                    className="text-xs font-bold text-vitta-text-muted hover:text-vitta-text-primary transition-colors py-1 px-3"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              )}
+              <div className="p-3 bg-vitta-surface-1 border-t border-vitta-border text-center">
+                <button 
+                  onClick={() => {
+                    setIsOpen(false);
+                    if (onViewAll) onViewAll();
+                  }}
+                  className="text-xs font-bold text-vitta-accent hover:text-vitta-accent/80 transition-colors py-1 px-3 hover:underline"
+                >
+                  Todas as Notificações
+                </button>
+              </div>
             </motion.div>
           </>
         )}

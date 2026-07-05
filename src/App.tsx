@@ -28885,7 +28885,7 @@ export default function App() {
                   <HelpCircle size={20} />
                 </button>
 
-                {user && <NotificationCenter userId={user.uid} />}
+                {user && <NotificationCenter userId={user.uid} onViewAll={() => setActiveTab("notifications")} />}
               </div>
             )}
             <div 
