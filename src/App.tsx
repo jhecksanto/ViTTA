@@ -870,7 +870,7 @@ const BookingModal = ({
       ];
     }
 
-    setAvailableSlots(slots);
+    setAvailableSlots(Array.from(new Set(slots)));
     if (!slots.includes(selectedTime)) {
       setSelectedTime("");
     }
@@ -5199,7 +5199,7 @@ const ProfessionalManualBookingModal = ({
       ];
     }
 
-    setAvailableSlots(slots);
+    setAvailableSlots(Array.from(new Set(slots)));
     if (!slots.includes(selectedTime) && !isTimeCustom) {
       setSelectedTime("");
     }
@@ -23915,7 +23915,7 @@ const RescheduleModal = ({
       ];
     }
 
-    setAvailableSlots(slots);
+    setAvailableSlots(Array.from(new Set(slots)));
   }, [date, professional]);
 
   const handleConfirm = async () => {
