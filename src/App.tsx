@@ -19989,14 +19989,14 @@ const PartnershipsView = ({
         </div>
       </div>
 
-      <div id="partnerships-subtabs-bar" className="flex flex-wrap gap-2 md:gap-4 border-b border-vitta-border pb-1">
+      <div id="partnerships-subtabs-bar" className="grid grid-cols-2 md:flex md:flex-wrap gap-3 md:gap-4 border-b border-vitta-border pb-4 md:pb-1">
         <button
           id="tab-btn-establishments"
           onClick={() => setActiveSubTab("establishments")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-1 md:order-none ${
             activeSubTab === "establishments"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
           }`}
         >
           <Store size={18} />
@@ -20005,10 +20005,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-profissionais-liberais"
           onClick={() => setActiveSubTab("profissionais-liberais")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-3 md:order-none ${
             activeSubTab === "profissionais-liberais"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
           }`}
         >
           <Briefcase size={18} />
@@ -20017,10 +20017,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-categories"
           onClick={() => setActiveSubTab("categories")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-2 md:order-none ${
             activeSubTab === "categories"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
           }`}
         >
           <Tag size={18} />
@@ -20029,10 +20029,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-offers"
           onClick={() => setActiveSubTab("offers")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-4 md:order-none ${
             activeSubTab === "offers"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
           }`}
         >
           <Tag size={18} />
@@ -20041,10 +20041,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-vitta-health"
           onClick={() => setActiveSubTab("vitta-health")}
-          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-bold cursor-pointer ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-5 col-span-2 md:order-none ${
             activeSubTab === "vitta-health"
-              ? "border-vitta-green text-vitta-green"
-              : "border-transparent text-vitta-text-muted hover:text-vitta-text-secondary"
+              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
           }`}
         >
           <Activity size={18} />
