@@ -29024,7 +29024,7 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 pb-24 lg:pb-10">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
@@ -29040,6 +29040,62 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-vitta-topbar border-t border-vitta-border flex items-center justify-around h-16 pb-safe px-2 shadow-2xl backdrop-blur-md bg-opacity-95">
+        <button
+          onClick={() => {
+            setActiveTab("home");
+            setIsSidebarOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 ${
+            activeTab === "home"
+              ? "text-vitta-accent font-bold"
+              : "text-vitta-text-secondary hover:text-vitta-text-primary"
+          }`}
+        >
+          <Home size={18} className={activeTab === "home" ? "scale-110" : ""} />
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Início</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("plans");
+            setIsSidebarOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 ${
+            activeTab === "plans"
+              ? "text-vitta-accent font-bold"
+              : "text-vitta-text-secondary hover:text-vitta-text-primary"
+          }`}
+        >
+          <ShieldCheck size={18} className={activeTab === "plans" ? "scale-110" : ""} />
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Convênio</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("offers");
+            setIsSidebarOpen(false);
+          }}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 ${
+            activeTab === "offers"
+              ? "text-vitta-accent font-bold"
+              : "text-vitta-text-secondary hover:text-vitta-text-primary"
+          }`}
+        >
+          <Tag size={18} className={activeTab === "offers" ? "scale-110" : ""} />
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Ofertas</span>
+        </button>
+
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 text-vitta-text-secondary hover:text-vitta-text-primary"
+        >
+          <Menu size={18} />
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Menu</span>
+        </button>
+      </div>
 
       {/* Global Audio Element */}
       <audio
@@ -29090,7 +29146,7 @@ export default function App() {
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-vitta-surface border border-vitta-border rounded-2xl shadow-xl p-5 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 border-l-4 border-l-vitta-accent"
+            className="fixed bottom-20 md:bottom-6 right-6 z-50 max-w-sm w-full bg-vitta-surface border border-vitta-border rounded-2xl shadow-xl p-5 flex flex-col gap-3 md:flex-row md:items-center md:gap-4 border-l-4 border-l-vitta-accent"
           >
             <div className="p-3 bg-vitta-accent-bg text-vitta-accent rounded-xl hidden md:block shrink-0">
               <Smartphone size={24} />
