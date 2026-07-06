@@ -125,7 +125,7 @@ const NotificationCenter = ({ userId, onViewAll }: { userId: string; onViewAll?:
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute right-0 mt-3 w-80 md:w-96 bg-white rounded-3xl shadow-2xl border border-vitta-border overflow-hidden z-50 origin-top-right"
+              className="fixed inset-x-4 top-20 mx-auto max-w-md md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-3 md:w-96 md:mx-0 bg-white rounded-3xl shadow-2xl border border-vitta-border overflow-hidden z-50 origin-top md:origin-top-right"
             >
               <div className="p-4 border-b border-vitta-border flex items-center justify-between bg-vitta-surface-1">
                 <div className="flex items-center gap-2">
