@@ -10376,6 +10376,7 @@ const ExamsView = ({ user }: { user: any }) => {
   const [filter, setFilter] = useState<"all" | "ready" | "pending">("all");
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedExam, setSelectedExam] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -10548,28 +10549,32 @@ const ExamsView = ({ user }: { user: any }) => {
                         className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           exam.status === "ready"
                             ? "bg-vitta-green-bg text-vitta-green"
-                            : exam.status === "pending"
-                              ? "bg-vitta-amber-bg text-vitta-amber"
-                              : "bg-vitta-surface-2 text-vitta-text-muted"
+                            : "bg-vitta-amber-bg text-vitta-amber"
                         }`}
                       >
-                        {exam.status === "ready"
-                          ? "Pronto"
-                          : exam.status === "pending"
-                            ? "Pendente"
-                            : "Agendado"}
+                        {exam.status === "ready" ? "Pronto" : "Pendente"}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {exam.status === "ready" && (
+                      <div className="flex items-center justify-end gap-3">
                         <button
-                          onClick={() => handleDownload(exam.resultUrl)}
-                          className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1 ml-auto transition-colors"
+                          onClick={() => setSelectedExam(exam)}
+                          className="text-vitta-text-muted hover:text-vitta-accent font-bold text-sm flex items-center gap-1.5 transition-colors"
+                          title="Ver Notas e Detalhes"
                         >
-                          <Download size={16} />
-                          Baixar
+                          <Eye size={16} />
+                          Ver Notas
                         </button>
-                      )}
+                        {exam.status === "ready" && (
+                          <button
+                            onClick={() => handleDownload(exam.resultUrl)}
+                            className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1.5 transition-colors"
+                          >
+                            <Download size={16} />
+                            Baixar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -10587,6 +10592,108 @@ const ExamsView = ({ user }: { user: any }) => {
           </table>
         </div>
       </div>
+
+      {selectedExam && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-vitta-surface max-w-lg w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-vitta-green-bg text-vitta-green rounded-xl">
+                  <FileText size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-vitta-text-primary">
+                    Detalhes do Exame
+                  </h3>
+                  <p className="text-xs text-vitta-text-secondary mt-0.5">
+                    Resultados e informações do laboratório.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedExam(null)}
+                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
+                    Nome do Exame
+                  </p>
+                  <p className="font-bold text-vitta-text-primary text-sm">
+                    {selectedExam.name}
+                  </p>
+                </div>
+                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
+                    Laboratório
+                  </p>
+                  <p className="font-bold text-vitta-text-primary text-sm">
+                    {selectedExam.lab || "Laboratório ViTTA"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
+                    Data de Registro
+                  </p>
+                  <p className="font-semibold text-vitta-text-primary">
+                    {selectedExam.createdAt
+                      ? new Date(selectedExam.createdAt.seconds * 1000).toLocaleDateString("pt-BR")
+                      : "N/A"}
+                  </p>
+                </div>
+                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
+                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
+                    Status do Resultado
+                  </p>
+                  <span
+                    className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mt-1 ${
+                      selectedExam.status === "ready"
+                        ? "bg-vitta-green-bg text-vitta-green"
+                        : "bg-vitta-amber-bg text-vitta-amber"
+                    }`}
+                  >
+                    {selectedExam.status === "ready" ? "Pronto" : "Pendente"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border/50 space-y-1.5">
+                <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                  Notas / Observações Clínicas
+                </p>
+                <p className="text-vitta-text-secondary leading-relaxed whitespace-pre-wrap">
+                  {selectedExam.resultNote || "Nenhuma observação cadastrada para este exame."}
+                </p>
+              </div>
+
+              {selectedExam.status === "ready" && selectedExam.resultUrl && (
+                <button
+                  onClick={() => {
+                    handleDownload(selectedExam.resultUrl);
+                    setSelectedExam(null);
+                  }}
+                  className="w-full py-3.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex justify-center items-center gap-2 mt-2"
+                >
+                  <Download size={18} />
+                  Baixar Resultado (PDF/Imagem)
+                </button>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
@@ -12543,6 +12650,7 @@ const ProfessionalsView = ({
       professionals
         .filter((p) => p.isApproved !== false)
         .map((p) => p.specialty)
+        .filter((s) => s && s !== "Todos")
     );
     return ["Todos", ...Array.from(specs)];
   }, [professionals]);
@@ -12976,7 +13084,7 @@ const PartnersView = ({
       professionals
         .filter((p) => p.isApproved !== false)
         .map((p) => p.specialty)
-        .filter(Boolean)
+        .filter((s) => s && s !== "Todos")
     );
     return ["Todos", ...Array.from(specs)];
   }, [professionals]);
@@ -13033,7 +13141,7 @@ const PartnersView = ({
   }, [liberalProfessionals, searchQuery, selectedLiberalCategory]);
 
   const liberalCategoriesList = useMemo(() => {
-    const list = new Set(liberalCategories.map((c) => c.name).filter(Boolean));
+    const list = new Set(liberalCategories.map((c) => c.name).filter((name) => name && name !== "Todos"));
     return ["Todos", ...Array.from(list)];
   }, [liberalCategories]);
 
@@ -14332,7 +14440,7 @@ const PartnersView = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {filteredCategories.map((cat: any) => (
                 <motion.div
-                  key={cat.id}
+                  key={`${cat.categoryType}-${cat.id}`}
                   whileHover={{ y: -8 }}
                   onClick={() => {
                     if (cat.categoryType === "partner") {
@@ -16970,6 +17078,10 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [editingExam, setEditingExam] = useState<any | null>(null);
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const [isEditDragging, setIsEditDragging] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -17050,12 +17162,27 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
           setUploading(null);
           return;
         }
-        const storageRef = ref(
-          storage,
-          `exam_results/${newItem.userId}/${Date.now()}_${selectedFile.name}`,
-        );
-        const uploadResult = await uploadBytes(storageRef, selectedFile);
-        resultUrl = await getDownloadURL(uploadResult.ref);
+        if (selectedFile.size > 1.5 * 1024 * 1024) {
+          addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+          setUploading(null);
+          return;
+        }
+        try {
+          const storageRef = ref(
+            storage,
+            `exam_results/${newItem.userId}/${Date.now()}_${selectedFile.name}`,
+          );
+          const uploadResult = await uploadBytes(storageRef, selectedFile);
+          resultUrl = await getDownloadURL(uploadResult.ref);
+        } catch (storageErr) {
+          console.warn("Storage upload failed, falling back to data URL:", storageErr);
+          resultUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(selectedFile);
+          });
+        }
       }
 
       await addDoc(collection(db, "user_exams"), {
@@ -17112,15 +17239,30 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
       addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
       return;
     }
+    if (file.size > 1.5 * 1024 * 1024) {
+      addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+      return;
+    }
 
     try {
       setUploading(userExamId);
-      const storageRef = ref(
-        storage,
-        `exam_results/${userId}/${Date.now()}_${file.name}`,
-      );
-      const uploadResult = await uploadBytes(storageRef, file);
-      const resultUrl = await getDownloadURL(uploadResult.ref);
+      let resultUrl = "";
+      try {
+        const storageRef = ref(
+          storage,
+          `exam_results/${userId}/${Date.now()}_${file.name}`,
+        );
+        const uploadResult = await uploadBytes(storageRef, file);
+        resultUrl = await getDownloadURL(uploadResult.ref);
+      } catch (storageErr) {
+        console.warn("Storage upload failed, falling back to data URL:", storageErr);
+        resultUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      }
 
       await updateDoc(doc(db, "user_exams", userExamId), {
         resultUrl,
@@ -17149,6 +17291,84 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
       console.error(err);
       setUploading(null);
       addToast("Erro ao fazer upload do arquivo.", "error");
+    }
+  };
+
+  const handleUpdateExam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExam) return;
+
+    try {
+      setUploading(editingExam.id);
+      let resultUrl = editingExam.resultUrl || "";
+
+      if (editFile) {
+        if (!hasUploadPermission()) {
+          addToast("Você não tem permissão para anexar arquivos.", "error");
+          setUploading(null);
+          return;
+        }
+        if (editFile.size > 1.5 * 1024 * 1024) {
+          addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+          setUploading(null);
+          return;
+        }
+        try {
+          const storageRef = ref(
+            storage,
+            `exam_results/${editingExam.userId}/${Date.now()}_${editFile.name}`,
+          );
+          const uploadResult = await uploadBytes(storageRef, editFile);
+          resultUrl = await getDownloadURL(uploadResult.ref);
+        } catch (storageErr) {
+          console.warn("Storage upload failed, falling back to data URL:", storageErr);
+          resultUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(editFile);
+          });
+        }
+      }
+
+      const updatedData = {
+        userId: editingExam.userId,
+        examId: editingExam.examId,
+        name: editingExam.name,
+        lab: editingExam.lab || "Laboratório ViTTA",
+        status: editingExam.status,
+        resultUrl,
+        resultNote: editingExam.resultNote || "",
+        updatedAt: Timestamp.now(),
+      };
+
+      await updateDoc(doc(db, "user_exams", editingExam.id), updatedData);
+
+      await logAdminAction(
+        "UPDATE_USER_EXAM",
+        `Editou registro do exame ${editingExam.name} para o usuário ID: ${editingExam.userId}`,
+      );
+
+      // Create notification if status changed to ready
+      const originalExam = userExams.find((e) => e.id === editingExam.id);
+      if (editingExam.status === "ready" && originalExam?.status !== "ready") {
+        await addDoc(collection(db, "notifications"), {
+          userId: editingExam.userId,
+          title: "Resultado de Exame Disponível",
+          message: `O resultado do seu exame de ${editingExam.name} já está disponível.`,
+          type: "exam",
+          read: false,
+          createdAt: Timestamp.now(),
+        });
+      }
+
+      setEditingExam(null);
+      setEditFile(null);
+      setUploading(null);
+      addToast("Registro de exame atualizado com sucesso.", "success");
+    } catch (err) {
+      setUploading(null);
+      handleFirestoreError(err, OperationType.UPDATE, `user_exams/${editingExam.id}`);
     }
   };
 
@@ -17353,36 +17573,115 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                  Resultado (PDF ou Imagem - Opcional)
+                  Laboratório
                 </label>
                 <input
-                  id="exam-result-file-input"
-                  type="file"
-                  accept=".pdf,image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
+                  type="text"
+                  placeholder="Ex: Laboratório ViTTA"
+                  value={newItem.lab}
+                  onChange={(e) =>
+                    setNewItem({ ...newItem, lab: e.target.value })
+                  }
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                  Notas / Observações do Resultado
+                </label>
+                <textarea
+                  placeholder="Adicione observações, valores de referência ou notas de resultado..."
+                  value={newItem.resultNote}
+                  onChange={(e) =>
+                    setNewItem({ ...newItem, resultNote: e.target.value })
+                  }
+                  rows={1}
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary resize-y"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                  Resultado (PDF ou Imagem - Opcional)
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files?.[0] || null;
                     if (file) {
                       if (!isPdfOrImage(file)) {
                         addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
-                        e.target.value = "";
-                        setSelectedFile(null);
+                      } else if (file.size > 1.5 * 1024 * 1024) {
+                        addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
                       } else {
                         setSelectedFile(file);
                       }
-                    } else {
-                      setSelectedFile(null);
                     }
                   }}
-                  className="w-full px-4 py-2.5 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-vitta-accent file:text-white hover:file:bg-vitta-accent/90 transition-all text-vitta-text-primary focus:ring-2 focus:ring-vitta-accent/20 outline-none"
-                />
+                  onClick={() => {
+                    document.getElementById("exam-result-file-input")?.click();
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                    isDragging
+                      ? "border-vitta-accent bg-vitta-accent/5"
+                      : "border-vitta-border bg-vitta-surface-2 hover:border-vitta-accent hover:bg-vitta-surface-3"
+                  }`}
+                >
+                  <input
+                    id="exam-result-file-input"
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (file) {
+                        if (!isPdfOrImage(file)) {
+                          addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+                          e.target.value = "";
+                          setSelectedFile(null);
+                        } else if (file.size > 1.5 * 1024 * 1024) {
+                          addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+                          e.target.value = "";
+                          setSelectedFile(null);
+                        } else {
+                          setSelectedFile(file);
+                        }
+                      } else {
+                        setSelectedFile(null);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <Upload size={24} className={isDragging ? "text-vitta-accent animate-bounce" : "text-vitta-text-muted"} />
+                  <p className="text-xs font-bold text-vitta-text-primary">
+                    Arraste e solte o arquivo aqui ou clique para selecionar
+                  </p>
+                  <p className="text-[10px] text-vitta-text-muted">
+                    Formatos suportados: PDF, JPEG, PNG, GIF, WEBP (Máx: 1.5MB)
+                  </p>
+                </div>
                 {selectedFile && (
-                  <div className="flex items-center justify-between p-2 bg-vitta-green-bg border border-vitta-green/20 rounded-xl mt-1 text-xs">
-                    <span className="text-vitta-text-primary font-medium truncate max-w-[200px]">
-                      Selected: {selectedFile.name}
-                    </span>
+                  <div className="flex items-center justify-between p-3 bg-vitta-green-bg border border-vitta-green/20 rounded-xl mt-1 text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText size={16} className="text-vitta-green shrink-0" />
+                      <span className="text-vitta-text-primary font-medium truncate max-w-[200px]">
+                        {selectedFile.name}
+                      </span>
+                      <span className="text-vitta-text-muted text-[10px]">
+                        ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setSelectedFile(null);
                         const inputEl = document.getElementById("exam-result-file-input") as HTMLInputElement;
                         if (inputEl) inputEl.value = "";
@@ -17413,7 +17712,7 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
             <button
               type="submit"
               disabled={uploading === "new"}
-              className="w-full py-4 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 transition-all shadow-lg shadow-vitta-green/20 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+              className="w-full py-4 bg-vitta-green text-white rounded-xl font-bold hover:bg-vitta-green/90 hover:shadow-xl hover:shadow-vitta-green/30 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-vitta-green/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex justify-center items-center gap-2"
             >
               {uploading === "new" ? (
                 <>
@@ -17533,8 +17832,14 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
                           accept=".pdf,image/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file)
-                              handleFileUpload(exam.id, exam.userId, file);
+                            if (file) {
+                              if (file.size > 1.5 * 1024 * 1024) {
+                                addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+                                e.target.value = "";
+                              } else {
+                                handleFileUpload(exam.id, exam.userId, file);
+                              }
+                            }
                           }}
                         />
                         <label
@@ -17559,6 +17864,13 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
                         </button>
                       )}
                       <button
+                        onClick={() => setEditingExam(exam)}
+                        className="p-2 hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-lg transition-colors"
+                        title="Editar Exame"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
                         onClick={() => handleDelete(exam.id)}
                         className="p-2 hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors"
                         title="Excluir"
@@ -17582,6 +17894,260 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
           </tbody>
         </table>
       </div>
+
+      {editingExam && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-vitta-surface max-w-2xl w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
+              <div>
+                <h3 className="text-xl font-bold text-vitta-text-primary">
+                  Editar Registro de Exame
+                </h3>
+                <p className="text-xs text-vitta-text-secondary mt-0.5">
+                  Atualize os dados do exame e anexe ou altere o resultado.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingExam(null);
+                  setEditFile(null);
+                }}
+                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateExam} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Paciente
+                  </label>
+                  <select
+                    required
+                    value={editingExam.userId}
+                    onChange={(e) =>
+                      setEditingExam({ ...editingExam, userId: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  >
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Nome do Exame
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingExam.name}
+                    onChange={(e) =>
+                      setEditingExam({ ...editingExam, name: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Laboratório
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingExam.lab || "Laboratório ViTTA"}
+                    onChange={(e) =>
+                      setEditingExam({ ...editingExam, lab: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                    Status
+                  </label>
+                  <select
+                    value={editingExam.status}
+                    onChange={(e) =>
+                      setEditingExam({ ...editingExam, status: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary"
+                  >
+                    <option value="pending">Pendente</option>
+                    <option value="ready">Pronto</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                  Notas / Observações do Resultado
+                </label>
+                <textarea
+                  placeholder="Adicione observações, valores de referência ou notas de resultado..."
+                  value={editingExam.resultNote || ""}
+                  onChange={(e) =>
+                    setEditingExam({ ...editingExam, resultNote: e.target.value })
+                  }
+                  rows={2}
+                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary resize-y"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                  Resultado (Anexar Novo Arquivo)
+                </label>
+                
+                {editingExam.resultUrl && !editFile && (
+                  <div className="flex items-center justify-between p-3 bg-vitta-green-bg/50 border border-vitta-green/20 rounded-xl mb-2 text-xs">
+                    <div className="flex items-center gap-2 text-vitta-green font-bold">
+                      <FileText size={16} />
+                      <span>Resultado Atual Anexado</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(editingExam.resultUrl, "_blank")}
+                      className="text-vitta-accent hover:underline font-bold"
+                    >
+                      Visualizar Atual
+                    </button>
+                  </div>
+                )}
+
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsEditDragging(true);
+                  }}
+                  onDragLeave={() => setIsEditDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsEditDragging(false);
+                    const file = e.dataTransfer.files?.[0] || null;
+                    if (file) {
+                      if (!isPdfOrImage(file)) {
+                        addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+                      } else if (file.size > 1.5 * 1024 * 1024) {
+                        addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+                      } else {
+                        setEditFile(file);
+                      }
+                    }
+                  }}
+                  onClick={() => {
+                    document.getElementById("edit-exam-file-input")?.click();
+                  }}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
+                    isEditDragging
+                      ? "border-vitta-accent bg-vitta-accent/5"
+                      : "border-vitta-border bg-vitta-surface-2 hover:border-vitta-accent hover:bg-vitta-surface-3"
+                  }`}
+                >
+                  <input
+                    id="edit-exam-file-input"
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (file) {
+                        if (!isPdfOrImage(file)) {
+                          addToast("Apenas arquivos PDF e imagens (JPEG, PNG, GIF, WEBP) são permitidos.", "error");
+                          e.target.value = "";
+                          setEditFile(null);
+                        } else if (file.size > 1.5 * 1024 * 1024) {
+                          addToast("O arquivo é muito grande. O limite máximo permitido é de 1.5MB.", "error");
+                          e.target.value = "";
+                          setEditFile(null);
+                        } else {
+                          setEditFile(file);
+                        }
+                      } else {
+                        setEditFile(null);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <Upload size={24} className={isEditDragging ? "text-vitta-accent animate-bounce" : "text-vitta-text-muted"} />
+                  <p className="text-xs font-bold text-vitta-text-primary">
+                    Arraste e solte o novo arquivo aqui ou clique para selecionar
+                  </p>
+                  <p className="text-[10px] text-vitta-text-muted">
+                    Substituirá o arquivo de resultado atual. PDF, JPEG, PNG, GIF, WEBP.
+                  </p>
+                </div>
+
+                {editFile && (
+                  <div className="flex items-center justify-between p-3 bg-vitta-green-bg border border-vitta-green/20 rounded-xl mt-1 text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText size={16} className="text-vitta-green shrink-0" />
+                      <span className="text-vitta-text-primary font-medium truncate max-w-[200px]">
+                        {editFile.name}
+                      </span>
+                      <span className="text-vitta-text-muted text-[10px]">
+                        ({(editFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditFile(null);
+                        const inputEl = document.getElementById("edit-exam-file-input") as HTMLInputElement;
+                        if (inputEl) inputEl.value = "";
+                      }}
+                      className="text-red-500 hover:text-red-700 font-bold ml-2 shrink-0"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-vitta-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingExam(null);
+                    setEditFile(null);
+                  }}
+                  className="flex-1 py-3 bg-vitta-surface-2 hover:bg-vitta-surface-3 border border-vitta-border text-vitta-text-primary rounded-xl font-bold transition-all text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading === editingExam.id}
+                  className="flex-1 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold hover:shadow-xl hover:shadow-vitta-accent/30 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-vitta-accent/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex justify-center items-center gap-2 text-sm"
+                >
+                  {uploading === editingExam.id ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    "Salvar Alterações"
+                  )}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
 
       <ConfirmationModal
         isOpen={confirmModal.isOpen}
@@ -19993,10 +20559,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-establishments"
           onClick={() => setActiveSubTab("establishments")}
-          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-1 md:order-none ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-xl transition-all text-sm font-bold cursor-pointer order-1 md:order-none ${
             activeSubTab === "establishments"
-              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
-              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
+              ? "bg-vitta-green text-white border-vitta-green shadow-lg shadow-vitta-green/20 md:bg-transparent md:border-t-0 md:border-x-0 md:border-b-2 md:border-b-vitta-green md:text-vitta-green md:shadow-none md:rounded-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary shadow-sm hover:bg-vitta-surface-2 md:bg-transparent md:border-transparent md:text-vitta-text-muted md:hover:text-vitta-text-secondary md:shadow-none md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2"
           }`}
         >
           <Store size={18} />
@@ -20005,10 +20571,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-profissionais-liberais"
           onClick={() => setActiveSubTab("profissionais-liberais")}
-          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-3 md:order-none ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-xl transition-all text-sm font-bold cursor-pointer order-3 md:order-none ${
             activeSubTab === "profissionais-liberais"
-              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
-              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
+              ? "bg-vitta-green text-white border-vitta-green shadow-lg shadow-vitta-green/20 md:bg-transparent md:border-t-0 md:border-x-0 md:border-b-2 md:border-b-vitta-green md:text-vitta-green md:shadow-none md:rounded-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary shadow-sm hover:bg-vitta-surface-2 md:bg-transparent md:border-transparent md:text-vitta-text-muted md:hover:text-vitta-text-secondary md:shadow-none md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2"
           }`}
         >
           <Briefcase size={18} />
@@ -20017,10 +20583,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-categories"
           onClick={() => setActiveSubTab("categories")}
-          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-2 md:order-none ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-xl transition-all text-sm font-bold cursor-pointer order-2 md:order-none ${
             activeSubTab === "categories"
-              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
-              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
+              ? "bg-vitta-green text-white border-vitta-green shadow-lg shadow-vitta-green/20 md:bg-transparent md:border-t-0 md:border-x-0 md:border-b-2 md:border-b-vitta-green md:text-vitta-green md:shadow-none md:rounded-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary shadow-sm hover:bg-vitta-surface-2 md:bg-transparent md:border-transparent md:text-vitta-text-muted md:hover:text-vitta-text-secondary md:shadow-none md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2"
           }`}
         >
           <Tag size={18} />
@@ -20029,10 +20595,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-offers"
           onClick={() => setActiveSubTab("offers")}
-          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-4 md:order-none ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-xl transition-all text-sm font-bold cursor-pointer order-4 md:order-none ${
             activeSubTab === "offers"
-              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
-              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
+              ? "bg-vitta-green text-white border-vitta-green shadow-lg shadow-vitta-green/20 md:bg-transparent md:border-t-0 md:border-x-0 md:border-b-2 md:border-b-vitta-green md:text-vitta-green md:shadow-none md:rounded-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary shadow-sm hover:bg-vitta-surface-2 md:bg-transparent md:border-transparent md:text-vitta-text-muted md:hover:text-vitta-text-secondary md:shadow-none md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2"
           }`}
         >
           <Tag size={18} />
@@ -20041,10 +20607,10 @@ const PartnershipsView = ({
         <button
           id="tab-btn-vitta-health"
           onClick={() => setActiveSubTab("vitta-health")}
-          className={`flex items-center justify-center gap-2 px-4 py-3 md:py-3 border rounded-xl md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2 transition-all text-sm font-bold cursor-pointer order-5 col-span-2 md:order-none ${
+          className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-xl transition-all text-sm font-bold cursor-pointer order-5 col-span-2 md:order-none ${
             activeSubTab === "vitta-health"
-              ? "bg-vitta-green/10 border-vitta-green text-vitta-green shadow-md shadow-vitta-green/5 md:bg-transparent md:border-b-vitta-green md:shadow-none"
-              : "bg-vitta-surface border-vitta-border text-vitta-text-muted hover:text-vitta-text-secondary md:bg-transparent md:border-transparent md:hover:border-vitta-border"
+              ? "bg-vitta-green text-white border-vitta-green shadow-lg shadow-vitta-green/20 md:bg-transparent md:border-t-0 md:border-x-0 md:border-b-2 md:border-b-vitta-green md:text-vitta-green md:shadow-none md:rounded-none"
+              : "bg-vitta-surface border-vitta-border text-vitta-text-secondary shadow-sm hover:bg-vitta-surface-2 md:bg-transparent md:border-transparent md:text-vitta-text-muted md:hover:text-vitta-text-secondary md:shadow-none md:rounded-none md:border-t-0 md:border-x-0 md:border-b-2"
           }`}
         >
           <Activity size={18} />
@@ -29055,7 +29621,7 @@ export default function App() {
           }`}
         >
           <Home size={18} className={activeTab === "home" ? "scale-110" : ""} />
-          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Início</span>
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">INÍCIO</span>
         </button>
 
         <button
@@ -29070,7 +29636,7 @@ export default function App() {
           }`}
         >
           <ShieldCheck size={18} className={activeTab === "plans" ? "scale-110" : ""} />
-          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Convênio</span>
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">CONVÊNIO</span>
         </button>
 
         <button
@@ -29085,7 +29651,7 @@ export default function App() {
           }`}
         >
           <Tag size={18} className={activeTab === "offers" ? "scale-110" : ""} />
-          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Ofertas</span>
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">OFERTAS</span>
         </button>
 
         <button
@@ -29093,7 +29659,7 @@ export default function App() {
           className="flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 text-vitta-text-secondary hover:text-vitta-text-primary"
         >
           <Menu size={18} />
-          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">Menu</span>
+          <span className="text-[10px] mt-1 tracking-wide uppercase font-medium">MENU</span>
         </button>
       </div>
 

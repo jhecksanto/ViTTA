@@ -74,7 +74,7 @@ const HelpCenter = ({ isOpen, onClose, userEmail }: { isOpen: boolean, onClose: 
     fetchFaqs();
   }, []);
 
-  const categories = ['Todos', ...Array.from(new Set(faqs.map(f => f.category)))];
+  const categories = ['Todos', ...Array.from(new Set(faqs.map(f => f.category).filter(cat => cat && cat !== 'Todos')))];
   
   const filteredFaqs = faqs.filter(f => {
     const matchesSearch = f.question.toLowerCase().includes(searchTerm.toLowerCase()) || 
