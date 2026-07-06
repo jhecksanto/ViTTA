@@ -8956,11 +8956,22 @@ const ContentManagerView = () => {
 
     setIsUploadingBanner(true);
     try {
-      const url = await uploadWithProgress(
-        file,
-        `banners/${Date.now()}_${file.name}`,
-        "image",
-      );
+      let url = "";
+      try {
+        url = await uploadWithProgress(
+          file,
+          `banners/${Date.now()}_${file.name}`,
+          "image",
+        );
+      } catch (storageErr) {
+        console.warn("Banner storage upload failed, falling back to data URL:", storageErr);
+        url = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      }
       const newBanner = {
         id: Date.now().toString(),
         imageUrl: url,
@@ -10372,11 +10383,13 @@ const AdminAppointmentsView = () => {
 };
 
 const ExamsView = ({ user }: { user: any }) => {
+  const { addToast } = useToast();
   const [exams, setExams] = useState<any[]>([]);
   const [filter, setFilter] = useState<"all" | "ready" | "pending">("all");
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
+  const [previewExam, setPreviewExam] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -10421,9 +10434,67 @@ const ExamsView = ({ user }: { user: any }) => {
     });
   }, [exams, filter, searchQuery]);
 
-  const handleDownload = (url: string | undefined) => {
-    if (url) {
-      window.open(url, "_blank");
+  const handleDownload = async (url: string | undefined, examName: string) => {
+    if (!url) return;
+
+    try {
+      if (url.startsWith("data:")) {
+        const link = document.createElement("a");
+        link.href = url;
+        const mimeMatch = url.match(/^data:([^;]+);/);
+        let ext = "pdf";
+        if (mimeMatch) {
+          const mime = mimeMatch[1];
+          if (mime.includes("jpeg") || mime.includes("jpg")) ext = "jpg";
+          else if (mime.includes("png")) ext = "png";
+          else if (mime.includes("gif")) ext = "gif";
+          else if (mime.includes("webp")) ext = "webp";
+        }
+        link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        addToast("Download iniciado com sucesso.", "success");
+        return;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Response status " + response.status);
+      const blob = await response.blob();
+      
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      
+      let ext = "pdf";
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = "jpg";
+        else if (contentType.includes("png")) ext = "png";
+        else if (contentType.includes("gif")) ext = "gif";
+        else if (contentType.includes("webp")) ext = "webp";
+      } else {
+        const cleanUrl = url.split("?")[0];
+        const match = cleanUrl.match(/\.([a-zA-Z0-9]+)$/);
+        if (match) ext = match[1];
+      }
+      
+      link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      addToast("Download iniciado com sucesso.", "success");
+    } catch (error) {
+      console.warn("Failed to download via blob fetch, falling back to new tab:", error);
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.download = `${examName}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -10559,20 +10630,31 @@ const ExamsView = ({ user }: { user: any }) => {
                       <div className="flex items-center justify-end gap-3">
                         <button
                           onClick={() => setSelectedExam(exam)}
-                          className="text-vitta-text-muted hover:text-vitta-accent font-bold text-sm flex items-center gap-1.5 transition-colors"
+                          className="text-vitta-text-muted hover:text-vitta-accent font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
                           title="Ver Notas e Detalhes"
                         >
                           <Eye size={16} />
                           Ver Notas
                         </button>
-                        {exam.status === "ready" && (
-                          <button
-                            onClick={() => handleDownload(exam.resultUrl)}
-                            className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1.5 transition-colors"
-                          >
-                            <Download size={16} />
-                            Baixar
-                          </button>
+                        {exam.status === "ready" && exam.resultUrl && (
+                          <>
+                            <button
+                              onClick={() => setPreviewExam(exam)}
+                              className="text-vitta-green hover:text-vitta-green/80 font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Visualizar laudo digital"
+                            >
+                              <FileText size={16} />
+                              Ver Resultado
+                            </button>
+                            <button
+                              onClick={() => handleDownload(exam.resultUrl, exam.name)}
+                              className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Baixar arquivo de resultado"
+                            >
+                              <Download size={16} />
+                              Baixar
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -10616,7 +10698,7 @@ const ExamsView = ({ user }: { user: any }) => {
               </div>
               <button
                 onClick={() => setSelectedExam(null)}
-                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all"
+                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all cursor-pointer"
               >
                 <X size={20} />
               </button>
@@ -10679,15 +10761,116 @@ const ExamsView = ({ user }: { user: any }) => {
               </div>
 
               {selectedExam.status === "ready" && selectedExam.resultUrl && (
+                <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                  <button
+                    onClick={() => {
+                      setPreviewExam(selectedExam);
+                      setSelectedExam(null);
+                    }}
+                    className="flex-1 py-3 bg-vitta-green hover:bg-vitta-green/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20 flex justify-center items-center gap-2 cursor-pointer text-sm"
+                  >
+                    <Eye size={18} />
+                    Ver Resultado
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDownload(selectedExam.resultUrl, selectedExam.name);
+                      setSelectedExam(null);
+                    }}
+                    className="flex-1 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex justify-center items-center gap-2 cursor-pointer text-sm"
+                  >
+                    <Download size={18} />
+                    Baixar (PDF/Imagem)
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {previewExam && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-vitta-surface max-w-4xl w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6 animate-fade-in"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-vitta-green-bg text-vitta-green rounded-xl">
+                  <FileText size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-vitta-text-primary">
+                    Visualizar Resultado: {previewExam.name}
+                  </h3>
+                  <p className="text-xs text-vitta-text-secondary mt-0.5">
+                    {previewExam.lab || "Laboratório ViTTA"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewExam(null)}
+                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center justify-center bg-vitta-surface-2 rounded-xl p-4 border border-vitta-border overflow-hidden min-h-[400px] max-h-[70vh]">
+              {previewExam.resultUrl ? (
+                previewExam.resultUrl.startsWith("data:application/pdf") || previewExam.resultUrl.includes(".pdf") ? (
+                  <iframe
+                    src={previewExam.resultUrl}
+                    title="Visualizador de PDF"
+                    className="w-full h-[55vh] rounded-lg border border-vitta-border"
+                  />
+                ) : previewExam.resultUrl.startsWith("data:image") || 
+                  previewExam.resultUrl.includes(".png") || 
+                  previewExam.resultUrl.includes(".jpg") || 
+                  previewExam.resultUrl.includes(".jpeg") || 
+                  previewExam.resultUrl.includes(".gif") || 
+                  previewExam.resultUrl.includes(".webp") ? (
+                  <img
+                    src={previewExam.resultUrl}
+                    alt={`Laudo de ${previewExam.name}`}
+                    className="max-w-full max-h-[55vh] object-contain rounded-lg shadow-sm"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="text-center p-6 space-y-4">
+                    <p className="text-vitta-text-secondary">
+                      Não é possível visualizar este tipo de arquivo diretamente no navegador.
+                    </p>
+                    <button
+                      onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
+                      className="px-6 py-2.5 bg-vitta-accent text-white rounded-xl font-bold flex items-center gap-2 mx-auto cursor-pointer"
+                    >
+                      <Download size={18} />
+                      Baixar Arquivo
+                    </button>
+                  </div>
+                )
+              ) : (
+                <p className="text-vitta-text-muted">Nenhum arquivo anexado a este exame.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setPreviewExam(null)}
+                className="px-5 py-2.5 bg-vitta-surface-2 hover:bg-vitta-surface-3 text-vitta-text-primary rounded-xl font-bold transition-all border border-vitta-border cursor-pointer text-sm"
+              >
+                Fechar
+              </button>
+              {previewExam.resultUrl && (
                 <button
-                  onClick={() => {
-                    handleDownload(selectedExam.resultUrl);
-                    setSelectedExam(null);
-                  }}
-                  className="w-full py-3.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex justify-center items-center gap-2 mt-2"
+                  onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
+                  className="px-5 py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex items-center gap-2 cursor-pointer text-sm"
                 >
-                  <Download size={18} />
-                  Baixar Resultado (PDF/Imagem)
+                  <Download size={16} />
+                  Baixar Arquivo
                 </button>
               )}
             </div>
@@ -15756,28 +15939,52 @@ const SettingsView = ({
         });
       };
 
+      const fileToDataURL = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      };
+
       if (selectedFile) {
-        finalPhotoURL = await uploadWithProgress(
-          selectedFile,
-          `users/${user.uid}/profile_photo`,
-          "photo",
-        );
+        try {
+          finalPhotoURL = await uploadWithProgress(
+            selectedFile,
+            `users/${user.uid}/profile_photo`,
+            "photo",
+          );
+        } catch (storageErr) {
+          console.warn("Profile photo storage upload failed, falling back to data URL:", storageErr);
+          finalPhotoURL = await fileToDataURL(selectedFile);
+        }
       }
 
       if (selectedFrontFile) {
-        finalFrontUrl = await uploadWithProgress(
-          selectedFrontFile,
-          `users/${user.uid}/documents/front_id`,
-          "front",
-        );
+        try {
+          finalFrontUrl = await uploadWithProgress(
+            selectedFrontFile,
+            `users/${user.uid}/documents/front_id`,
+            "front",
+          );
+        } catch (storageErr) {
+          console.warn("Front ID storage upload failed, falling back to data URL:", storageErr);
+          finalFrontUrl = await fileToDataURL(selectedFrontFile);
+        }
       }
 
       if (selectedBackFile) {
-        finalBackUrl = await uploadWithProgress(
-          selectedBackFile,
-          `users/${user.uid}/documents/back_id`,
-          "back",
-        );
+        try {
+          finalBackUrl = await uploadWithProgress(
+            selectedBackFile,
+            `users/${user.uid}/documents/back_id`,
+            "back",
+          );
+        } catch (storageErr) {
+          console.warn("Back ID storage upload failed, falling back to data URL:", storageErr);
+          finalBackUrl = await fileToDataURL(selectedBackFile);
+        }
       }
 
       let currentKycStatus = profileData.kycStatus;
@@ -17095,6 +17302,71 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
     onConfirm: () => {},
     type: "info",
   });
+  const [previewExam, setPreviewExam] = useState<any | null>(null);
+
+  const handleDownload = async (url: string | undefined, examName: string) => {
+    if (!url) return;
+
+    try {
+      if (url.startsWith("data:")) {
+        const link = document.createElement("a");
+        link.href = url;
+        const mimeMatch = url.match(/^data:([^;]+);/);
+        let ext = "pdf";
+        if (mimeMatch) {
+          const mime = mimeMatch[1];
+          if (mime.includes("jpeg") || mime.includes("jpg")) ext = "jpg";
+          else if (mime.includes("png")) ext = "png";
+          else if (mime.includes("gif")) ext = "gif";
+          else if (mime.includes("webp")) ext = "webp";
+        }
+        link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        addToast("Download iniciado com sucesso.", "success");
+        return;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Response status " + response.status);
+      const blob = await response.blob();
+      
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      
+      let ext = "pdf";
+      const contentType = response.headers.get("content-type");
+      if (contentType) {
+        if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = "jpg";
+        else if (contentType.includes("png")) ext = "png";
+        else if (contentType.includes("gif")) ext = "gif";
+        else if (contentType.includes("webp")) ext = "webp";
+      } else {
+        const cleanUrl = url.split("?")[0];
+        const match = cleanUrl.match(/\.([a-zA-Z0-9]+)$/);
+        if (match) ext = match[1];
+      }
+      
+      link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      addToast("Download iniciado com sucesso.", "success");
+    } catch (error) {
+      console.warn("Failed to download via blob fetch, falling back to new tab:", error);
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.download = `${examName}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
 
   useEffect(() => {
     const unsubscribeExams = onSnapshot(
@@ -17264,11 +17536,11 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
         });
       }
 
-      await updateDoc(doc(db, "user_exams", userExamId), {
+      await setDoc(doc(db, "user_exams", userExamId), {
         resultUrl,
         status: "ready",
         updatedAt: Timestamp.now(),
-      });
+      }, { merge: true });
 
       await logAdminAction(
         "UPLOAD_EXAM_RESULT",
@@ -17342,7 +17614,7 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
         updatedAt: Timestamp.now(),
       };
 
-      await updateDoc(doc(db, "user_exams", editingExam.id), updatedData);
+      await setDoc(doc(db, "user_exams", editingExam.id), updatedData, { merge: true });
 
       await logAdminAction(
         "UPDATE_USER_EXAM",
@@ -17384,7 +17656,7 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
         status: newStatus,
         updatedAt: Timestamp.now(),
       };
-      await updateDoc(doc(db, "user_exams", id), newData);
+      await setDoc(doc(db, "user_exams", id), newData, { merge: true });
 
       await logAdminAction(
         "UPDATE_USER_EXAM_STATUS",
@@ -17856,8 +18128,8 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
                       </div>
                       {exam.resultUrl && (
                         <button
-                          onClick={() => window.open(exam.resultUrl, "_blank")}
-                          className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-lg transition-colors"
+                          onClick={() => setPreviewExam(exam)}
+                          className="p-2 text-vitta-green hover:bg-vitta-green-bg rounded-lg transition-colors cursor-pointer"
                           title="Ver Resultado"
                         >
                           <Eye size={18} />
@@ -18157,6 +18429,95 @@ const UserExamsManagementView = ({ user, userData }: { user: any; userData?: any
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
         type={confirmModal.type}
       />
+
+      {previewExam && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-vitta-surface max-w-4xl w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6 animate-fade-in"
+          >
+            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-vitta-green-bg text-vitta-green rounded-xl">
+                  <FileText size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-vitta-text-primary">
+                    Visualizar Resultado: {previewExam.name}
+                  </h3>
+                  <p className="text-xs text-vitta-text-secondary mt-0.5">
+                    {previewExam.lab || "Laboratório ViTTA"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewExam(null)}
+                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center justify-center bg-vitta-surface-2 rounded-xl p-4 border border-vitta-border overflow-hidden min-h-[400px] max-h-[70vh]">
+              {previewExam.resultUrl ? (
+                previewExam.resultUrl.startsWith("data:application/pdf") || previewExam.resultUrl.includes(".pdf") ? (
+                  <iframe
+                    src={previewExam.resultUrl}
+                    title="Visualizador de PDF"
+                    className="w-full h-[55vh] rounded-lg border border-vitta-border"
+                  />
+                ) : previewExam.resultUrl.startsWith("data:image") || 
+                  previewExam.resultUrl.includes(".png") || 
+                  previewExam.resultUrl.includes(".jpg") || 
+                  previewExam.resultUrl.includes(".jpeg") || 
+                  previewExam.resultUrl.includes(".gif") || 
+                  previewExam.resultUrl.includes(".webp") ? (
+                  <img
+                    src={previewExam.resultUrl}
+                    alt={`Laudo de ${previewExam.name}`}
+                    className="max-w-full max-h-[55vh] object-contain rounded-lg shadow-sm"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="text-center p-6 space-y-4">
+                    <p className="text-vitta-text-secondary">
+                      Não é possível visualizar este tipo de arquivo diretamente no navegador.
+                    </p>
+                    <button
+                      onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
+                      className="px-6 py-2.5 bg-vitta-accent text-white rounded-xl font-bold flex items-center gap-2 mx-auto cursor-pointer"
+                    >
+                      <Download size={18} />
+                      Baixar Arquivo
+                    </button>
+                  </div>
+                )
+              ) : (
+                <p className="text-vitta-text-muted">Nenhum arquivo anexado a este exame.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setPreviewExam(null)}
+                className="px-5 py-2.5 bg-vitta-surface-2 hover:bg-vitta-surface-3 text-vitta-text-primary rounded-xl font-bold transition-all border border-vitta-border cursor-pointer text-sm"
+              >
+                Fechar
+              </button>
+              {previewExam.resultUrl && (
+                <button
+                  onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
+                  className="px-5 py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex items-center gap-2 cursor-pointer text-sm"
+                >
+                  <Download size={16} />
+                  Baixar Arquivo
+                </button>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

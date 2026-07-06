@@ -31,4 +31,6 @@ if (typeof window !== 'undefined' && window.self === window.top) {
 }
 
 export const storage = getStorage(app);
+storage.maxUploadRetryTime = 3000;
+storage.maxOperationRetryTime = 3000;
 export const googleProvider = new GoogleAuthProvider();
