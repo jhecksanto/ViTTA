@@ -5606,7 +5606,9 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
   const { addToast } = useToast();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.uid) return;
+
+    setLoading(true);
 
     const unsubscribeWallet = onSnapshot(
       doc(db, "users", user.uid),
@@ -5660,7 +5662,7 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
       unsubscribeTransactions();
       unsubscribeAll();
     };
-  }, [user]);
+  }, [user?.uid]);
 
   const handleRequestPayout = async () => {
     const numAmount = parseFloat(payoutAmount.replace(",", "."));
@@ -8467,7 +8469,22 @@ const ProfessionalDashboardView = ({
 
       {subTab === "settings" && <ProfessionalAgendaSettingsView professional={professionalProfile} />}
 
-      {subTab === "finance" && <ProfessionalFinanceView user={user} setActiveTab={setActiveTab} />}
+      {subTab === "finance" && (
+        overrideProfessionalId && !professionalProfile ? (
+          <div className="p-8 flex justify-center">
+            <div className="w-8 h-8 border-4 border-vitta-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : (
+          <ProfessionalFinanceView
+            user={
+              overrideProfessionalId
+                ? { ...user, uid: professionalProfile?.userId || "no-linked-user" }
+                : user
+            }
+            setActiveTab={setActiveTab}
+          />
+        )
+      )}
 
       {subTab === "users" && <UsersView isAdmin={false} />}
 
