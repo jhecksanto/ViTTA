@@ -922,71 +922,6 @@ const BookingModal = ({
         await updateDoc(doc(db, "users", user.uid), {
           walletBalance: increment(-priceNumeric),
         });
-
-        // Log client debit transaction
-        await addDoc(collection(db, "transactions"), {
-          userId: user.uid,
-          type: "debit",
-          amount: priceNumeric,
-          title: `Pagamento Consulta - ${professional.name}`,
-          description: `Consulta agendada para ${selectedDate} às ${selectedTime}`,
-          category: "Consulta",
-          date: new Date().toISOString(),
-        });
-
-        // Credit to professional (after subtracting platform fee)
-        if (professional.userId) {
-          const profFeeRate = professional.feeRate !== undefined ? professional.feeRate : 0;
-          const feeAmount = (priceNumeric * profFeeRate) / 100;
-          const netAmount = priceNumeric - feeAmount;
-
-          await updateDoc(doc(db, "users", professional.userId), {
-            walletBalance: increment(netAmount),
-          });
-
-          // Log professional credit transaction
-          await addDoc(collection(db, "transactions"), {
-            userId: professional.userId,
-            type: "credit",
-            amount: netAmount,
-            title: `Recebimento - Consulta de ${userData?.name || user.displayName || user.email}`,
-            description: `Pago via Carteira Digital (Desconto de Taxa Fee de ${profFeeRate}%)`,
-            category: "Rendimento",
-            date: new Date().toISOString(),
-            feeRatio: profFeeRate,
-            feeCharged: feeAmount,
-          });
-        }
-      } else {
-        // Paid in Cash Presencial (creates informational transactions for ledger calculation without virtual balance subtraction)
-        if (professional.userId) {
-          const profFeeRate = professional.feeRate !== undefined ? professional.feeRate : 0;
-          const feeAmount = (priceNumeric * profFeeRate) / 100;
-          const netAmount = priceNumeric - feeAmount;
-
-          await addDoc(collection(db, "transactions"), {
-            userId: professional.userId,
-            type: "credit",
-            amount: netAmount,
-            title: `Recebimento Presencial (Pagamento Presencial) - Consulta de ${userData?.name || user.displayName || user.email}`,
-            description: `Pago presencialmente (Desconto de Taxa Fee de ${profFeeRate}%)`,
-            category: "Rendimento",
-            date: new Date().toISOString(),
-            isCash: true,
-            feeRatio: profFeeRate,
-            feeCharged: feeAmount,
-          });
-        }
-        await addDoc(collection(db, "transactions"), {
-          userId: user.uid,
-          type: "debit",
-          amount: priceNumeric,
-          title: `Consulta em Pagamento Presencial - ${professional.name}`,
-          description: `Pago presencialmente no consultório`,
-          category: "Consulta",
-          date: new Date().toISOString(),
-          isCash: true,
-        });
       }
 
       if (modality === "telemedicine") {
@@ -6593,6 +6528,8 @@ const ProfessionalDashboardView = ({
   };
 
   useEffect(() => {
+    setProfessionalProfile(null);
+    setLoading(true);
     if (overrideProfessionalId) {
       const unsubPro = onSnapshot(
         doc(db, "professionals", overrideProfessionalId),
@@ -6670,27 +6607,168 @@ const ProfessionalDashboardView = ({
     return () => unsubApt();
   }, [professionalProfile]);
 
+  const handleCancelAppointment = async (
+    apt: any,
+    customTitle: string = "Consulta Cancelada",
+    customMsg?: string,
+    toastMsg: string = "Agendamento cancelado com sucesso."
+  ) => {
+    try {
+      await updateDoc(doc(db, "appointments", apt.id), {
+        status: "cancelled",
+        updatedAt: Timestamp.now(),
+      });
+
+      // Refund patient's wallet if it was paid with wallet and NOT yet finalized
+      if (apt.paymentMethod === "wallet" && apt.paymentStatus === "paid" && apt.userId) {
+        const refundAmt = apt.priceNumeric || 0;
+        if (refundAmt > 0) {
+          // Refund client balance
+          await updateDoc(doc(db, "users", apt.userId), {
+            walletBalance: increment(refundAmt),
+          });
+
+          // Log client refund transaction
+          await addDoc(collection(db, "transactions"), {
+            userId: apt.userId,
+            type: "refund",
+            amount: refundAmt,
+            title: `Reembolso - ${customTitle} - ${professionalProfile?.name || apt.professionalName}`,
+            description: `Reembolso de consulta cancelada/rejeitada para o dia ${formatDateForDisplay(apt.date)} às ${apt.time}`,
+            category: "Reembolso",
+            date: new Date().toISOString(),
+            appointmentId: apt.id,
+          });
+        }
+      }
+
+      await addDoc(collection(db, "notifications"), {
+        userId: apt.userId,
+        title: customTitle,
+        message: customMsg || `Sua consulta com ${professionalProfile?.name || apt.professionalName} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
+        type: "appointment",
+        read: false,
+        createdAt: Timestamp.now(),
+      });
+
+      addToast(toastMsg, "info");
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao cancelar agendamento.", "error");
+    }
+  };
+
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
+      const apt = appointments.find((a) => a.id === id);
+      if (!apt) {
+        addToast("Agendamento não encontrado.", "error");
+        return;
+      }
+
+      if (newStatus === "completed" && apt.status === "completed") {
+        addToast("Esta consulta já foi finalizada.", "info");
+        return;
+      }
+
       await updateDoc(doc(db, "appointments", id), {
         status: newStatus,
         updatedAt: Timestamp.now(),
       });
+
       addToast(
         `Agendamento atualizado para: ${newStatus === "in_progress" ? "Em Atendimento" : "Finalizado"}`,
         "success",
       );
 
-      const apt = appointments.find((a) => a.id === id);
-      if (apt && apt.userId) {
+      if (apt.userId) {
         await addDoc(collection(db, "notifications"), {
           userId: apt.userId,
           title: "Atualização de Consulta",
-          message: `Sua consulta com ${professionalProfile.name} está ${newStatus === "in_progress" ? "EM ATENDIMENTO" : "FINALIZADA"}.`,
+          message: `Sua consulta com ${professionalProfile?.name || apt.professionalName} está ${newStatus === "in_progress" ? "EM ATENDIMENTO" : "FINALIZADA"}.`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now(),
         });
+      }
+
+      // If status is completed, process the transaction (only now it will appear in the financial history)
+      if (newStatus === "completed") {
+        const profUserId = professionalProfile?.userId || apt.professionalUserId;
+        const profFeeRate = professionalProfile?.feeRate !== undefined ? professionalProfile.feeRate : 0;
+        const priceNumeric = apt.priceNumeric || 0;
+        const feeAmount = (priceNumeric * profFeeRate) / 100;
+        const netAmount = priceNumeric - feeAmount;
+
+        if (apt.paymentMethod === "wallet") {
+          // 1. Credit the professional's wallet balance
+          if (profUserId) {
+            await updateDoc(doc(db, "users", profUserId), {
+              walletBalance: increment(netAmount),
+            });
+
+            // 2. Log credit transaction for the professional
+            await addDoc(collection(db, "transactions"), {
+              userId: profUserId,
+              type: "credit",
+              amount: netAmount,
+              title: `Recebimento - Consulta de ${apt.patientName}`,
+              description: `Pago via Carteira Digital (Desconto de Taxa Fee de ${profFeeRate}%)`,
+              category: "Rendimento",
+              date: new Date().toISOString(),
+              feeRatio: profFeeRate,
+              feeCharged: feeAmount,
+              appointmentId: id,
+            });
+          }
+
+          // 3. Log debit transaction for the patient
+          if (apt.userId) {
+            await addDoc(collection(db, "transactions"), {
+              userId: apt.userId,
+              type: "debit",
+              amount: priceNumeric,
+              title: `Pagamento Consulta - ${professionalProfile?.name || apt.professionalName}`,
+              description: `Consulta realizada em ${formatDateForDisplay(apt.date)} às ${apt.time}`,
+              category: "Consulta",
+              date: new Date().toISOString(),
+              appointmentId: id,
+            });
+          }
+        } else {
+          // Cash/Presencial payment
+          if (profUserId) {
+            // 1. Log credit transaction for the professional (marked as isCash)
+            await addDoc(collection(db, "transactions"), {
+              userId: profUserId,
+              type: "credit",
+              amount: netAmount,
+              title: `Recebimento Presencial (Pagamento Presencial) - Consulta de ${apt.patientName}`,
+              description: `Pago presencialmente (Desconto de Taxa Fee de ${profFeeRate}%)`,
+              category: "Rendimento",
+              date: new Date().toISOString(),
+              isCash: true,
+              feeRatio: profFeeRate,
+              feeCharged: feeAmount,
+              appointmentId: id,
+            });
+          }
+
+          // 2. Log debit transaction for the patient (marked as isCash)
+          if (apt.userId) {
+            await addDoc(collection(db, "transactions"), {
+              userId: apt.userId,
+              type: "debit",
+              amount: priceNumeric,
+              title: `Consulta em Pagamento Presencial - ${professionalProfile?.name || apt.professionalName}`,
+              description: `Pago presencialmente no consultório`,
+              category: "Consulta",
+              date: new Date().toISOString(),
+              isCash: true,
+              appointmentId: id,
+            });
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -7531,32 +7609,12 @@ const ProfessionalDashboardView = ({
                           Remarcar
                         </button>
                         <button
-                          onClick={async () => {
-                            try {
-                              await updateDoc(doc(db, "appointments", apt.id), {
-                                status: "cancelled",
-                                updatedAt: Timestamp.now(),
-                              });
-                              await addDoc(collection(db, "notifications"), {
-                                userId: apt.userId,
-                                title: "Consulta Rejeitada",
-                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi rejeitada pelo profissional.`,
-                                type: "appointment",
-                                read: false,
-                                createdAt: Timestamp.now(),
-                              });
-                              addToast(
-                                "Agendamento rejeitado com sucesso.",
-                                "info",
-                              );
-                            } catch (err) {
-                              console.error(err);
-                              addToast(
-                                "Erro ao atualizar agendamento.",
-                                "error",
-                              );
-                            }
-                          }}
+                          onClick={() => handleCancelAppointment(
+                            apt,
+                            "Consulta Rejeitada",
+                            `Sua solicitação de consulta com ${professionalProfile?.name || apt.professionalName} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi rejeitada pelo profissional.`,
+                            "Agendamento rejeitado com sucesso."
+                          )}
                           className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                           title="Rejeitar Solicitação"
                         >
@@ -7564,32 +7622,12 @@ const ProfessionalDashboardView = ({
                           Rejeitar
                         </button>
                         <button
-                          onClick={async () => {
-                            try {
-                              await updateDoc(doc(db, "appointments", apt.id), {
-                                status: "cancelled",
-                                updatedAt: Timestamp.now(),
-                              });
-                              await addDoc(collection(db, "notifications"), {
-                                userId: apt.userId,
-                                title: "Consulta Cancelada",
-                                message: `Sua solicitação de consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
-                                type: "appointment",
-                                read: false,
-                                createdAt: Timestamp.now(),
-                              });
-                              addToast(
-                                "Agendamento cancelado com sucesso.",
-                                "info",
-                              );
-                            } catch (err) {
-                              console.error(err);
-                              addToast(
-                                "Erro ao cancelar agendamento.",
-                                "error",
-                              );
-                            }
-                          }}
+                          onClick={() => handleCancelAppointment(
+                            apt,
+                            "Consulta Cancelada",
+                            `Sua solicitação de consulta com ${professionalProfile?.name || apt.professionalName} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
+                            "Agendamento cancelado com sucesso."
+                          )}
                           className="px-4 py-2 border border-vitta-danger/30 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                           title="Cancelar Solicitação"
                         >
@@ -7750,38 +7788,12 @@ const ProfessionalDashboardView = ({
                                 Remarcar
                               </button>
                               <button
-                                onClick={async () => {
-                                  try {
-                                    await updateDoc(
-                                      doc(db, "appointments", apt.id),
-                                      {
-                                        status: "cancelled",
-                                        updatedAt: Timestamp.now(),
-                                      },
-                                    );
-                                    await addDoc(
-                                      collection(db, "notifications"),
-                                      {
-                                        userId: apt.userId,
-                                        title: "Consulta Cancelada",
-                                        message: `Sua consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
-                                        type: "appointment",
-                                        read: false,
-                                        createdAt: Timestamp.now(),
-                                      },
-                                    );
-                                    addToast(
-                                      "Agendamento cancelado com sucesso.",
-                                      "info",
-                                    );
-                                  } catch (err) {
-                                    console.error(err);
-                                    addToast(
-                                      "Erro ao cancelar agendamento.",
-                                      "error",
-                                    );
-                                  }
-                                }}
+                                onClick={() => handleCancelAppointment(
+                                  apt,
+                                  "Consulta Cancelada",
+                                  `Sua consulta com ${professionalProfile?.name || apt.professionalName} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
+                                  "Agendamento cancelado com sucesso."
+                                )}
                                 className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                                 title="Cancelar Consulta"
                               >
@@ -7916,32 +7928,12 @@ const ProfessionalDashboardView = ({
                         </button>
 
                         <button
-                          onClick={async () => {
-                            try {
-                              await updateDoc(doc(db, "appointments", apt.id), {
-                                status: "cancelled",
-                                updatedAt: Timestamp.now(),
-                              });
-                              await addDoc(collection(db, "notifications"), {
-                                userId: apt.userId,
-                                title: "Consulta Cancelada",
-                                message: `Sua consulta com ${professionalProfile.name} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
-                                type: "appointment",
-                                read: false,
-                                createdAt: Timestamp.now(),
-                              });
-                              addToast(
-                                "Agendamento cancelado com sucesso.",
-                                "info",
-                              );
-                            } catch (err) {
-                              console.error(err);
-                              addToast(
-                                "Erro ao cancelar agendamento.",
-                                "error",
-                              );
-                            }
-                          }}
+                          onClick={() => handleCancelAppointment(
+                            apt,
+                            "Consulta Cancelada",
+                            `Sua consulta com ${professionalProfile?.name || apt.professionalName} para o dia ${formatDateForDisplay(apt.date)} às ${apt.time} foi cancelada pelo profissional.`,
+                            "Agendamento cancelado com sucesso."
+                          )}
                           className="px-4 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                           title="Cancelar Consulta"
                         >
@@ -25201,12 +25193,14 @@ const AppointmentsView = ({
   setReviewingAppointment,
   setActiveTelemedicineApt,
   googleToken,
+  isAdmin,
 }: {
   user: any;
   setActiveTab: (tab: string) => void;
   setReviewingAppointment: (apt: any) => void;
   setActiveTelemedicineApt: (apt: any) => void;
   googleToken: string | null;
+  isAdmin?: boolean;
 }) => {
   const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -25476,14 +25470,16 @@ const AppointmentsView = ({
                     </button>
                   )}
                   <button
+                    disabled={!isAdmin && apt.status === "completed"}
                     onClick={() => setEditingApt(apt)}
-                    className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all"
+                    className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-vitta-text-muted disabled:hover:bg-transparent"
                   >
                     <Edit size={20} />
                   </button>
                   <button
+                    disabled={!isAdmin && apt.status === "completed"}
                     onClick={() => handleCancelApt(apt)}
-                    className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all"
+                    className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-vitta-text-muted disabled:hover:bg-transparent"
                   >
                     <Trash2 size={20} />
                   </button>
@@ -29911,6 +29907,7 @@ export default function App() {
             setReviewingAppointment={setReviewingAppointment}
             setActiveTelemedicineApt={setActiveTelemedicineApt}
             googleToken={googleToken}
+            isAdmin={isAdmin}
           />
         );
       case "plans":
