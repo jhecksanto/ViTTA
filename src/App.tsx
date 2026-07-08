@@ -5594,9 +5594,10 @@ const ProfessionalManualBookingModal = ({
   );
 };
 
-const ProfessionalFinanceView = ({ user }: { user: any }) => {
+const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveTab?: (tab: string) => void }) => {
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
@@ -5638,9 +5639,26 @@ const ProfessionalFinanceView = ({ user }: { user: any }) => {
       },
     );
 
+    const qAll = query(
+      collection(db, "transactions"),
+      where("userId", "==", user.uid)
+    );
+    const unsubscribeAll = onSnapshot(
+      qAll,
+      (snapshot) => {
+        const allDocs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const cashTxs = allDocs.filter((t: any) => t.isCash === true && (t.feeCharged !== undefined || t.feeCharged > 0));
+        setCashTransactions(cashTxs);
+      },
+      (error) => {
+        console.error("Error fetching cash transactions for invoice summary:", error);
+      }
+    );
+
     return () => {
       unsubscribeWallet();
       unsubscribeTransactions();
+      unsubscribeAll();
     };
   }, [user]);
 
@@ -5690,95 +5708,170 @@ const ProfessionalFinanceView = ({ user }: { user: any }) => {
     }
   };
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {isPayoutModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-in fade-in duration-300">
-          <div className="bg-vitta-surface w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-vitta-border animate-in zoom-in-95">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-vitta-text-primary">
-                Solicitar Saque
-              </h3>
-              <button
-                onClick={() => setIsPayoutModalOpen(false)}
-                className="text-vitta-text-muted hover:bg-vitta-surface-2 p-2 rounded-xl"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      const totalUnpaidFees = cashTransactions
+        .filter((t) => t.invoicePaid !== true)
+        .reduce((sum, t) => sum + (t.feeCharged || 0), 0);
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                  Valor (R$)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={payoutAmount}
-                  onChange={(e) => setPayoutAmount(e.target.value)}
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
-                />
-                <p className="text-xs text-vitta-text-secondary mt-1 ml-1">
-                  Disponível: R$ {walletBalance.toFixed(2)}
-                </p>
+      const totalPaidFees = cashTransactions
+        .filter((t) => t.invoicePaid === true)
+        .reduce((sum, t) => sum + (t.feeCharged || 0), 0);
+
+      return (
+        <div className="space-y-6 animate-in fade-in duration-500">
+          {isPayoutModalOpen && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-in fade-in duration-300">
+              <div className="bg-vitta-surface w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-vitta-border animate-in zoom-in-95">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-vitta-text-primary">
+                    Solicitar Saque
+                  </h3>
+                  <button
+                    onClick={() => setIsPayoutModalOpen(false)}
+                    className="text-vitta-text-muted hover:bg-vitta-surface-2 p-2 rounded-xl"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Valor (R$)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={payoutAmount}
+                      onChange={(e) => setPayoutAmount(e.target.value)}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+                    />
+                    <p className="text-xs text-vitta-text-secondary mt-1 ml-1">
+                      Disponível: R$ {walletBalance.toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
+                      Chave PIX
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="CPF, E-mail, Telefone..."
+                      value={pixKey}
+                      onChange={(e) => setPixKey(e.target.value)}
+                      className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={handleRequestPayout}
+                      disabled={isProcessing}
+                      className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
+                    >
+                      {isProcessing ? "Processando..." : "Confirmar Saque"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left Column: Wallet and Invoice Cards */}
+            <div className="md:col-span-1 space-y-6 flex flex-col">
+              {/* Card 1: Wallet Balance */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-accent/80 p-8 rounded-3xl shadow-xl shadow-vitta-accent/20 text-white flex-1 min-h-[180px]">
+                <div className="absolute top-0 right-0 p-6 opacity-20">
+                  <Wallet size={80} />
+                </div>
+                <div className="relative z-10 space-y-6 flex flex-col justify-between h-full">
+                  <div>
+                    <p className="text-white/80 text-sm font-medium mb-1">
+                      Saldo em Conta
+                    </p>
+                    <h2 className="text-4xl font-bold tracking-tight">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(walletBalance)}
+                    </h2>
+                  </div>
+
+                  <button
+                    onClick={() => setIsPayoutModalOpen(true)}
+                    className="w-full py-3 mt-4 bg-white text-vitta-accent rounded-xl text-sm font-bold shadow-sm hover:bg-white/90 transition-all cursor-pointer"
+                  >
+                    Solicitar Saque
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
-                  Chave PIX
-                </label>
-                <input
-                  type="text"
-                  placeholder="CPF, E-mail, Telefone..."
-                  value={pixKey}
-                  onChange={(e) => setPixKey(e.target.value)}
-                  className="w-full px-4 py-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-1 focus:ring-vitta-accent transition-all text-vitta-text-primary"
-                />
-              </div>
+              {/* Card 2: Invoice Summary (Resumo de Fatura de Coparticipação) */}
+              <div className="bg-vitta-surface border border-vitta-border p-6 rounded-3xl shadow-sm space-y-5">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-vitta-text-primary uppercase tracking-wider">
+                        Resumo da Fatura
+                      </h4>
+                      <p className="text-[10px] text-vitta-text-muted mt-0.5">
+                        Consultas presenciais no consultório
+                      </p>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${
+                        totalUnpaidFees > 0
+                          ? "bg-vitta-amber/10 text-vitta-amber border border-vitta-amber/20"
+                          : "bg-vitta-green/10 text-vitta-green border border-vitta-green/20"
+                      }`}
+                    >
+                      {totalUnpaidFees > 0 ? "Fatura em Aberto" : "Em Dia"}
+                    </span>
+                  </div>
 
-              <div className="pt-2">
-                <button
-                  onClick={handleRequestPayout}
-                  disabled={isProcessing}
-                  className="w-full py-3 bg-vitta-accent text-white rounded-xl font-bold shadow-lg shadow-vitta-accent/20 hover:bg-vitta-accent/90 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
-                >
-                  {isProcessing ? "Processando..." : "Confirmar Saque"}
-                </button>
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-vitta-border/50">
+                    <div>
+                      <span className="text-[10px] text-vitta-text-muted uppercase font-bold tracking-widest block">
+                        Fatura Aberta
+                      </span>
+                      <span className="text-lg font-bold text-vitta-text-primary">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(totalUnpaidFees)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-vitta-text-muted uppercase font-bold tracking-widest block">
+                        Taxas Pagas
+                      </span>
+                      <span className="text-sm font-bold text-vitta-text-secondary">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(totalPaidFees)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-vitta-text-secondary leading-relaxed">
+                    Atendimentos agendados como <span className="font-semibold text-vitta-text-primary">"Pago presencialmente no consultório"</span> geram faturas com o valor da Taxa Fee da plataforma sobre cada movimentação.
+                  </p>
+                </div>
+
+                {setActiveTab && (
+                  <button
+                    onClick={() => setActiveTab("wallets")}
+                    className="w-full py-2.5 bg-vitta-accent/10 hover:bg-vitta-accent/20 text-vitta-accent rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>💳 Ver Detalhes na Carteira</span>
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="relative overflow-hidden bg-gradient-to-br from-vitta-accent to-vitta-accent/80 p-8 rounded-3xl shadow-xl shadow-vitta-accent/20 text-white md:col-span-1">
-          <div className="absolute top-0 right-0 p-6 opacity-20">
-            <Wallet size={80} />
-          </div>
-          <div className="relative z-10 space-y-6">
-            <div>
-              <p className="text-white/80 text-sm font-medium mb-1">
-                Saldo em Conta
-              </p>
-              <h2 className="text-4xl font-bold tracking-tight">
-                {new Intl.NumberFormat("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                }).format(walletBalance)}
-              </h2>
-            </div>
-
-            <button
-              onClick={() => setIsPayoutModalOpen(true)}
-              className="w-full py-3 bg-white text-vitta-accent rounded-xl text-sm font-bold shadow-sm hover:bg-white/90 transition-all"
-            >
-              Solicitar Saque
-            </button>
-          </div>
-        </div>
-
-        <div className="md:col-span-2 bg-vitta-surface border border-vitta-border rounded-3xl shadow-sm p-6">
+            <div className="md:col-span-2 bg-vitta-surface border border-vitta-border rounded-3xl shadow-sm p-6">
           <h3 className="text-lg font-bold text-vitta-text-primary mb-6 flex items-center gap-2">
             <ArrowRightLeft className="text-vitta-text-muted" size={20} />
             Histórico Financeiro
@@ -6207,10 +6300,12 @@ const ProfessionalDashboardView = ({
   user,
   setActiveTelemedicineApt,
   overrideProfessionalId,
+  setActiveTab,
 }: {
   user: any;
   setActiveTelemedicineApt: (apt: any) => void;
   overrideProfessionalId?: string;
+  setActiveTab?: (tab: string) => void;
 }) => {
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -8372,7 +8467,7 @@ const ProfessionalDashboardView = ({
 
       {subTab === "settings" && <ProfessionalAgendaSettingsView professional={professionalProfile} />}
 
-      {subTab === "finance" && <ProfessionalFinanceView user={user} />}
+      {subTab === "finance" && <ProfessionalFinanceView user={user} setActiveTab={setActiveTab} />}
 
       {subTab === "users" && <UsersView isAdmin={false} />}
 
@@ -25926,6 +26021,8 @@ const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
   const [balance, setBalance] = useState(0);
   const [vittaCoins, setVittaCoins] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<any[]>([]);
+  const [isPayingInvoice, setIsPayingInvoice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -26021,9 +26118,31 @@ const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
       },
     );
 
+    // Fetch cash transactions for invoice details
+    const qCash = query(
+      collection(db, "transactions"),
+      where("userId", "==", user.uid)
+    );
+
+    const unsubscribeCash = onSnapshot(
+      qCash,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const filtered = data.filter((tx: any) => tx.isCash === true && tx.feeCharged !== undefined);
+        setCashTransactions(filtered);
+      },
+      (error) => {
+        console.error("Error fetching cash transactions for wallet invoice details:", error);
+      }
+    );
+
     return () => {
       unsubscribeWallet();
       unsubscribeTransactions();
+      unsubscribeCash();
     };
   }, [user]);
 
@@ -26086,6 +26205,73 @@ const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
       addToast("Erro ao resgatar recompensa.", "error");
     } finally {
       setIsRedeeming(null);
+    }
+  };
+
+  const handlePayInvoice = async () => {
+    const unpaidTxs = cashTransactions.filter((tx) => tx.invoicePaid !== true);
+    if (unpaidTxs.length === 0) {
+      addToast("Nenhuma fatura em aberto para pagamento.", "info");
+      return;
+    }
+
+    const totalUnpaidFees = unpaidTxs.reduce((sum, tx) => sum + (tx.feeCharged || 0), 0);
+
+    if (balance < totalUnpaidFees) {
+      addToast(
+        `Saldo insuficiente para pagar a fatura de ${new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        }).format(totalUnpaidFees)}. Por favor, adicione fundos à sua carteira.`,
+        "error"
+      );
+      return;
+    }
+
+    setIsPayingInvoice(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      
+      // 1. Update wallet balance
+      await updateDoc(userRef, {
+        walletBalance: increment(-totalUnpaidFees),
+      });
+
+      // 2. Mark each cash transaction as invoicePaid: true
+      const batchPromises = unpaidTxs.map((tx) => {
+        const txRef = doc(db, "transactions", tx.id);
+        return updateDoc(txRef, { invoicePaid: true });
+      });
+      await Promise.all(batchPromises);
+
+      // 3. Create a debit transaction for the invoice payment
+      const paymentTxRef = doc(collection(db, "transactions"));
+      await setDoc(paymentTxRef, {
+        userId: user.uid,
+        type: "debit",
+        amount: totalUnpaidFees,
+        title: "Pagamento de Fatura de Coparticipação",
+        description: "Taxas de consultas pagas presencialmente no consultório quitadas",
+        date: new Date().toISOString(),
+        category: "Faturamento",
+      });
+
+      // 4. Create a system notification
+      await addDoc(collection(db, "notifications"), {
+        userId: user.uid,
+        title: "Fatura de Coparticipação Paga",
+        message: `Sua fatura no valor de R$ ${totalUnpaidFees.toFixed(2)} foi paga com sucesso utilizando o saldo da sua carteira.`,
+        type: "system",
+        read: false,
+        createdAt: Timestamp.now(),
+      });
+
+      addToast("Fatura de coparticipação paga com sucesso!", "success");
+    } catch (err) {
+      console.error("Error paying invoice:", err);
+      addToast("Erro ao processar o pagamento da fatura.", "error");
+    } finally {
+      setIsPayingInvoice(false);
     }
   };
 
@@ -26175,6 +26361,142 @@ const WalletsView = ({ user, userData }: { user: any; userData: any }) => {
               </div>
             </div>
           </div>
+
+          {/* Card 3: Detalhes Completos da Fatura de Coparticipação (Médicos/Profissionais) */}
+          {userData?.role === "professional" && (
+            <div className="bg-vitta-surface border border-vitta-border rounded-[2rem] p-6 shadow-sm space-y-5">
+              <div className="space-y-4">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-vitta-accent/10 text-vitta-accent rounded-xl">
+                      <Receipt size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-vitta-text-primary">
+                        Fatura de Coparticipação
+                      </h4>
+                      <p className="text-[10px] text-vitta-text-muted mt-0.5">
+                        Consultas presenciais (Taxa Fee)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Balance breakdown */}
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-vitta-border/50">
+                  <div>
+                    <span className="text-[9px] text-vitta-text-muted uppercase font-bold tracking-widest block">
+                      Aberto (A Pagar)
+                    </span>
+                    <span className="text-base font-extrabold text-vitta-amber">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(
+                        cashTransactions
+                          .filter((t) => t.invoicePaid !== true)
+                          .reduce((sum, t) => sum + (t.feeCharged || 0), 0)
+                      )}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-vitta-text-muted uppercase font-bold tracking-widest block">
+                      Quitado (Pago)
+                    </span>
+                    <span className="text-base font-extrabold text-vitta-green">
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(
+                        cashTransactions
+                          .filter((t) => t.invoicePaid === true)
+                          .reduce((sum, t) => sum + (t.feeCharged || 0), 0)
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Settle Invoice Button */}
+                {cashTransactions.filter((t) => t.invoicePaid !== true).length > 0 ? (
+                  <button
+                    onClick={handlePayInvoice}
+                    disabled={isPayingInvoice}
+                    className="w-full py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-vitta-accent/15 cursor-pointer disabled:opacity-50 animate-pulse"
+                  >
+                    <span>{isPayingInvoice ? "Processando..." : "💳 Pagar Fatura com Carteira"}</span>
+                  </button>
+                ) : (
+                  <div className="w-full py-2.5 bg-vitta-green/10 text-vitta-green font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-vitta-green/20">
+                    <Check size={14} />
+                    <span>Nenhuma fatura pendente</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Detailed Transactions List */}
+              <div className="space-y-3 pt-3 border-t border-vitta-border/50">
+                <h5 className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
+                  Detalhamento dos Lançamentos ({cashTransactions.length})
+                </h5>
+                <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar pr-1">
+                  {cashTransactions.length > 0 ? (
+                    cashTransactions.map((tx) => {
+                      const patientName = tx.title?.replace("Recebimento Presencial (Pagamento Presencial) - Consulta de ", "") || "Paciente";
+                      const originalPrice = tx.amount && tx.feeCharged ? (tx.amount + tx.feeCharged) : 0;
+                      return (
+                        <div
+                          key={tx.id}
+                          className="p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl space-y-1.5 flex flex-col hover:border-vitta-accent/20 transition-all text-[11px]"
+                        >
+                          <div className="flex justify-between items-start gap-1">
+                            <span className="font-semibold text-vitta-text-primary truncate" title={patientName}>
+                              👤 {patientName}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[8px] font-bold shrink-0 ${
+                                tx.invoicePaid === true
+                                  ? "bg-vitta-green/10 text-vitta-green"
+                                  : "bg-vitta-amber/10 text-vitta-amber"
+                              }`}
+                            >
+                              {tx.invoicePaid === true ? "Paga" : "Aberta"}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-vitta-text-secondary text-[10px]">
+                            <span>
+                              {tx.date
+                                ? new Date(tx.date).toLocaleDateString("pt-BR", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "-"}
+                            </span>
+                            {originalPrice > 0 && (
+                              <span>Consulta: R$ {originalPrice.toFixed(2)}</span>
+                            )}
+                          </div>
+
+                          <div className="flex justify-between items-center pt-1 border-t border-vitta-border/30 text-[10px] font-medium">
+                            <span className="text-vitta-text-muted">Taxa Fee ({tx.feeRatio || 0}%):</span>
+                            <span className="font-bold text-vitta-text-primary">
+                              R$ {tx.feeCharged ? tx.feeCharged.toFixed(2) : "0.00"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-[11px] text-vitta-text-muted text-center py-4">
+                      Nenhum atendimento presencial registrado para faturamento.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Side: Tab system for History vs Rewards */}
@@ -29552,6 +29874,7 @@ export default function App() {
             <ProfessionalDashboardView
               user={user}
               setActiveTelemedicineApt={setActiveTelemedicineApt}
+              setActiveTab={setActiveTab}
             />
           );
         return (
