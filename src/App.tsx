@@ -25470,14 +25470,14 @@ const AppointmentsView = ({
                     </button>
                   )}
                   <button
-                    disabled={!isAdmin && apt.status === "completed"}
+                    disabled={!isAdmin && (apt.status === "completed" || apt.status === "cancelled")}
                     onClick={() => setEditingApt(apt)}
                     className="p-2 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-vitta-text-muted disabled:hover:bg-transparent"
                   >
                     <Edit size={20} />
                   </button>
                   <button
-                    disabled={!isAdmin && apt.status === "completed"}
+                    disabled={!isAdmin && (apt.status === "completed" || apt.status === "cancelled")}
                     onClick={() => handleCancelApt(apt)}
                     className="p-2 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-vitta-text-muted disabled:hover:bg-transparent"
                   >
