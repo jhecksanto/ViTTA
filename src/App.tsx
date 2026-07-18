@@ -39,6 +39,7 @@ import {
   Stethoscope,
   Radio,
   MessageSquare,
+  MessageCircle,
   User,
   UserX,
   UserCheck,
@@ -28096,6 +28097,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPharmacy, setEditingPharmacy] = useState<any>(null);
+  const [columns, setColumns] = useState<1 | 2 | 3>(3);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -28115,6 +28117,8 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
     phone: "",
     onCallDate: "",
     isActive: true,
+    mapUrl: "",
+    whatsapp: "",
   });
 
   useEffect(() => {
@@ -28164,6 +28168,8 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
         phone: "",
         onCallDate: "",
         isActive: true,
+        mapUrl: "",
+        whatsapp: "",
       });
       addToast(
         `Farmácia ${editingPharmacy ? "atualizada" : "criada"} com sucesso.`,
@@ -28221,9 +28227,7 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Logic for sorting and filtering
   const sortedPharmacies = [...pharmacies].sort((a, b) => {
-    // If one is today, it comes first
     if (a.onCallDate === today) return -1;
     if (b.onCallDate === today) return 1;
     return a.onCallDate.localeCompare(b.onCallDate);
@@ -28233,9 +28237,30 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
     ? sortedPharmacies
     : sortedPharmacies.filter((p) => p.isActive && p.onCallDate >= today);
 
+  const getAddressLines = (addressStr: string) => {
+    if (!addressStr) return { line1: "", line2: "" };
+    const parts = addressStr.split(",").map((p) => p.trim());
+    if (parts.length >= 3) {
+      const line1 = parts.slice(0, parts.length - 1).join(", ");
+      const line2 = parts[parts.length - 1];
+      return { line1, line2 };
+    } else if (parts.length === 2) {
+      return { line1: parts[0], line2: parts[1] };
+    } else {
+      return { line1: addressStr, line2: "" };
+    }
+  };
+
+  const gridClass =
+    columns === 1
+      ? "grid grid-cols-1 gap-6 max-w-4xl mx-auto"
+      : columns === 2
+        ? "grid grid-cols-1 md:grid-cols-2 gap-6"
+        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6";
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-vitta-text-primary">
             Farmácias de Plantão
@@ -28244,25 +28269,64 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
             Confira as farmácias abertas hoje e nos próximos dias.
           </p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={() => {
-              setEditingPharmacy(null);
-              setFormData({
-                name: "",
-                address: "",
-                phone: "",
-                onCallDate: "",
-                isActive: true,
-              });
-              setShowAddModal(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20"
-          >
-            <Plus size={20} />
-            Nova Farmácia
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Column Selector */}
+          <div className="flex items-center bg-vitta-surface-2 p-1 rounded-xl border border-vitta-border">
+            <button
+              onClick={() => setColumns(1)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                columns === 1
+                  ? "bg-vitta-surface text-vitta-accent shadow-sm border border-vitta-border"
+                  : "text-vitta-text-muted hover:text-vitta-text-primary"
+              }`}
+            >
+              1 Coluna
+            </button>
+            <button
+              onClick={() => setColumns(2)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                columns === 2
+                  ? "bg-vitta-surface text-vitta-accent shadow-sm border border-vitta-border"
+                  : "text-vitta-text-muted hover:text-vitta-text-primary"
+              }`}
+            >
+              2 Colunas
+            </button>
+            <button
+              onClick={() => setColumns(3)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                columns === 3
+                  ? "bg-vitta-surface text-vitta-accent shadow-sm border border-vitta-border"
+                  : "text-vitta-text-muted hover:text-vitta-text-primary"
+              }`}
+            >
+              3 Colunas
+            </button>
+          </div>
+
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setEditingPharmacy(null);
+                setFormData({
+                  name: "",
+                  address: "",
+                  phone: "",
+                  onCallDate: "",
+                  isActive: true,
+                  mapUrl: "",
+                  whatsapp: "",
+                });
+                setShowAddModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-vitta-accent text-white rounded-xl font-bold hover:bg-vitta-accent/90 transition-all shadow-lg shadow-vitta-accent/20 shrink-0"
+            >
+              <Plus size={18} />
+              <span className="hidden sm:inline">Nova Farmácia</span>
+              <span className="sm:hidden">Nova</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -28270,109 +28334,186 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
           <div className="w-10 h-10 border-4 border-vitta-accent/20 border-t-vitta-accent rounded-full animate-spin" />
         </div>
       ) : displayPharmacies.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className={gridClass}>
           {displayPharmacies.map((pharmacy) => {
             const isToday = pharmacy.onCallDate === today;
+            const { line1, line2 } = getAddressLines(pharmacy.address);
+
+            const handleCallClick = () => {
+              if (pharmacy.phone) {
+                window.open(`tel:${pharmacy.phone.replace(/\D/g, "")}`);
+              } else {
+                addToast("Número de telefone não cadastrado.", "warning");
+              }
+            };
+
+            const handleWhatsappClick = () => {
+              const num = pharmacy.whatsapp || pharmacy.phone;
+              if (num) {
+                const cleanNum = num.replace(/\D/g, "");
+                const formattedNum =
+                  cleanNum.length <= 11 && !cleanNum.startsWith("55")
+                    ? `55${cleanNum}`
+                    : cleanNum;
+                window.open(`https://wa.me/${formattedNum}`, "_blank");
+              } else {
+                addToast("WhatsApp não cadastrado.", "warning");
+              }
+            };
+
+            const handleMapClick = () => {
+              if (pharmacy.mapUrl) {
+                window.open(pharmacy.mapUrl, "_blank");
+              } else {
+                window.open(
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    pharmacy.name + ", " + pharmacy.address,
+                  )}`,
+                  "_blank",
+                );
+              }
+            };
+
             return (
               <motion.div
                 key={pharmacy.id}
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`relative overflow-hidden bg-vitta-surface rounded-xl border-2 transition-all ${
-                  isToday
-                    ? "border-vitta-accent shadow-xl shadow-vitta-accent/10"
-                    : "border-vitta-border"
+                className={`relative overflow-hidden bg-vitta-surface rounded-[24px] border border-vitta-border shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
+                  isToday ? "ring-2 ring-vitta-accent/20 shadow-lg shadow-vitta-accent/5" : ""
                 }`}
               >
-                {isToday && (
-                  <div className="absolute top-0 right-0 bg-vitta-accent text-white px-4 py-1 rounded-bl-xl text-[10px] font-bold uppercase tracking-wider">
-                    Plantão de Hoje
-                  </div>
-                )}
-
-                <div className="p-6 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div className="p-3 bg-vitta-accent-bg rounded-xl text-vitta-accent">
-                      <Store size={24} />
+                <div className="p-6 space-y-4 flex-grow">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <span className="text-xs font-semibold text-vitta-accent uppercase tracking-wider block mb-1">
+                        Plantão: {formatDateForDisplay(pharmacy.onCallDate)}
+                      </span>
+                      <h3 className="text-lg font-extrabold text-vitta-text-primary tracking-tight leading-tight uppercase">
+                        {pharmacy.name}
+                      </h3>
                     </div>
-                    {isAdmin && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleActive(pharmacy)}
-                          className={`p-2 rounded-xl transition-colors ${
-                            pharmacy.isActive
-                              ? "text-vitta-green bg-vitta-green-bg"
-                              : "text-vitta-text-muted bg-vitta-surface-2"
-                          }`}
-                          title={pharmacy.isActive ? "Desativar" : "Ativar"}
-                        >
-                          {pharmacy.isActive ? (
-                            <CheckCircle size={18} />
-                          ) : (
-                            <XCircle size={18} />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingPharmacy(pharmacy);
-                            setFormData({
-                              name: pharmacy.name,
-                              address: pharmacy.address,
-                              phone: pharmacy.phone,
-                              onCallDate: pharmacy.onCallDate,
-                              isActive: pharmacy.isActive,
-                            });
-                            setShowAddModal(true);
-                          }}
-                          className="p-2 text-vitta-accent bg-vitta-accent-bg rounded-xl hover:bg-vitta-accent/20 transition-colors"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(pharmacy.id)}
-                          className="p-2 text-vitta-danger bg-vitta-danger/10 rounded-xl hover:bg-vitta-danger/20 transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
+
+                    <div className="shrink-0">
+                      {isToday ? (
+                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                          Aberto Agora
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                          Fechado Agora
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-700">{line1}</p>
+                    {line2 && (
+                      <p className="text-xs text-vitta-text-secondary font-medium">
+                        {line2}
+                      </p>
                     )}
                   </div>
 
-                  <div>
-                    <h3 className="text-xl font-bold text-vitta-text-primary">
-                      {pharmacy.name}
-                    </h3>
-                    <div className="mt-4 space-y-2">
-                      <div className="flex items-center gap-3 text-vitta-text-secondary">
-                        <Calendar size={16} className="text-vitta-accent" />
-                        <span className="text-sm">
-                          {formatDateForDisplay(pharmacy.onCallDate)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-vitta-text-secondary">
-                        <MapPin size={16} className="text-vitta-accent" />
-                        <span className="text-sm line-clamp-1">
-                          {pharmacy.address}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-vitta-text-secondary">
-                        <Phone size={16} className="text-vitta-accent" />
-                        <span className="text-sm">{pharmacy.phone}</span>
-                      </div>
+                  {/* Dynamic Action Buttons Row */}
+                  <div className="flex items-center gap-3 pt-2 w-full">
+                    {/* LIGAR */}
+                    <button
+                      onClick={handleCallClick}
+                      className="flex-1 min-w-0 h-11 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 group"
+                    >
+                      <Phone
+                        size={16}
+                        className="text-emerald-500 group-hover:scale-110 transition-transform shrink-0"
+                      />
+                      <span className="text-slate-700 font-extrabold text-xs uppercase tracking-wider truncate">
+                        Ligar
+                      </span>
+                    </button>
+
+                    {/* WHATSAPP */}
+                    <button
+                      onClick={handleWhatsappClick}
+                      className="flex-1 min-w-0 h-11 rounded-xl bg-[#e8f7ee] hover:bg-[#d4f0df] transition-colors flex items-center justify-center gap-2 group"
+                    >
+                      <MessageCircle
+                        size={16}
+                        className="text-[#1ea955] group-hover:scale-110 transition-transform shrink-0"
+                      />
+                      <span className="text-[#1ea955] font-extrabold text-xs uppercase tracking-wider truncate">
+                        Whatsapp
+                      </span>
+                    </button>
+
+                    {/* MAPA */}
+                    <button
+                      onClick={handleMapClick}
+                      className="flex-1 min-w-0 h-11 rounded-xl bg-[#eaf2fd] hover:bg-[#dbe7f9] transition-colors flex items-center justify-center gap-2 group"
+                    >
+                      <MapPin
+                        size={16}
+                        className="text-[#1a73e8] group-hover:scale-110 transition-transform shrink-0"
+                      />
+                      <span className="text-[#1a73e8] font-extrabold text-xs uppercase tracking-wider truncate">
+                        Mapa
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Admin operations bar */}
+                {isAdmin && (
+                  <div className="px-6 py-3 border-t border-vitta-border bg-vitta-surface-2 flex items-center justify-between text-xs text-vitta-text-secondary rounded-b-[24px]">
+                    <span className="font-semibold">Painel Admin</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleActive(pharmacy)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold transition-all ${
+                          pharmacy.isActive
+                            ? "text-vitta-green bg-vitta-green-bg"
+                            : "text-vitta-text-muted bg-vitta-surface-2"
+                        }`}
+                        title={pharmacy.isActive ? "Desativar" : "Ativar"}
+                      >
+                        {pharmacy.isActive ? (
+                          <>
+                            <CheckCircle size={14} /> Ativo
+                          </>
+                        ) : (
+                          <>
+                            <XCircle size={14} /> Inativo
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingPharmacy(pharmacy);
+                          setFormData({
+                            name: pharmacy.name,
+                            address: pharmacy.address,
+                            phone: pharmacy.phone,
+                            onCallDate: pharmacy.onCallDate,
+                            isActive: pharmacy.isActive,
+                            mapUrl: pharmacy.mapUrl || "",
+                            whatsapp: pharmacy.whatsapp || "",
+                          });
+                          setShowAddModal(true);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 text-vitta-accent bg-vitta-accent-bg rounded-lg hover:bg-vitta-accent/20 font-bold transition-all"
+                      >
+                        <Edit size={14} /> Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(pharmacy.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 text-vitta-danger bg-vitta-danger/10 rounded-lg hover:bg-vitta-danger/20 font-bold transition-all"
+                      >
+                        <Trash2 size={14} /> Excluir
+                      </button>
                     </div>
                   </div>
-
-                  <button
-                    onClick={() =>
-                      window.open(`tel:${pharmacy.phone.replace(/\D/g, "")}`)
-                    }
-                    className="w-full py-3 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl font-bold hover:bg-vitta-border transition-all flex items-center justify-center gap-2"
-                  >
-                    <Phone size={18} />
-                    Ligar Agora
-                  </button>
-                </div>
+                )}
               </motion.div>
             );
           })}
@@ -28451,7 +28592,21 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-vitta-text-primary">
-                    Telefone
+                    Link do Mapa (Google Maps / Endereço)
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.mapUrl}
+                    onChange={(e) =>
+                      setFormData({ ...formData, mapUrl: e.target.value })
+                    }
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                    placeholder="https://maps.google.com/..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-vitta-text-primary">
+                    Telefone de Contato
                   </label>
                   <input
                     type="text"
@@ -28462,6 +28617,20 @@ const PharmaciesView = ({ isAdmin }: { isAdmin: boolean }) => {
                     }
                     className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
                     placeholder="(00) 00000-0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-vitta-text-primary">
+                    WhatsApp (Opcional - com DDD)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.whatsapp}
+                    onChange={(e) =>
+                      setFormData({ ...formData, whatsapp: e.target.value })
+                    }
+                    className="w-full p-3 bg-vitta-surface-2 border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary"
+                    placeholder="Ex: (28) 99999-9999"
                   />
                 </div>
                 <div className="space-y-2">

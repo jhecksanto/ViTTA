@@ -415,6 +415,22 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "price", "benefitValue", "sellerId"]
+    },
+    "Pharmacy": {
+      "title": "Pharmacy",
+      "description": "On-call pharmacy configuration",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "onCallDate": { "type": "string", "format": "date" },
+        "isActive": { "type": "boolean" },
+        "mapUrl": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "address", "phone", "onCallDate"]
     }
   },
   "firestore": {
@@ -513,6 +529,10 @@
     "/vouchers_catalog/{voucherId}": {
       "schema": "VouchersCatalog",
       "description": "Catalog of vouchers offered by partners and professionals"
+    },
+    "/pharmacies/{pharmacyId}": {
+      "schema": "Pharmacy",
+      "description": "On-call pharmacy configuration list"
     }
   }
 }
