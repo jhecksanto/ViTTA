@@ -4,13 +4,12 @@ import { Star, X, Check, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, 
-  addDoc, 
   doc, 
-  updateDoc, 
   increment, 
   Timestamp,
   runTransaction 
 } from 'firebase/firestore';
+import { sanitizeData } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 import { useToast } from '../contexts/ToastContext.tsx';
 
@@ -65,7 +64,7 @@ const ReviewModal = ({
 
         // 1. Create the review document
         const reviewRef = doc(collection(db, 'reviews'));
-        transaction.set(reviewRef, {
+        transaction.set(reviewRef, sanitizeData({
           userId,
           userName,
           professionalId,
@@ -73,19 +72,19 @@ const ReviewModal = ({
           rating,
           comment,
           createdAt: Timestamp.now()
-        });
+        }));
 
         // 2. Update the professional document
-        transaction.update(profRef, {
+        transaction.update(profRef, sanitizeData({
           rating: newAverageRating,
           reviews: newReviewsCount
-        });
+        }));
 
         // 3. Mark the appointment as reviewed (optional, if we adding isReviewed field)
         const appointmentRef = doc(db, 'appointments', appointmentId);
-        transaction.update(appointmentRef, {
+        transaction.update(appointmentRef, sanitizeData({
           isReviewed: true
-        });
+        }));
       });
 
       addToast('Obrigado pela sua avaliação!', 'success');

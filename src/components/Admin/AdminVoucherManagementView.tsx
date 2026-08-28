@@ -15,13 +15,12 @@ import {
   Building
 } from "lucide-react";
 import { db } from "../../firebase";
+import { setDoc, updateDoc, deleteDoc } from "../../lib/firestore-wrappers";
+import { recordAuditLog } from "../../lib/audit";
 import {
   doc,
   collection,
   onSnapshot,
-  setDoc,
-  updateDoc,
-  deleteDoc,
   query,
   orderBy
 } from "firebase/firestore";
@@ -117,6 +116,12 @@ export const AdminVoucherManagementView = () => {
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
+      await recordAuditLog({
+        action: 'UPDATE_VOUCHER_CONFIG',
+        description: `Configurações globais de vouchers atualizadas: taxa ${feeRate}%, status ${vouchersEnabled ? 'Ativo' : 'Desativado'}`,
+        after: { feeRate, vouchersEnabled }
+      });
+
       addToast("Configurações gerais de vouchers salvas!", "success");
     } catch (err) {
       console.error(err);
@@ -131,7 +136,13 @@ export const AdminVoucherManagementView = () => {
       return;
     }
     try {
+      const voucher = catalogVouchers.find(v => v.id === voucherId);
       await deleteDoc(doc(db, "vouchers_catalog", voucherId));
+      await recordAuditLog({
+        action: 'DELETE_VOUCHER',
+        description: `Voucher "${title}" removido do catálogo`,
+        before: voucher || { id: voucherId, title }
+      });
       addToast("Voucher removido das ofertas do catálogo!", "success");
     } catch (err) {
       console.error(err);

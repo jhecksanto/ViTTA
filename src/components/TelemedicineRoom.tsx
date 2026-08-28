@@ -28,17 +28,14 @@ import {
   collection, 
   doc, 
   onSnapshot, 
-  addDoc, 
-  setDoc,
-  deleteDoc,
-  getDocs,
-  updateDoc, 
+  getDocs, 
   getDoc,
   Timestamp, 
   query, 
   orderBy,
   limit 
 } from 'firebase/firestore';
+import { addDoc, setDoc, updateDoc, deleteDoc } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 import { useToast } from '../contexts/ToastContext';
 
@@ -231,18 +228,13 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     } catch (err) {}
   };
 
-  // Sair/Redirecionamento automático e liberação absoluta de hardware (Issue #1 e #2)
-  useEffect(() => {
-    if (!isSessionClosed) return;
-
-    // Parar mídias físicas e limpar loops de áudio imediatamente para economizar recursos do sistema
+  // Helper to instantly release all physical media tracks & video sources (Issue #1)
+  const stopAllMediaStreams = () => {
     if (localStream) {
       localStream.getTracks().forEach(track => {
-        try { 
-          if (track.readyState === 'live') {
-            track.stop(); 
-          }
-          console.log(`[Telemedicina Vitta] Recurso de mídia local parado com sucesso: ${track.kind}`);
+        try {
+          track.stop();
+          track.enabled = false;
         } catch (e) {
           console.warn("Erro ao interromper recurso de mídia local:", e);
         }
@@ -252,11 +244,9 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
     if (remoteStream) {
       remoteStream.getTracks().forEach(track => {
-        try { 
-          if (track.readyState === 'live') {
-            track.stop(); 
-          }
-          console.log(`[Telemedicina Vitta] Recurso de mídia remoto parado com sucesso: ${track.kind}`);
+        try {
+          track.stop();
+          track.enabled = false;
         } catch (e) {
           console.warn("Erro ao interromper recurso de mídia remoto:", e);
         }
@@ -264,6 +254,17 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       setRemoteStream(null);
     }
 
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (localVideoWaitingRef.current) localVideoWaitingRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+  };
+
+  // Sair/Redirecionamento automático e liberação absoluta de hardware (Issue #1 e #2)
+  useEffect(() => {
+    if (!isSessionClosed) return;
+
+    // Parar mídias físicas e limpar loops de áudio imediatamente para economizar recursos do sistema
+    stopAllMediaStreams();
     setPlayRingSound(false);
 
     // Timer de redirecionamento de 3 segundos sincronizado com o visual de contagem regressiva
@@ -523,12 +524,40 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
       setRemoteStream(new MediaStream(rdocStream.getTracks()));
     };
 
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const handleReconnection = () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(async () => {
+        if (pc.iceConnectionState === 'failed' || pc.connectionState === 'failed') {
+          console.log("[WebRTC] Attempting ICE restart recovery...");
+          if (typeof pc.restartIce === 'function') {
+            pc.restartIce();
+            addToast("Tentando restabelecer sinal de transmissão de vídeo...", "info");
+          }
+        }
+      }, 2000);
+    };
+
     pc.onconnectionstatechange = () => {
       console.log("[WebRTC] Connection state changed:", pc.connectionState);
       if (pc.connectionState === 'connected') {
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
         addToast("Conexão direta de vídeo com o interlocutor ativa!", "success");
+      } else if (pc.connectionState === 'disconnected') {
+        addToast("Sinal de transmissão de vídeo oscilando...", "warning");
       } else if (pc.connectionState === 'failed') {
-        addToast("Sinal de transmissão de vídeo oscilou. Reestabelecendo...", "warning");
+        addToast("Conexão de vídeo interrompida. Tentando reconectar...", "warning");
+        handleReconnection();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log("[WebRTC] ICE connection state:", pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      } else if (pc.iceConnectionState === 'failed') {
+        handleReconnection();
       }
     };
 
@@ -654,6 +683,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
     return () => {
       console.log("[WebRTC] Safely clearing peer media connections.");
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       unsubSignal();
       unsubCandidates();
       pc.close();
@@ -993,6 +1023,9 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
   // Finalize consultation
   const handleHangUp = async () => {
+    stopAllMediaStreams();
+    setPlayRingSound(false);
+
     if (isProfessional) {
       try {
         // Complete appointment in database

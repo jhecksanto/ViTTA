@@ -106,6 +106,7 @@ import {
   MinusCircle,
   CalendarCheck,
   CalendarPlus,
+  CalendarX,
   CheckCircle2,
   Receipt,
   FileQuestion,
@@ -826,6 +827,13 @@ const BookingModal = ({
 
     let slots: string[] = [];
 
+    const blockedDates: string[] = professional.schedule?.blockedDates || [];
+    if (blockedDates.includes(selectedDate)) {
+      setAvailableSlots([]);
+      setSelectedTime("");
+      return;
+    }
+
     if (professional.schedule?.weekly) {
       const dateObj = new Date(selectedDate + "T00:00:00");
       const dayNames = [
@@ -879,6 +887,11 @@ const BookingModal = ({
 
   const handleConfirm = async () => {
     if (!user || !professional || !selectedTime) return;
+
+    if (professional.schedule?.blockedDates?.includes(selectedDate)) {
+      addToast("Não é possível agendar nesta data pois o profissional está de folga global.", "error");
+      return;
+    }
 
     // Use finalConvenioPrice computed at component-level
     const priceNumeric = finalConvenioPrice; 
@@ -1212,7 +1225,17 @@ const BookingModal = ({
                   <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
                     Horários Disponíveis
                   </label>
-                  {isLoadingSlots ? (
+                  {professional.schedule?.blockedDates?.includes(selectedDate) ? (
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center space-y-2">
+                      <div className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                        <CalendarX size={20} className="text-amber-600 shrink-0" />
+                        <span>Profissional de Folga Global</span>
+                      </div>
+                      <p className="text-xs text-amber-700/90 dark:text-amber-300 leading-relaxed">
+                        O profissional definiu o dia <strong className="font-semibold">{formatDateForDisplay(selectedDate)}</strong> como folga global. Não há horários para agendamento nesta data.
+                      </p>
+                    </div>
+                  ) : isLoadingSlots ? (
                     <div className="grid grid-cols-4 gap-2">
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                         <div
@@ -5098,6 +5121,15 @@ const ProfessionalManualBookingModal = ({
     if (!selectedDate || !professional) return;
     let slots: string[] = [];
 
+    const blockedDates: string[] = professional.schedule?.blockedDates || [];
+    if (blockedDates.includes(selectedDate)) {
+      setAvailableSlots([]);
+      if (!isTimeCustom) {
+        setSelectedTime("");
+      }
+      return;
+    }
+
     if (professional.schedule?.weekly) {
       const dateObj = new Date(selectedDate + "T00:00:00");
       const dayNames = [
@@ -5933,6 +5965,7 @@ const ProfessionalAgendaSettingsView = ({ professional }: { professional: any })
   }>(
     professional.schedule || { weekly: {}, blockedDates: [] }
   );
+  const [newBlockedDate, setNewBlockedDate] = useState("");
 
   useEffect(() => {
     if (professional) {
@@ -5942,6 +5975,34 @@ const ProfessionalAgendaSettingsView = ({ professional }: { professional: any })
       setSchedule(professional.schedule || { weekly: {}, blockedDates: [] });
     }
   }, [professional]);
+
+  const handleAddBlockedDate = () => {
+    if (!newBlockedDate) {
+      addToast("Selecione uma data para marcar como folga global.", "warning");
+      return;
+    }
+    const currentBlocked = schedule.blockedDates || [];
+    if (currentBlocked.includes(newBlockedDate)) {
+      addToast("Esta data já está bloqueada como folga global.", "warning");
+      return;
+    }
+    const updatedBlocked = [...currentBlocked, newBlockedDate].sort();
+    setSchedule({
+      ...schedule,
+      blockedDates: updatedBlocked,
+    });
+    setNewBlockedDate("");
+    addToast(`Data ${formatDateForDisplay(newBlockedDate)} marcada como folga global. Lembre-se de salvar as configurações.`, "info");
+  };
+
+  const handleRemoveBlockedDate = (dateToRemove: string) => {
+    const updatedBlocked = (schedule.blockedDates || []).filter((d) => d !== dateToRemove);
+    setSchedule({
+      ...schedule,
+      blockedDates: updatedBlocked,
+    });
+    addToast(`Folga do dia ${formatDateForDisplay(dateToRemove)} removida.`, "info");
+  };
 
   const handleAddSlot = (day: string) => {
     const currentDaySchedule = schedule.weekly[day] || [];
@@ -6226,6 +6287,75 @@ const ProfessionalAgendaSettingsView = ({ professional }: { professional: any })
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Bloqueio de Folga Global no Calendário */}
+          <div className="bg-vitta-surface-2 border border-vitta-border rounded-2xl p-5 md:p-6 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-vitta-border">
+              <h3 className="text-sm font-bold text-vitta-text-primary uppercase tracking-wider flex items-center gap-2">
+                <CalendarX size={18} className="text-vitta-danger" />
+                🏖️ Dias de Folga Global (Férias e Bloqueios)
+              </h3>
+              {schedule.blockedDates && schedule.blockedDates.length > 0 && (
+                <span className="px-2.5 py-1 bg-vitta-danger/10 text-vitta-danger border border-vitta-danger/20 rounded-lg text-xs font-bold">
+                  {schedule.blockedDates.length} {schedule.blockedDates.length === 1 ? "dia bloqueado" : "dias bloqueados"}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-vitta-text-secondary leading-relaxed">
+              Marque datas específicas no calendário (como feriados, férias ou folgas pessoais). O sistema bloqueará automaticamente qualquer tentativa de agendamento nessas datas.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+              <div className="flex-1">
+                <input
+                  type="date"
+                  value={newBlockedDate}
+                  onChange={(e) => setNewBlockedDate(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full px-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-vitta-accent/20 text-vitta-text-primary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddBlockedDate}
+                className="px-4 py-2.5 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 border border-vitta-danger/20 shadow-sm"
+              >
+                <Plus size={16} />
+                Marcar Folga Global
+              </button>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              {schedule.blockedDates && schedule.blockedDates.length > 0 ? (
+                <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto pr-1 no-scrollbar pt-1">
+                  {schedule.blockedDates.map((blockedDate) => (
+                    <div
+                      key={blockedDate}
+                      className="flex items-center gap-2 px-3.5 py-2 bg-vitta-surface border border-vitta-danger/30 rounded-xl text-xs font-bold text-vitta-text-primary shadow-sm group hover:border-vitta-danger transition-all"
+                    >
+                      <CalendarX size={15} className="text-vitta-danger shrink-0" />
+                      <span>{formatDateForDisplay(blockedDate)}</span>
+                      <span className="text-[10px] px-2 py-0.5 bg-vitta-danger/10 text-vitta-danger rounded-md font-extrabold uppercase tracking-wider">
+                        Folga
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBlockedDate(blockedDate)}
+                        className="ml-1 p-1 text-vitta-text-muted hover:text-vitta-danger hover:bg-vitta-danger/10 rounded-lg transition-colors"
+                        title="Remover folga e desbloquear data"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-4 px-4 bg-vitta-surface border border-dashed border-vitta-border/80 rounded-xl text-center text-xs text-vitta-text-muted italic select-none">
+                  Nenhuma data de folga global cadastrada. Utilize o seletor de data acima para bloquear.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -10991,8 +11121,37 @@ const AvailabilityPlannerModal = ({ isOpen, onClose, professional }: any) => {
     weekly: Record<string, Array<{ start: string; end: string }>>;
     blockedDates: string[];
   }>(professional.schedule || { weekly: {}, blockedDates: [] });
+  const [newBlockedDate, setNewBlockedDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { addToast } = useToast();
+
+  const handleAddBlockedDate = () => {
+    if (!newBlockedDate) {
+      addToast("Selecione uma data para marcar como folga global.", "warning");
+      return;
+    }
+    const currentBlocked = schedule.blockedDates || [];
+    if (currentBlocked.includes(newBlockedDate)) {
+      addToast("Esta data já está bloqueada como folga global.", "warning");
+      return;
+    }
+    const updatedBlocked = [...currentBlocked, newBlockedDate].sort();
+    setSchedule({
+      ...schedule,
+      blockedDates: updatedBlocked,
+    });
+    setNewBlockedDate("");
+    addToast(`Data ${formatDateForDisplay(newBlockedDate)} marcada como folga global.`, "info");
+  };
+
+  const handleRemoveBlockedDate = (dateToRemove: string) => {
+    const updatedBlocked = (schedule.blockedDates || []).filter((d) => d !== dateToRemove);
+    setSchedule({
+      ...schedule,
+      blockedDates: updatedBlocked,
+    });
+    addToast(`Folga da data ${formatDateForDisplay(dateToRemove)} removida.`, "info");
+  };
 
   const handleAddSlot = (day: string) => {
     const currentDaySchedule = schedule.weekly[day] || [];
@@ -11168,6 +11327,68 @@ const AvailabilityPlannerModal = ({ isOpen, onClose, professional }: any) => {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Seção de Bloqueios e Folgas Globais */}
+          <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border space-y-3">
+            <div className="flex justify-between items-center">
+              <h4 className="text-sm font-bold text-vitta-text-primary flex items-center gap-2">
+                <CalendarX size={16} className="text-vitta-danger" />
+                Dias de Folga Global (Férias / Feriados)
+              </h4>
+              {schedule.blockedDates && schedule.blockedDates.length > 0 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-vitta-danger/10 text-vitta-danger rounded-md border border-vitta-danger/20">
+                  {schedule.blockedDates.length} {schedule.blockedDates.length === 1 ? "dia" : "dias"}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-vitta-text-secondary leading-relaxed">
+              Datas em que qualquer agendamento com este profissional será bloqueado automaticamente.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={newBlockedDate}
+                onChange={(e) => setNewBlockedDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                className="flex-1 px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-medium outline-none focus:ring-1 focus:ring-vitta-accent/30 text-vitta-text-primary"
+              />
+              <button
+                type="button"
+                onClick={handleAddBlockedDate}
+                className="px-3 py-2 bg-vitta-danger/10 text-vitta-danger hover:bg-vitta-danger hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 border border-vitta-danger/20"
+              >
+                <Plus size={14} />
+                Marcar Folga
+              </button>
+            </div>
+
+            {schedule.blockedDates && schedule.blockedDates.length > 0 ? (
+              <div className="flex flex-wrap gap-2 pt-1 max-h-36 overflow-y-auto pr-1 no-scrollbar">
+                {schedule.blockedDates.map((blockedDate) => (
+                  <div
+                    key={blockedDate}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-vitta-surface border border-vitta-danger/30 rounded-lg text-xs font-bold text-vitta-text-primary"
+                  >
+                    <CalendarX size={13} className="text-vitta-danger shrink-0" />
+                    <span>{formatDateForDisplay(blockedDate)}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBlockedDate(blockedDate)}
+                      className="ml-1 p-0.5 text-vitta-text-muted hover:text-vitta-danger rounded"
+                      title="Remover folga"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-vitta-text-muted italic">
+                Nenhum dia de folga global cadastrado.
+              </p>
+            )}
           </div>
         </div>
 
@@ -24974,6 +25195,13 @@ const RescheduleModal = ({
 
     let slots: string[] = [];
 
+    const blockedDates: string[] = professional.schedule?.blockedDates || [];
+    if (blockedDates.includes(date)) {
+      setAvailableSlots([]);
+      setTime("");
+      return;
+    }
+
     if (professional.schedule?.weekly) {
       const dateObj = new Date(date + "T00:00:00");
       const dayNames = [
@@ -25120,7 +25348,17 @@ const RescheduleModal = ({
             <label className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-widest px-1">
               Sessões Disponíveis
             </label>
-            {isLoadingSlots ? (
+            {professional?.schedule?.blockedDates?.includes(date) ? (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center space-y-1.5">
+                <div className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                  <CalendarX size={18} className="text-amber-600 shrink-0" />
+                  <span>Profissional de Folga Global</span>
+                </div>
+                <p className="text-xs text-amber-700/90 dark:text-amber-300">
+                  O profissional definiu <strong className="font-semibold">{formatDateForDisplay(date)}</strong> como folga global. Selecione outra data para reagendar.
+                </p>
+              </div>
+            ) : isLoadingSlots ? (
               <div className="grid grid-cols-4 gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                   <div

@@ -4,13 +4,12 @@ import {
   query,
   onSnapshot,
   doc,
-  updateDoc,
-  addDoc,
   orderBy,
   where,
   increment,
   getDocs
 } from "firebase/firestore";
+import { addDoc, updateDoc } from "../lib/firestore-wrappers";
 import { db } from "../firebase";
 import {
   Wallet,

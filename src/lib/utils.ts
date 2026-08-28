@@ -47,26 +47,41 @@ export const validateEmail = (email: string): boolean => {
 };
 
 /**
- * Busca endereço pelo CEP usando a API ViaCEP
+ * Busca endereço pelo CEP usando a API ViaCEP com timeout e controle de resiliência
  * @param cep 
- * @returns 
+ * @returns {Promise<{ street: string; neighborhood: string; city: string; state: string } | null>}
  */
 export const fetchAddressByCep = async (cep: string) => {
   const cleanCep = cep.replace(/\D/g, '');
   if (cleanCep.length !== 8) return null;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
   try {
-    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return null;
+    }
+
     const data = await response.json();
-    if (data.erro) return null;
+    if (data.erro) {
+      return null;
+    }
+
     return {
-      street: data.logradouro,
-      neighborhood: data.bairro,
-      city: data.localidade,
-      state: data.uf
+      street: data.logradouro || '',
+      neighborhood: data.bairro || '',
+      city: data.localidade || '',
+      state: data.uf || ''
     };
   } catch (error) {
-    console.error('Erro ao buscar CEP:', error);
+    clearTimeout(timeoutId);
+    console.warn('[ViaCEP] Erro ou timeout ao consultar CEP:', error);
     return null;
   }
 };

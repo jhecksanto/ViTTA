@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../firebase';
-import { collection, query, onSnapshot, Timestamp, doc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { setDoc } from '../../lib/firestore-wrappers';
+import { collection, query, onSnapshot, Timestamp, doc } from 'firebase/firestore';
+import { setDoc, deleteDoc } from '../../lib/firestore-wrappers';
+import { recordAuditLog } from '../../lib/audit';
 import { 
   CreditCard, 
   Plus, 
@@ -176,13 +177,21 @@ const SubscriptionManagementView = () => {
         }
 
         // Always update local Firestore
-        await setDoc(doc(db, 'subscription_plans', editingPlan.id), {
+        const updatePayload = {
           name: name,
           price: price,
           frequency: frequency,
           frequencyType: frequencyType,
           updatedAt: Timestamp.now()
-        }, { merge: true });
+        };
+        await setDoc(doc(db, 'subscription_plans', editingPlan.id), updatePayload, { merge: true });
+
+        await recordAuditLog({
+          action: 'UPDATE_PLAN',
+          description: `Plano de assinatura "${name}" atualizado (R$ ${price}/${frequencyType})`,
+          before: editingPlan,
+          after: updatePayload
+        });
 
         addToast(
           updatedOnMP 
@@ -232,7 +241,7 @@ const SubscriptionManagementView = () => {
 
         if (createdOnMP && mpData) {
           // Sync MP plan to Firestore
-          await setDoc(doc(db, 'subscription_plans', mpData.id), {
+          const planPayload = {
             mpPlanId: mpData.id,
             name: mpData.reason,
             price: mpData.auto_recurring.transaction_amount,
@@ -242,11 +251,17 @@ const SubscriptionManagementView = () => {
             init_point: mpData.init_point || '#',
             isLocal: false,
             createdAt: Timestamp.now()
+          };
+          await setDoc(doc(db, 'subscription_plans', mpData.id), planPayload);
+          await recordAuditLog({
+            action: 'CREATE_PLAN',
+            description: `Plano Mercado Pago "${mpData.reason}" criado e sincronizado`,
+            after: planPayload
           });
           addToast('Plano criado e sincronizado com Mercado Pago!', 'success');
         } else {
           // Create as local plan in Firestore
-          await setDoc(doc(db, 'subscription_plans', localId), {
+          const localPayload = {
             mpPlanId: localId,
             name: name,
             price: price,
@@ -256,6 +271,12 @@ const SubscriptionManagementView = () => {
             init_point: '#',
             isLocal: true,
             createdAt: Timestamp.now()
+          };
+          await setDoc(doc(db, 'subscription_plans', localId), localPayload);
+          await recordAuditLog({
+            action: 'CREATE_PLAN',
+            description: `Plano local "${name}" criado`,
+            after: localPayload
           });
           addToast('Plano criado localmente (Será sincronizado quando a API estiver ativa)!', 'success');
         }
@@ -303,6 +324,13 @@ const SubscriptionManagementView = () => {
         updatedAt: Timestamp.now()
       }, { merge: true });
 
+      await recordAuditLog({
+        action: 'UPDATE_PLAN',
+        description: `Status do plano "${plan.reason}" alterado para ${newStatus === 'active' ? 'Ativo' : 'Pausado'}`,
+        before: { status: plan.status },
+        after: { status: newStatus }
+      });
+
       addToast(`Plano ${newStatus === 'active' ? 'ativado' : 'pausado'} com sucesso!`, 'success');
       fetchPlans();
     } catch (error) {
@@ -314,7 +342,13 @@ const SubscriptionManagementView = () => {
   const handleDeletePlan = async (planId: string) => {
     if (!window.confirm("Deseja realmente excluir este plano? Esta ação removerá o plano local.")) return;
     try {
+      const plan = plans.find(p => p.id === planId);
       await deleteDoc(doc(db, 'subscription_plans', planId));
+      await recordAuditLog({
+        action: 'DELETE_PLAN',
+        description: `Plano "${plan?.reason || planId}" excluído`,
+        before: plan || { id: planId }
+      });
       addToast("Plano excluído com sucesso!", "success");
       fetchPlans();
     } catch (error) {

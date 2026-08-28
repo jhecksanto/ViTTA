@@ -1,54 +1,76 @@
-# Relatório de Diagnóstico e Avanço - Sistema de Telemedicina (Vitta)
-**Data e Hora de Geração:** 27 de junho de 2026, 21:49:18 (Horário de Brasília)
+# Relatório de Diagnóstico e Avanço Geral do Sistema - ViTTA Health
+**Data e Hora de Geração:** 28 de agosto de 2026, 18:10:39 (Horário de Brasília)
 
 ---
 
-## 📋 1. Visão Geral e Contexto Atual
-Este relatório apresenta um diagnóstico preciso e atualizado do sistema de telemedicina integrado à plataforma **ViTTA**. O sistema atual evoluiu significativamente de uma estrutura meramente simulada para uma integração real de videoconferência síncrona utilizando **WebRTC (RTCPeerConnection)** estruturada de forma resiliente sobre o **Cloud Firestore** como canal de sinalização de ofertas, respostas (SDP Offer/Answer) e candidatos de rede (ICE Candidates).
+## 📋 1. Visão Geral do Sistema e Propósito da Análise
+Este relatório apresenta o diagnóstico técnico consolidado do ecossistema **ViTTA Health**. O objetivo desta análise é mapear estritamente o que **já está implementado** no sistema e o que **está em andamento e necessita de finalização e polimento técnico**, sem introduzir novos escopos ou módulos não existentes.
 
-Além disso, o sistema conta com recursos administrativos recentes para gestão de vouchers e profissionais liberais, além da interface do paciente para auto-registro e consulta de tais profissionais.
-
-O objetivo desta análise é mapear estritamente o que já está concluído/em andamento e as arestas técnicas finas que restam refinar (finalização de pendências) para consolidar a entrega, sem adição de novos escopos funcionais.
+A arquitetura do sistema engloba módulos integrados de Telemedicina WebRTC síncrona com sinalização via Firestore, Painel de Gestão Financeira e Carteiras (Split de Taxas e Saques PIX), Módulo de KYC e Validação de Documentos com compressão em tempo real, Central de Notificações Reativas, Gestão de Planos de Assinatura, Catálogo de Profissionais Liberais com Busca ViaCEP, Sistema de Vouchers de Desconto, Auditoria Administrativa e Resiliência Offline com Fila de Sincronização Local.
 
 ---
 
 ## 🔍 2. Estado de Implementação Atual (O que já está CONCLUÍDO)
 
-### 🚀 Fluxo de Handshake WebRTC Real via Firestore
-- **Canal de Sinalização Síncrono**: O componente `TelemedicineRoom.tsx` utiliza o Firestore como intermediário sob a subcoleção `/webrtc/signal` para troca direta das especificações de mídia (Offer/Answer).
-- **Tratamento de ICE Candidates**: Coleta e pareamento mútuo em tempo real de candidatos de rede de ambos os lados (médico e paciente) através de ouvintes reativos nas subcoleções temporárias `doctorCandidates` e `patientCandidates`.
-- **Limpeza Automática de Conexões Anteriores**: Mecanismo que limpa registros de sinalização e ICE candidates estéreis ou antigos no Firestore no exato momento da conexão de um novo usuário, evitando handshakes falsos ou colisões em chamadas reabertas.
+### 🎥 2.1. Telemedicina e Videoconferência WebRTC
+- **Sinalização Síncrona via Firestore**: Troca de SDP Offer/Answer sob a subcoleção reativa `/webrtc/signal` em `TelemedicineRoom.tsx`.
+- **Pareamento de ICE Candidates**: Coleta e negociação dinâmica de candidatos de rede de médico e paciente com exclusão de dados estéreis em reconexões.
+- **Análise Espectral de Áudio**: Monitoramento em tempo real do nível de decibéis do microfone local e remoto usando a Web Audio API (`AnalyserNode`).
+- **Sincronização de Mudo e Câmera**: Propagação imediata de estados de mídia locais e remotos (`isMuted`, `isCamOff`) e desativação em emissores de mídia (`RTCRtpSender`).
+- **Interrupção Imediata de Hardware**: Rotina `stopAllMediaStreams` que desativa imediatamente faixas de áudio e vídeo e zera `srcObject` ao encerrar ou abandonar a chamada.
+- **Prontuário e Evolução Clínica**: Registro clínico síncrono com debouncing automático salvando anamnese, prescrições e atestados diretamente no documento do atendimento.
 
-### 🎥 Controles Síncronos e Análise de Espectro
-- **Análise Física de Microfone Síncrona**: O aplicativo utiliza a `Web Audio API` com `AnalyserNode` para desenhar barras dinâmicas responsivas de acordo com a amplitude real de som do microfone local e também do microfone remoto (interlocutor).
-- **Propagação Síncrona de Estados (Mute / Cam Off)**: Os flags `isMuted` e `isCamOff` são transmitidos instantaneamente via Firestore e aplicados diretamente aos emissores locais de canais de mídia (`RTCRtpSender`), garantindo propagação imediata da suspensão de vídeo/áudio na rede.
-- **Bypass de Políticas de Autoplay do Navegador**: Escuta de interações de toque e clique nas janelas de exibição para reativar de forma segura as transmissões de vídeo remoto caso o navegador tenha suspendido a inicialização automática do som do fluxo remoto.
+### 💰 2.2. Gestão Financeira, Carteiras e Vouchers Admin
+- **Fluxo de Solicitação e Aprovação de Saques**: Gestão administrativa de retiradas PIX (`withdrawals`) com cálculo de retenção de taxa da plataforma e repasse líquido.
+- **Custódia e Saldos em Tempo Real**: Totalizadores de custódia da plataforma e taxas arrecadadas com listagem de médicos e parceiros conveniados.
+- **Gestão de Vouchers e Profissionais Liberais**: Criação, ativação/desativação e monitoramento de lotes de cupons e catálogo de profissionais autônomos.
+- **Configuração de Taxa da Plataforma**: Atualização reativa de taxas globais de serviço em `system_configs/vouchers`.
 
-### 🛡 Roteamento, Deep-Linking e Segurança de Acesso
-- **Autorização Estrita de Participantes**: Bloqueio ativo de conexões de qualquer usuário autenticado que não seja o profissional ou o paciente diretamente vinculados à consulta, redirecionando invasores para o fluxo principal.
-- **Remoção de Parâmetros de URL**: Limpeza automática do endereço de busca `?room` do navegador usando `window.history.replaceState` imediatamente após o acionamento interno da videoconferência, evitando carregamentos cíclicos.
+### 🛡 2.3. Compliance e Identidade (KYC Wizard)
+- **Fluxo Guiado Multi-step**: Etapas de introdução, captura/upload de documento frente, verso, selfie e tela de revisão de dados.
+- **Compressão Automática em Canvas**: Redimensionamento proporcional (máx 1200px) e compressão JPEG (qualidade 0.72) client-side antes de salvar no Firestore, eliminando o risco de estourar o limite de 1MB por documento.
 
-### 💼 Gestão e Configuração de Profissionais Liberais
-- **Painel Admin Dedicado (`AdminLiberalConfigView`)**: Interface completa para cadastro, listagem, busca inteligente e exclusão de Categorias e Profissionais Liberais direto pelo painel administrativo, sincronizada em tempo real com o Firestore.
-- **Auto-registro e Busca por Pacientes**: Formulário na aba de Profissionais Liberais onde o próprio paciente/afiliado pode cadastrar serviços autônomos ou de apoio, filtrando-os de forma reativa por categoria de atuação ou por digitação livre (nome, cidade, descrição).
+### 🔔 2.4. Notificações e Avaliações de Atendimento
+- **Central de Notificações**: Escuta reativa de avisos de exames, consultas e mensagens de sistema.
+- **Transação de Avaliações (ReviewModal)**: Atualização atômica (`runTransaction`) da média ponderada de estrelas e contagem de reviews no perfil do profissional utilizando `sanitizeData`.
+
+### 📶 2.5. Resiliência Offline e Saneamento Firestore
+- **Banner de Status de Conectividade com Auto-Sync**: Indicador visual dinâmico com animação de entrada e saída informando transição online/offline (`OfflineIndicatorBanner.tsx`).
+- **Fila de Sincronização Local (`offlineQueue.ts`)**: Armazenamento seguro de métricas de saúde, metas e medicamentos em `localStorage` com consumo e persistência em lote via `processOfflineQueue` no evento `online`.
+- **Saneamento Recursivo de Dados**: Módulo `firestore-wrappers.ts` com remoção recursiva de campos `undefined` para evitar quebras de serialização.
 
 ---
 
 ## 🛠 3. O que Está em Andamento e Falta Terminar (Foco em Finalização)
 
-Embora o sistema apresente alta robustez, as seguintes arestas de polimento técnico precisam ser consolidadas nos componentes associados para garantir que nada permaneça ativo em segundo plano e que o display físico se ajuste com precisão total:
+As seguintes pendências representam arestas técnicas de fechamento e integração fina dos módulos já existentes:
 
-### 1. Reforço de Cleanup Físico Remoto e Eventos Globais (Pendência de Performance)
-- **Status do Item**: Em andamento.
-- **Detalhamento**: Assegurar que os receptores globais de cliques na janela criados para mitigar as barreiras de autoplay (`unlockAutoplay`) sejam removidos por completo na destruição do componente, estancando eventuais vazamentos de memória na SPA.
-- **Ajuste Fino**: Realizar auditoria no encerramento da conexão WebRTC (`pc.close()`) para que, nos gatilhos de recarregamento e desmontagem, todas as faixas do objeto `remoteStream` e loops de nível de áudio sejam resetados de imediato para zerar qualquer overhead de segundo plano.
+### 1. Padronização Universal dos Wrappers Sanitizados nos Módulos Administrativos
+- **Status**: Em andamento.
+- **Problema Atual**: Os componentes administrativos secundários (`AdminLiberalConfigView.tsx`, `AdminVoucherManagementView.tsx`, `SubscriptionManagementView.tsx` e `NotificationCenter.tsx`) ainda importam diretamente `addDoc`, `setDoc`, `updateDoc` e `deleteDoc` do SDK oficial `'firebase/firestore'`, sem passar pela camada intermediária de `firestore-wrappers.ts`.
+- **O que falta**: Substituir as importações diretas pelos wrappers sanitizados, garantindo que objetos com campos opcionais ou `undefined` nunca quebrem as operações do Firestore.
 
-### 2. Desligamento do Hardware de Câmera Físico na Transição de Fechamento (Pendência de UI/UX)
-- **Status do Item**: Em andamento.
-- **Detalhamento**: Atualmente, quando o médico finaliza o atendimento, a sala entra em estado de encerramento (`isSessionClosed === true`) e exibe uma contagem regressiva visual elegante de 2.5 segundos com o Framer Motion. 
-- **Ajuste Fino**: O fluxo de mídia local precisa desligar fisicamente as faixas (`track.stop()`) do dispositivo de hardware no **primeiro milissegundo** em que a transição entra em ação para apagar imediatamente a luz LED física de gravação do usuário antes do término da contagem, transmitindo sensação instantânea de privacidade e segurança.
+### 2. Integração e Disparo de Logs de Auditoria nos Módulos de Gestão
+- **Status**: Em andamento.
+- **Problema Atual**: O componente visual de auditoria (`AuditLogsList.tsx`) está pronto e funcional para leitura e inspeção de diffs, porém as ações de mutação administrativa (criação/edição/exclusão de categorias, profissionais liberais, vouchers e planos de assinatura) não estão gravando os respectivos registros na coleção `audit_logs`.
+- **O que falta**: Integrar o registro automático de auditoria contendo `adminId`, `adminName`, `action`, `description`, `before` e `after` nas rotinas de salvamento e exclusão dos módulos administrativos.
 
-### 3. Responsividade no Grid de Controles para Telas de Largura Ultrarreduzida (< 360px)
-- **Status do Item**: Em andamento.
-- **Detalhamento**: Em dispositivos ultra-compactos (como iPhone SE ou telas de 320px no DevTools), a barra de controle flutuante inferior contendo ativação de mudo, câmera, abertura de chat e botão de encerramento pode estourar as margens laterais orquestradas por paddings longos.
-- **Ajuste Fino**: Ajustar os espaçamentos internos para resoluções menores de forma adaptativa (`max-xs:gap-1.5 px-2`), garantindo que o layout mantenha as áreas de clique recomendadas de 44px sem truncamento de ícones ou desalinhamentos.
+### 3. Ações em Lote e Sanitização no Centro de Notificações
+- **Status**: Em andamento.
+- **Problema Atual**: As funções de "marcar todas como lidas" e "limpar todas as notificações" em `NotificationCenter.tsx` executam batches diretamente sem aplicar o saneamento de payload e sem tratamento de fallback de limite de 500 operações por lote.
+- **O que falta**: Padronizar as operações de lote com `sanitizeData` e assegurar tratamento de erro gracioso com feedback visual.
+
+### 4. Sincronização e Resiliência de Planos de Assinatura (`SubscriptionManagementView`)
+- **Status**: Em andamento.
+- **Problema Atual**: Na alternância entre planos sincronizados via API do Mercado Pago e planos locais de fallback armazenados no Firestore, a exclusão e atualização de planos locais ainda invocam métodos diretos não sanitizados e podem deixar snapshots de listeners orfãos.
+- **O que falta**: Unificar a persistência de planos locais com `setDoc`/`deleteDoc` sanitizados e garantir desinscrição estrita de listeners no cleanup.
+
+### 5. Tratamento de Timeout e Validação de Formato na Integração ViaCEP
+- **Status**: Em andamento.
+- **Problema Atual**: A função `fetchAddressByCep` em `utils.ts` é acionada na digitação do CEP em `AdminLiberalConfigView.tsx`, porém requisições abortadas ou retornos de erro da API (ex: `{ erro: true }`) podem provocar mensagens inconsistentes na interface.
+- **O que falta**: Adicionar tratamento de timeout (ex: `AbortController`), validação do payload de retorno e desativação segura do loading durante a busca de endereço.
+
+### 6. Robustez de Reconexão e Troca de Mídia na Telemedicina
+- **Status**: Em andamento.
+- **Problema Atual**: Caso ocorra instabilidade temporária de rede durante a chamada de telemedicina, o estado de `peerConnection` pode transicionar para `'disconnected'` ou `'failed'` sem uma rotina declarativa de reinicialização de candidatos ICE ou re-negociação de oferta.
+- **O que falta**: Adicionar ouvinte em `peerConnection.oniceconnectionstatechange` e `onconnectionstatechange` com tentativa de renegotiation/restartIce controlado.

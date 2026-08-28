@@ -21,12 +21,11 @@ import {
 } from "lucide-react";
 import { db } from "../../firebase";
 import { fetchAddressByCep } from "../../lib/utils";
+import { addDoc, updateDoc, deleteDoc } from "../../lib/firestore-wrappers";
+import { recordAuditLog } from "../../lib/audit";
 import {
   collection,
   onSnapshot,
-  addDoc,
-  deleteDoc,
-  updateDoc,
   doc,
   query,
   where,
@@ -152,6 +151,15 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
       await updateDoc(doc(db, "liberal_professionals", id), {
         active: newStatus
       });
+
+      const prof = professionals.find(p => p.id === id);
+      await recordAuditLog({
+        action: 'UPDATE_PROFESSIONAL',
+        description: `Status do profissional "${prof?.name || id}" alterado para ${newStatus ? 'Ativo' : 'Inativo'}`,
+        before: { active: currentStatus },
+        after: { active: newStatus }
+      });
+
       addToast(`Profissional ${newStatus ? "ativado" : "desativado"} com sucesso!`, "success");
     } catch (err) {
       console.error(err);
@@ -166,11 +174,13 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
       setIsSearchingCep(true);
       const addr = await fetchAddressByCep(cleaned);
       setIsSearchingCep(false);
-      if (addr) {
+      if (addr && addr.street) {
         setNewProfStreet(addr.street || "");
         setNewProfNeighborhood(addr.neighborhood || "");
         setNewProfCity(addr.city || "");
         setNewProfState(addr.state || "");
+      } else {
+        addToast("CEP não localizado automaticamente. Você pode preencher o endereço manualmente.", "info");
       }
     }
   };
@@ -243,11 +253,19 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
         .replace(/[^\w\-]+/g, "")
         .replace(/\-\-+/g, "-");
 
-      await addDoc(collection(db, "categories"), {
+      const catPayload = {
         name: newCatName.trim(),
         slug,
         type: "liberal",
         createdAt: Timestamp.now()
+      };
+
+      await addDoc(collection(db, "categories"), catPayload);
+
+      await recordAuditLog({
+        action: 'CREATE_CATEGORY',
+        description: `Categoria de liberal "${newCatName.trim()}" criada`,
+        after: catPayload
       });
 
       addToast("Categoria de Profissional Liberal criada com sucesso!", "success");
@@ -289,12 +307,24 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
 
       if (editingProf) {
         await updateDoc(doc(db, "liberal_professionals", editingProf.id), data);
+        await recordAuditLog({
+          action: 'UPDATE_PROFESSIONAL',
+          description: `Profissional Liberal "${editingProf.name}" atualizado`,
+          before: editingProf,
+          after: data
+        });
         addToast("Profissional Liberal atualizado com sucesso!", "success");
       } else {
-        await addDoc(collection(db, "liberal_professionals"), {
+        const fullPayload = {
           ...data,
           active: true,
           createdAt: Timestamp.now()
+        };
+        await addDoc(collection(db, "liberal_professionals"), fullPayload);
+        await recordAuditLog({
+          action: 'CREATE_PROFESSIONAL',
+          description: `Profissional Liberal "${newProfName.trim()}" cadastrado`,
+          after: fullPayload
         });
         addToast("Profissional Liberal inserido com sucesso!", "success");
       }
@@ -312,6 +342,11 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
     if (!window.confirm(`Deseja realmente excluir a categoria "${name}"? Os profissionais nesta categoria continuarão cadastrados, mas perderão a referência de filtro.`)) return;
     try {
       await deleteDoc(doc(db, "categories", id));
+      await recordAuditLog({
+        action: 'DELETE_CATEGORY',
+        description: `Categoria de liberal "${name}" excluída`,
+        before: { id, name }
+      });
       addToast("Categoria excluída com sucesso.", "success");
     } catch (err) {
       console.error(err);
@@ -322,7 +357,13 @@ export const AdminLiberalConfigView = ({ isAdmin = false }: { isAdmin?: boolean 
   const handleDeleteProfessional = async (id: string, name: string) => {
     if (!window.confirm(`Deseja realmente remover o profissional "${name}" do sistema?`)) return;
     try {
+      const prof = professionals.find(p => p.id === id);
       await deleteDoc(doc(db, "liberal_professionals", id));
+      await recordAuditLog({
+        action: 'DELETE_PROFESSIONAL',
+        description: `Profissional Liberal "${name}" removido do sistema`,
+        before: prof || { id, name }
+      });
       addToast("Profissional removido com sucesso.", "success");
     } catch (err) {
       console.error(err);

@@ -9,11 +9,10 @@ import {
   orderBy, 
   onSnapshot, 
   doc, 
-  updateDoc, 
-  deleteDoc,
   writeBatch,
   Timestamp 
 } from 'firebase/firestore';
+import { updateDoc, deleteDoc } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 
 interface Notification {
@@ -53,6 +52,7 @@ const NotificationCenter = ({ userId, onViewAll }: { userId: string; onViewAll?:
 
   const markAsRead = async (notificationId: string) => {
     try {
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
       await updateDoc(doc(db, 'notifications', notificationId), {
         read: true
       });
@@ -62,12 +62,23 @@ const NotificationCenter = ({ userId, onViewAll }: { userId: string; onViewAll?:
   };
 
   const markAllAsRead = async () => {
+    const unreadNotifications = notifications.filter(n => !n.read);
+    if (unreadNotifications.length === 0) return;
+
+    // Optimistic UI update
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+
     try {
-      const batch = writeBatch(db);
-      notifications.filter(n => !n.read).forEach(n => {
-        batch.update(doc(db, 'notifications', n.id), { read: true });
-      });
-      await batch.commit();
+      // Chunk batches by 450 items to stay safely below Firestore 500 limit
+      const chunkSize = 450;
+      for (let i = 0; i < unreadNotifications.length; i += chunkSize) {
+        const chunk = unreadNotifications.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(n => {
+          batch.update(doc(db, 'notifications', n.id), { read: true });
+        });
+        await batch.commit();
+      }
     } catch (err) {
       console.error('Error marking all notifications as read:', err);
     }
@@ -75,6 +86,7 @@ const NotificationCenter = ({ userId, onViewAll }: { userId: string; onViewAll?:
 
   const deleteNotification = async (notificationId: string) => {
     try {
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
       await deleteDoc(doc(db, 'notifications', notificationId));
     } catch (err) {
       console.error('Error deleting notification:', err);

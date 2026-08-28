@@ -2,12 +2,13 @@ import {
   addDoc as firestoreAddDoc, 
   setDoc as firestoreSetDoc, 
   updateDoc as firestoreUpdateDoc,
+  deleteDoc as firestoreDeleteDoc,
   Timestamp 
 } from 'firebase/firestore';
 
 /**
  * Sanitiza dados recursivamente para evitar erros de serialização no Firestore
- * Remove campos 'undefined'
+ * Remove campos 'undefined' e normaliza payloads
  */
 export const sanitizeData = (data: any): any => {
   if (data === undefined) return null;
@@ -18,8 +19,8 @@ export const sanitizeData = (data: any): any => {
     return data.map(sanitizeData).filter(item => item !== undefined);
   }
   if (typeof data === 'object') {
-    // Check if it's a plain object
-    if (data.constructor !== Object && !(data instanceof Timestamp) && !(data instanceof Date)) {
+    // Check if it's not a plain object (e.g. FieldValue, DocumentReference, etc.)
+    if (data.constructor && data.constructor.name !== 'Object' && !(data instanceof Timestamp) && !(data instanceof Date)) {
        return data;
     }
     const sanitized: any = {};
@@ -55,4 +56,11 @@ export const setDoc = (docRef: any, data: any, options?: any) => {
  */
 export const updateDoc = (docRef: any, data: any) => {
   return firestoreUpdateDoc(docRef, sanitizeData(data));
+};
+
+/**
+ * Wrapper para deleteDoc
+ */
+export const deleteDoc = (docRef: any) => {
+  return firestoreDeleteDoc(docRef);
 };

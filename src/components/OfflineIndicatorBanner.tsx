@@ -1,16 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { WifiOff, Wifi, X } from 'lucide-react';
+import { WifiOff, Wifi, X, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { processOfflineQueue, getOfflineQueueSize } from '../lib/offlineQueue';
 
 const OfflineIndicatorBanner = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showStatus, setShowStatus] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
+
+  const triggerSync = async () => {
+    const queueSize = getOfflineQueueSize();
+    if (queueSize > 0) {
+      setIsSyncing(true);
+      setSyncMessage(`Sincronizando ${queueSize} ${queueSize === 1 ? 'registro pendente' : 'registros pendentes'}...`);
+      try {
+        const result = await processOfflineQueue();
+        if (result.successCount > 0) {
+          setSyncMessage(`${result.successCount} ${result.successCount === 1 ? 'registro sincronizado' : 'registros sincronizados'} com sucesso!`);
+        } else {
+          setSyncMessage('Conexão restabelecida!');
+        }
+      } catch (e) {
+        console.error('Error syncing offline queue:', e);
+        setSyncMessage('Conexão restabelecida!');
+      } finally {
+        setIsSyncing(false);
+        setTimeout(() => setShowStatus(false), 5000);
+      }
+    } else {
+      setSyncMessage('Conexão restabelecida!');
+      setTimeout(() => setShowStatus(false), 4000);
+    }
+  };
 
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
       setShowStatus(true);
-      setTimeout(() => setShowStatus(false), 5000); // Hide "back online" after 5s
+      triggerSync();
     };
     
     const handleOffline = () => {
@@ -24,6 +52,12 @@ const OfflineIndicatorBanner = () => {
     // Initial check
     if (!navigator.onLine) {
       setShowStatus(true);
+    } else {
+      // Check if there are un-synced items from a previous session
+      if (getOfflineQueueSize() > 0) {
+        setShowStatus(true);
+        triggerSync();
+      }
     }
 
     return () => {
@@ -43,13 +77,19 @@ const OfflineIndicatorBanner = () => {
             isOffline ? 'bg-vitta-danger/90 text-white' : 'bg-vitta-green/90 text-white'
           }`}
         >
-          {isOffline ? <WifiOff size={18} /> : <Wifi size={18} />}
+          {isOffline ? (
+            <WifiOff size={18} />
+          ) : isSyncing ? (
+            <RefreshCw size={18} className="animate-spin" />
+          ) : (
+            <Wifi size={18} />
+          )}
           <span className="text-sm font-bold tracking-tight">
             {isOffline 
-              ? 'Você está offline. Algumas informações podem estar desatualizadas.' 
-              : 'Conexão restabelecida! Sincronizando dados...'}
+              ? 'Você está offline. As alterações serão salvas localmente e sincronizadas quando a conexão retornar.' 
+              : syncMessage || 'Conexão restabelecida!'}
           </span>
-          {!isOffline && (
+          {!isOffline && !isSyncing && (
             <button 
               onClick={() => setShowStatus(false)}
               className="ml-auto p-1 hover:bg-white/10 rounded-lg transition-colors"
@@ -64,3 +104,4 @@ const OfflineIndicatorBanner = () => {
 };
 
 export default OfflineIndicatorBanner;
+

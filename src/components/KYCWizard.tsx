@@ -15,9 +15,48 @@ import {
   Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
+import { setDoc, updateDoc } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 import { useToast } from '../contexts/ToastContext';
+
+// Client-side image compression helper to prevent Firestore 1MB document limit
+const compressImage = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.75): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
 
 interface KYCWizardProps {
   isOpen: boolean;
@@ -33,6 +72,7 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
   const { addToast } = useToast();
   const [currentStep, setCurrentStep] = useState<Step>('intro');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompressing, setIsCompressing] = useState<string | null>(null);
   const [files, setFiles] = useState<{
     front: string | null;
     back: string | null;
@@ -47,7 +87,7 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
   const currentIndex = steps.indexOf(currentStep);
   const progress = ((currentIndex + 1) / steps.length) * 100;
 
-  const handleFileChange = (type: 'front' | 'back' | 'selfie') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (type: 'front' | 'back' | 'selfie') => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -57,16 +97,27 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      addToast('O arquivo é muito grande (máx 5MB).', 'error');
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('O arquivo original excede o limite máximo permitido.', 'error');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFiles(prev => ({ ...prev, [type]: reader.result as string }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      setIsCompressing(type);
+      const compressedDataUrl = await compressImage(file, 1200, 1200, 0.72);
+      setFiles(prev => ({ ...prev, [type]: compressedDataUrl }));
+      addToast('Imagem processada e otimizada com sucesso!', 'success');
+    } catch (err) {
+      console.error('Error compressing image:', err);
+      // Fallback
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFiles(prev => ({ ...prev, [type]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(null);
+    }
   };
 
   const nextStep = () => {
@@ -182,7 +233,12 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
                 files[type] ? 'border-vitta-accent' : 'border-vitta-border hover:border-vitta-accent/50 group'
               }`}
             >
-              {files[type] ? (
+              {isCompressing === type ? (
+                <div className="flex flex-col items-center justify-center gap-3 text-vitta-accent">
+                  <Loader2 size={36} className="animate-spin" />
+                  <p className="text-xs font-bold">Otimizando e comprimindo foto...</p>
+                </div>
+              ) : files[type] ? (
                 <>
                   <img src={files[type]!} alt={currentData.title} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -195,7 +251,7 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
                     <currentData.icon size={32} />
                   </div>
                   <p className="font-bold">Arraste ou clique para enviar</p>
-                  <p className="text-[10px] mt-1">PNG, JPG ou JPEG até 5MB</p>
+                  <p className="text-[10px] mt-1">PNG, JPG ou JPEG até 10MB (otimização automática)</p>
                 </div>
               )}
               <input 
@@ -203,6 +259,7 @@ const KYCWizard = ({ isOpen, onClose, user, userData, onSuccess }: KYCWizardProp
                 className="absolute inset-0 opacity-0 cursor-pointer" 
                 accept="image/*" 
                 onChange={handleFileChange(type)}
+                disabled={isCompressing === type}
               />
             </div>
 

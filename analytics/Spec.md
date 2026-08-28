@@ -1,38 +1,128 @@
-# Especificação Técnica de Telemedicina - Pendências de Finalização (Spec.md)
-**Data e Hora de Geração:** 27 de junho de 2026, 21:49:18 (Horário de Brasília)
+# Especificação Técnica de Finalização do Sistema - ViTTA Health
+**Data e Hora de Geração:** 28 de agosto de 2026, 18:10:39 (Horário de Brasília)
 
 ---
 
-Este documento atua como especificação de referência de engenharia de software para mapear de forma rigorosa os comportamentos, fluxos lógicos e ajustes de componentes que restam refinar no sistema de videoconferência de telemedicina do **ViTTA**, baseando-se estritamente nas arestas descritas no relatório de análise diagnóstica.
+## 🎯 1. Escopo e Objetivos da Especificação
+Esta especificação descreve com precisão **apenas o que resta finalizar e consolidar** no sistema **ViTTA Health**, conforme detalhado no relatório `analytics/report.md`. Não abrange novas telas ou funcionalidades não iniciadas, restringindo-se ao fechamento das pontas soltas nos componentes e fluxos existentes.
 
 ---
 
-## 🧭 1. Requisitos de Comportamento (Behaviors)
-
-### ⚙️ B1: Desligamento Instantâneo de Dispositivos na Inicialização da Tela de Fechamento
-- **Componente Alvo**: `TelemedicineRoom.tsx`
-- **Descrição de Comportamento**: No momento em que a sessão é determinada como encerrada (seja por clique no botão de hang up ou detecção reativa via `onSnapshot` de que o `status` da consulta mudou para `completed` ou `cancelled` no Firestore):
-  1. O sistema deve **interromper imediatamente todas as faixas ativas** de gravação de mídia local (`localStream.getTracks().forEach(t => t.stop())`) e forçar a redefinição do estado `localStream` para `null`.
-  2. Este desligamento deve ocorrer na fração de milissegundo em que `isSessionClosed` passa a ser `true`, garantindo que o indicador de controle de hardware câmera/microfone (luz LED física de funcionamento do dispositivo) cesse imediatamente na abertura do painel de contagem de redirecionamento de 2.5 segundos.
-
-### ⚙️ B2: Garantia Antimemory-Leak de Ouvintes de Interação Global (Autoplay Bypass Listener)
-- **Componente Alvo**: `TelemedicineRoom.tsx`
-- **Descrição de Comportamento**: O fluxo de contorno para políticas rígidas de autoplay do navegador se dá através de um listener global acoplado à janela (`window.addEventListener('click', unlockAutoplay)`).
-  1. A especificação técnica requer a revisão e reforço para assegurar que **todas** as referências dessas escutas sejam totalmente liberadas tanto no retorno da função do hook de efeito de montagem quanto em quaisquer alterações estruturais das dependências das streams de mídia de vídeo ativo, prevenindo acúmulo de ouvintes órfãos.
-
-### ⚙️ B3: Reset do AnalyserNode e Microfones Remotos
-- **Componente Alvo**: `TelemedicineRoom.tsx`
-- **Descrição de Comportamento**: Ao fechar a sala ou recarregar a tela:
-  1. Parar todos os loops de animação (`requestAnimationFrame`) que processam os dados dos analisadores de áudio.
-  2. Fechar ou suspender o contexto de áudio (`AudioContext.close()`) utilizado para a decodificação e desenho das barras de espectro, eliminando vazamento de canais de áudio abertos.
+## 📑 2. Especificação por Componente e Módulo
 
 ---
 
-## 🧱 2. Requisitos de Componentes e Interface (Components & Layout)
+### 📦 2.1. Módulo Administrativo: Padronização de Wrappers Firestore
+- **Arquivos-Alvo**:
+  - `src/components/Admin/AdminLiberalConfigView.tsx`
+  - `src/components/Admin/AdminVoucherManagementView.tsx`
+  - `src/components/Admin/SubscriptionManagementView.tsx`
+  - `src/components/NotificationCenter.tsx`
+- **Comportamento Esperado**:
+  - Todas as chamadas de mutação no Firestore (`addDoc`, `setDoc`, `updateDoc`, `deleteDoc`) devem ser importadas exclusivamente de `../../lib/firestore-wrappers` (ou `../lib/firestore-wrappers`).
+  - Nenhum objeto com propriedades com valor `undefined` deve ser enviado ao Firestore; o wrapper `sanitizeData` deve filtrar e normalizar valores antes do envio.
+  - As operações que utilizam `Timestamp`, `increment` ou `FieldValue` nativos do Firebase devem manter suas instâncias preservadas.
+- **Critérios de Aceite**:
+  - Remoção de 100% dos imports diretos de mutação de `'firebase/firestore'` nesses arquivos.
+  - Gravação bem-sucedida de profissionais liberais, vouchers e planos contendo campos opcionais vazios sem gerar exceções de `FirebaseError: Function updateDoc() called with invalid data. Unsupported field value: undefined`.
 
-### 📱 C1: Refinamento Responsivo Bento Grid e Footer para Telas Ultra-Estreitas (< 360px)
-- **Componente Alvo**: `TelemedicineRoom.tsx` (Footer de Controles e Grid Visual)
-- **Descrição**: Em smartphones com largura de tela menor ou igual a 360px (por exemplo, iPhone SE de primeira geração e displays compactos visualizados via emulador de viewport):
-  1. O distanciamento interno da barra de controle flutuante inferior (`footer`), que atualmente divide espaço em layouts amplos, deve se adaptar reduzindo dinamicamente as lacunas horizontais (`gap`) e margens laterais de preenchimento (`gap-2 sm:gap-6 px-2 sm:px-10`).
-  2. Reduzir as dimensões dos botões para manter a largura sem transbordar horizontalmente das dimensões da janela visual, assegurando que o botão de mudo e câmera mantenham altura/largura confortáveis de no máximo `w-10 h-10` para preservar a área tátil (mínimo de 44px conforme diretrizes de usabilidade móvel) sem comprometer o layout geral.
-  3. No painel lateral do chat Drawer, o título e as abas de seleção do workspace clínico profissional (receitas, prontuário, atestados) devem compactar seus tamanhos de fonte de forma a não forçar quebras ou empilhamentos verticais anômalos que cubram elementos de digitação em telas de altura e largura limitadas.
+---
+
+### 🛡 2.2. Registro Atômico de Auditoria Administrativa (Audit Trail)
+- **Arquivos-Alvo**:
+  - `src/components/Admin/AdminLiberalConfigView.tsx`
+  - `src/components/Admin/AdminVoucherManagementView.tsx`
+  - `src/components/Admin/SubscriptionManagementView.tsx`
+  - `src/components/Admin/AuditLogsList.tsx`
+- **Comportamento Esperado**:
+  - Ao criar, atualizar ou excluir qualquer registro crítico (Voucher, Categoria, Profissional Liberal ou Plano de Assinatura), a aplicação deve disparar a gravação de um documento na coleção `audit_logs`.
+  - Estrutura do documento de auditoria:
+    ```typescript
+    interface AuditLogEntry {
+      adminId: string;
+      adminName: string;
+      action: 'CREATE_CATEGORY' | 'UPDATE_CATEGORY' | 'DELETE_CATEGORY' |
+              'CREATE_PROFESSIONAL' | 'UPDATE_PROFESSIONAL' | 'DELETE_PROFESSIONAL' |
+              'UPDATE_VOUCHER_CONFIG' | 'CREATE_VOUCHER' | 'DELETE_VOUCHER' |
+              'CREATE_PLAN' | 'UPDATE_PLAN' | 'DELETE_PLAN';
+      description: string;
+      before?: any;
+      after?: any;
+      timestamp: Timestamp;
+    }
+    ```
+  - As operações de gravação de log devem utilizar `addDoc` via wrapper sanitizado e nunca impedir a ação principal caso ocorra falha de rede/permissão (encapsulamento em `try/catch` seguro).
+- **Critérios de Aceite**:
+  - Todas as ações administrativas produzem entradas auditáveis visíveis no modal e listagem de `AuditLogsList.tsx`.
+  - O visualizador de diffs do `ChangeInspector` em `AuditLogsList.tsx` exibe os valores anteriores (`before`) e posteriores (`after`) corretamente formatados.
+
+---
+
+### 🔔 2.3. Centro de Notificações: Operações em Lote e Sanitização
+- **Arquivos-Alvo**:
+  - `src/components/NotificationCenter.tsx`
+- **Comportamento Esperado**:
+  - Ação "Marcar todas como lidas" (`markAllAsRead`):
+    - Obter os IDs das notificações não lidas (`read == false`).
+    - Agrupar em lotes de até 500 operações por `writeBatch` (limite da API do Firestore).
+    - Executar o `batch.commit()` e emitir feedback no estado local.
+  - Ação "Limpar notificações" (`clearAll`):
+    - Executar a exclusão de notificações lidas ou selecionadas utilizando `writeBatch`.
+- **Critérios de Aceite**:
+  - Não há vazamento de memória ou travamento da UI ao interagir com o dropdown de notificações.
+  - As notificações são marcadas como lidas de forma instantânea e persistente.
+
+---
+
+### 💳 2.4. Gestão de Planos de Assinatura e Sincronização Híbrida
+- **Arquivos-Alvo**:
+  - `src/components/Admin/SubscriptionManagementView.tsx`
+- **Comportamento Esperado**:
+  - No modo local (quando a chave do Mercado Pago não estiver configurada ou a API retornar indisponibilidade), a coleção `subscription_plans` do Firestore deve ser a fonte primária da verdade.
+  - A criação e edição de planos locais deve gravar campos normalizados:
+    ```typescript
+    {
+      name: string;
+      price: number;
+      frequency: number;
+      frequencyType: 'months' | 'years' | 'days';
+      status: 'active' | 'inactive';
+      isLocal: boolean;
+      createdAt: Timestamp;
+      updatedAt: Timestamp;
+    }
+    ```
+  - A exclusão de planos locais deve invocar o `deleteDoc` sanitizado e fechar os listeners ativos de snapshot no desmonte do componente.
+- **Critérios de Aceite**:
+  - Planos locais podem ser criados, editados e excluídos sem inconsistências visuais ou dados órfãos no Firestore.
+  - Limpeza estrita dos listeners no hook de ciclo de vida (`useEffect`).
+
+---
+
+### 📍 2.5. Integração ViaCEP com Timeout e Resiliência de Erros
+- **Arquivos-Alvo**:
+  - `src/lib/utils.ts`
+  - `src/components/Admin/AdminLiberalConfigView.tsx`
+- **Comportamento Esperado**:
+  - A função `fetchAddressByCep` deve:
+    - Normalizar a string removendo caracteres não numéricos.
+    - Interromper a busca se o CEP não possuir exatamente 8 dígitos.
+    - Utilizar `AbortController` com timeout de 6 segundos para evitar travamento em redes lentas.
+    - Tratar a resposta da API do ViaCEP quando retornar `{ "erro": true }` ou status HTTP não-200, retornando `null` de maneira previsível.
+  - No componente `AdminLiberalConfigView.tsx`, exibir indicador de carregamento discreto enquanto a busca de CEP é processada e auto-preencher logradouro, bairro, cidade e estado sem travar os campos manuais.
+- **Critérios de Aceite**:
+  - Digitação de CEP válido preenche os campos automaticamente.
+  - Digitação de CEP inexistente ou sem conexão não bloqueia o preenchimento manual do endereço pelo administrador.
+
+---
+
+### 📡 2.6. Robustez de Reconexão e Eventos WebRTC na Telemedicina
+- **Arquivos-Alvo**:
+  - `src/components/TelemedicineRoom.tsx`
+- **Comportamento Esperado**:
+  - Monitorar os eventos `peerConnection.oniceconnectionstatechange` e `peerConnection.onconnectionstatechange`.
+  - Caso o estado mude para `'disconnected'` ou `'failed'`, acionar tentativa de recuperação de sinalização com notificação toast informativa ao usuário ("Reconectando chamada de vídeo...").
+  - Ao reestabelecer (`'connected'`), restaurar os seletores de mídia sem duplicar os nós de `AudioContext` ou ouvintes de áudio.
+- **Critérios de Aceite**:
+  - Em oscilações de rede temporárias, a chamada tenta recuperar a sessão automaticamente antes de acionar o encerramento forçado.
+  - Todos os recursos de hardware continuam sendo imediatamente destruídos ao clicar em "Encerrar Atendimento".
