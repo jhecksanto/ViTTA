@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { collection, query, orderBy, limit, onSnapshot, Timestamp, startAfter, getDocs, where, Query, DocumentData } from 'firebase/firestore';
-import { Clock, User, Activity, FileText, ClipboardList, X, Eye, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { collection, query, orderBy, limit, Timestamp, startAfter, getDocs, where, Query, DocumentData } from 'firebase/firestore';
+import { Clock, User, Activity, FileText, ClipboardList, X, Eye, ChevronLeft, ChevronRight, Filter, Download, Copy, Check, Code } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../../App';
+import { useToast } from '../../contexts/ToastContext';
 
 interface AuditLog {
   id: string;
@@ -16,7 +17,34 @@ interface AuditLog {
   after?: any;
 }
 
-const ChangeInspector = ({ before, after, onClose, action, description }: { before: any, after: any, onClose: () => void, action: string, description: string }) => {
+const ChangeInspector = ({ 
+  log, 
+  onClose 
+}: { 
+  log: AuditLog; 
+  onClose: () => void;
+}) => {
+  const [viewMode, setViewMode] = useState<'diff' | 'raw'>('diff');
+  const [copied, setCopied] = useState(false);
+  const { before, after, action, description } = log;
+
+  const handleCopyJson = () => {
+    const payload = JSON.stringify({
+      id: log.id,
+      timestamp: log.timestamp?.toDate ? log.timestamp.toDate().toISOString() : null,
+      adminId: log.adminId,
+      adminName: log.adminName,
+      action: log.action,
+      description: log.description,
+      before: log.before || null,
+      after: log.after || null,
+    }, null, 2);
+
+    navigator.clipboard.writeText(payload);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const getDiff = () => {
     const bObj = before || {};
     const aObj = after || {};
@@ -40,7 +68,7 @@ const ChangeInspector = ({ before, after, onClose, action, description }: { befo
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-vitta-danger uppercase tracking-wider flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-vitta-danger" />
-              {key} (Original)
+              {key} (Original / Anterior)
             </span>
             <pre className="text-xs text-vitta-danger bg-vitta-danger/5 p-3 rounded-xl overflow-x-auto font-mono">
               {bValue === undefined ? 'vazio' : JSON.stringify(bValue, null, 2)}
@@ -49,7 +77,7 @@ const ChangeInspector = ({ before, after, onClose, action, description }: { befo
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-vitta-green uppercase tracking-wider flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-vitta-green" />
-              {key} (Novo)
+              {key} (Novo / Atualizado)
             </span>
             <pre className="text-xs text-vitta-green bg-vitta-green/5 p-3 rounded-xl overflow-x-auto font-mono">
               {aValue === undefined ? 'vazio' : JSON.stringify(aValue, null, 2)}
@@ -75,7 +103,7 @@ const ChangeInspector = ({ before, after, onClose, action, description }: { befo
               <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-vitta-accent-bg text-vitta-accent uppercase tracking-wider">
                 {action}
               </span>
-              <h3 className="text-xl font-bold text-vitta-text-primary">Inspetor de Alterações</h3>
+              <h3 className="text-xl font-bold text-vitta-text-primary">Inspetor de Alterações & Payload</h3>
             </div>
             <p className="text-sm text-vitta-text-secondary">{description}</p>
           </div>
@@ -84,21 +112,73 @@ const ChangeInspector = ({ before, after, onClose, action, description }: { befo
           </button>
         </div>
 
+        {/* View Mode Tabs */}
+        <div className="px-6 py-2 bg-vitta-surface border-b border-vitta-border flex justify-between items-center">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('diff')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                viewMode === 'diff'
+                  ? 'bg-vitta-accent text-white shadow-sm'
+                  : 'bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border'
+              }`}
+            >
+              Comparativo (Diff)
+            </button>
+            <button
+              onClick={() => setViewMode('raw')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                viewMode === 'raw'
+                  ? 'bg-vitta-accent text-white shadow-sm'
+                  : 'bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border'
+              }`}
+            >
+              <Code size={13} />
+              JSON Completo
+            </button>
+          </div>
+
+          <button
+            onClick={handleCopyJson}
+            className="flex items-center gap-1.5 px-3 py-1 bg-vitta-surface-2 hover:bg-vitta-border rounded-xl text-xs font-bold text-vitta-text-primary transition-all"
+          >
+            {copied ? <Check size={13} className="text-vitta-green" /> : <Copy size={13} />}
+            {copied ? 'Copiado!' : 'Copiar JSON'}
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 no-scrollbar">
-          {diffs.length > 0 ? (
-            <div className="space-y-2 rounded-2xl border border-vitta-border overflow-hidden">
-              {diffs}
-            </div>
+          {viewMode === 'diff' ? (
+            diffs.length > 0 ? (
+              <div className="space-y-2 rounded-2xl border border-vitta-border overflow-hidden">
+                {diffs}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                <div className="w-16 h-16 bg-vitta-surface-2 rounded-full flex items-center justify-center text-vitta-text-muted opacity-30">
+                  <Activity size={32} />
+                </div>
+                <div>
+                  <p className="font-bold text-vitta-text-primary">Nenhuma alteração de campos granulares</p>
+                  <p className="text-sm text-vitta-text-secondary max-w-xs">
+                    Esta ação foi registrada, mas não possui pares de dados Before/After comparáveis.
+                  </p>
+                </div>
+              </div>
+            )
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-              <div className="w-16 h-16 bg-vitta-surface-2 rounded-full flex items-center justify-center text-vitta-text-muted opacity-30">
-                <Activity size={32} />
-              </div>
-              <div>
-                <p className="font-bold text-vitta-text-primary">Nenhuma alteração detalhada</p>
-                <p className="text-sm text-vitta-text-secondary max-w-xs">Esta ação foi registrada, mas não houveram mudanças granulares de campos detectadas.</p>
-              </div>
-            </div>
+            <pre className="p-4 bg-vitta-surface-2 text-vitta-text-primary rounded-2xl border border-vitta-border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+              {JSON.stringify({
+                id: log.id,
+                timestamp: log.timestamp?.toDate ? log.timestamp.toDate().toISOString() : null,
+                adminId: log.adminId,
+                adminName: log.adminName,
+                action: log.action,
+                description: log.description,
+                before: log.before || null,
+                after: log.after || null,
+              }, null, 2)}
+            </pre>
           )}
         </div>
         
@@ -113,6 +193,7 @@ const ChangeInspector = ({ before, after, onClose, action, description }: { befo
 };
 
 const AuditLogsList = () => {
+  const { addToast } = useToast();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterAction, setFilterAction] = useState('all');
@@ -134,8 +215,6 @@ const AuditLogsList = () => {
         q = query(q, where('action', '==', filterAction));
       }
 
-      // Date filtering requires a specific index or simpler logic. 
-      // For now we do ordering.
       q = query(q, orderBy('timestamp', 'desc'));
 
       if (dateFilter.start) {
@@ -187,8 +266,64 @@ const AuditLogsList = () => {
   };
 
   const filteredLogsList = logs.filter(log => {
-    return log.adminName.toLowerCase().includes(searchAdmin.toLowerCase());
+    return (log.adminName || '').toLowerCase().includes(searchAdmin.toLowerCase());
   });
+
+  // Export audit logs as CSV
+  const handleExportCSV = () => {
+    if (logs.length === 0) {
+      addToast("Nenhum log disponível para exportação.", "error");
+      return;
+    }
+    const headers = ["ID", "DataHora", "AdminNome", "AdminID", "Operacao", "Descricao"];
+    const rows = filteredLogsList.map(l => [
+      `"${l.id}"`,
+      `"${l.timestamp?.toDate ? l.timestamp.toDate().toISOString() : ''}"`,
+      `"${(l.adminName || '').replace(/"/g, '""')}"`,
+      `"${(l.adminId || '').replace(/"/g, '""')}"`,
+      `"${(l.action || '').replace(/"/g, '""')}"`,
+      `"${(l.description || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `vitta_audit_logs_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast("Relatório de auditoria CSV exportado com sucesso!", "success");
+  };
+
+  // Export audit logs as JSON
+  const handleExportJSON = () => {
+    if (logs.length === 0) {
+      addToast("Nenhum log disponível para exportação.", "error");
+      return;
+    }
+    const exportData = filteredLogsList.map(l => ({
+      id: l.id,
+      timestamp: l.timestamp?.toDate ? l.timestamp.toDate().toISOString() : null,
+      adminId: l.adminId,
+      adminName: l.adminName,
+      action: l.action,
+      description: l.description,
+      before: l.before || null,
+      after: l.after || null
+    }));
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `vitta_audit_logs_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast("Relatório de auditoria JSON exportado com sucesso!", "success");
+  };
 
   return (
     <div className="bg-vitta-surface p-6 sm:p-8 rounded-[2.5rem] border border-vitta-border shadow-sm space-y-6">
@@ -199,58 +334,85 @@ const AuditLogsList = () => {
           </div>
           <div>
             <h3 className="text-2xl font-bold text-vitta-text-primary tracking-tight">Audit Trail</h3>
-            <p className="text-sm text-vitta-text-muted">Rastreabilidade completa de ações administrativas</p>
+            <p className="text-sm text-vitta-text-muted">Rastreabilidade completa de ações administrativas e conformidade</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 bg-vitta-surface-2 p-3 rounded-2xl border border-vitta-border">
-          <div className="relative">
-            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" />
-            <input 
-              type="text" 
-              placeholder="Admin..."
-              value={searchAdmin}
-              onChange={(e) => setSearchAdmin(e.target.value)}
-              className="pl-9 pr-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs focus:ring-2 focus:ring-vitta-accent/20 outline-none w-32 sm:w-40 text-vitta-text-primary"
-            />
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Export Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3 py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold border border-vitta-border transition-all"
+              title="Exportar registros em CSV"
+            >
+              <Download size={13} />
+              CSV
+            </button>
+            <button
+              onClick={handleExportJSON}
+              className="flex items-center gap-1.5 px-3 py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold border border-vitta-border transition-all"
+              title="Exportar registros em JSON"
+            >
+              <Download size={13} />
+              JSON
+            </button>
           </div>
-          
-          <select 
-            value={filterAction}
-            onChange={(e) => setFilterAction(e.target.value)}
-            className="px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary cursor-pointer hover:bg-vitta-surface-2 transition-colors"
-          >
-            <option value="all">Todas Ações</option>
-            <option value="CREATE_USER">Criar Usuário</option>
-            <option value="UPDATE_USER">Editar Usuário</option>
-            <option value="DELETE_USER">Excluir Usuário</option>
-            <option value="CREATE_PROFESSIONAL">Criar Profissional</option>
-            <option value="UPDATE_PROFESSIONAL">Editar Profissional</option>
-            <option value="CREATE_PARTNER">Criar Parceiro</option>
-            <option value="UPDATE_PARTNER">Editar Parceiro</option>
-            <option value="CREATE_OFFER">Criar Oferta</option>
-            <option value="UPDATE_OFFER">Editar Oferta</option>
-            <option value="UPDATE_APPOINTMENT_STATUS">Status Consulta</option>
-            <option value="UPDATE_USER_EXAM_STATUS">Status Exame</option>
-          </select>
 
-          <div className="flex items-center gap-2 border-l border-vitta-border pl-3 ml-1">
-             <Clock size={14} className="text-vitta-text-muted" />
-             <input 
-               type="date" 
-               value={dateFilter.start}
-               onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
-               className="bg-transparent text-[10px] font-bold text-vitta-text-primary outline-none uppercase"
-               title="Data Inicial"
-             />
-             <span className="text-vitta-text-muted text-[10px]">até</span>
-             <input 
-               type="date" 
-               value={dateFilter.end}
-               onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
-               className="bg-transparent text-[10px] font-bold text-vitta-text-primary outline-none uppercase"
-               title="Data Final"
-             />
+          <div className="flex flex-wrap items-center gap-3 bg-vitta-surface-2 p-3 rounded-2xl border border-vitta-border">
+            <div className="relative">
+              <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-vitta-text-muted" />
+              <input 
+                type="text" 
+                placeholder="Admin..."
+                value={searchAdmin}
+                onChange={(e) => setSearchAdmin(e.target.value)}
+                className="pl-9 pr-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs focus:ring-2 focus:ring-vitta-accent/20 outline-none w-32 sm:w-40 text-vitta-text-primary"
+              />
+            </div>
+            
+            <select 
+              value={filterAction}
+              onChange={(e) => setFilterAction(e.target.value)}
+              className="px-3 py-2 bg-vitta-surface border border-vitta-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-vitta-accent/20 outline-none text-vitta-text-primary cursor-pointer hover:bg-vitta-surface-2 transition-colors"
+            >
+              <option value="all">Todas Ações</option>
+              <option value="APPROVE_WITHDRAWAL">Aprovar Saque</option>
+              <option value="REJECT_WITHDRAWAL">Recusar Saque</option>
+              <option value="MANUAL_BALANCE_ADJUSTMENT">Ajuste de Saldo</option>
+              <option value="FREEZE_WALLET">Congelar Carteira</option>
+              <option value="UNFREEZE_WALLET">Descongelar Carteira</option>
+              <option value="CREATE_USER">Criar Usuário</option>
+              <option value="UPDATE_USER">Editar Usuário</option>
+              <option value="DELETE_USER">Excluir Usuário</option>
+              <option value="CREATE_PROFESSIONAL">Criar Profissional</option>
+              <option value="UPDATE_PROFESSIONAL">Editar Profissional</option>
+              <option value="CREATE_PARTNER">Criar Parceiro</option>
+              <option value="UPDATE_PARTNER">Editar Parceiro</option>
+              <option value="RESCHEDULE_APPOINTMENT">Reagendar Consulta</option>
+              <option value="CANCEL_APPOINTMENT_REFUND">Cancelar c/ Estorno</option>
+              <option value="UPDATE_APPOINTMENT_STATUS">Status Consulta</option>
+              <option value="UPDATE_USER_EXAM_STATUS">Status Exame</option>
+            </select>
+
+            <div className="flex items-center gap-2 border-l border-vitta-border pl-3 ml-1">
+               <Clock size={14} className="text-vitta-text-muted" />
+               <input 
+                 type="date" 
+                 value={dateFilter.start}
+                 onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
+                 className="bg-transparent text-[10px] font-bold text-vitta-text-primary outline-none uppercase"
+                 title="Data Inicial"
+               />
+               <span className="text-vitta-text-muted text-[10px]">até</span>
+               <input 
+                 type="date" 
+                 value={dateFilter.end}
+                 onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
+                 className="bg-transparent text-[10px] font-bold text-vitta-text-primary outline-none uppercase"
+                 title="Data Final"
+               />
+            </div>
           </div>
         </div>
       </div>
@@ -306,10 +468,10 @@ const AuditLogsList = () => {
                   <td className="py-4 px-6">
                     <div className="flex flex-col">
                       <span className="text-xs font-bold text-vitta-text-primary">
-                        {log.timestamp?.toDate().toLocaleDateString('pt-BR')}
+                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleDateString('pt-BR') : '-'}
                       </span>
                       <span className="text-[10px] text-vitta-text-muted">
-                        {log.timestamp?.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
                       </span>
                     </div>
                   </td>
@@ -340,7 +502,7 @@ const AuditLogsList = () => {
                       className="p-2.5 text-vitta-text-muted hover:text-vitta-accent hover:bg-vitta-accent-bg/50 hover:shadow-sm rounded-xl transition-all inline-flex items-center gap-2 group/btn"
                     >
                       <Eye size={16} className="group-hover/btn:scale-110 transition-transform" />
-                      <span className="text-[10px] font-bold hidden xl:inline uppercase tracking-widest">Detalhes</span>
+                      <span className="text-[10px] font-bold hidden xl:inline uppercase tracking-widest">Detalhes & JSON</span>
                     </button>
                   </td>
                 </motion.tr>
@@ -378,10 +540,7 @@ const AuditLogsList = () => {
       <AnimatePresence>
         {inspectingLog && (
           <ChangeInspector 
-            before={inspectingLog.before} 
-            after={inspectingLog.after} 
-            action={inspectingLog.action}
-            description={inspectingLog.description}
+            log={inspectingLog}
             onClose={() => setInspectingLog(null)} 
           />
         )}

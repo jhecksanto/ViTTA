@@ -74,6 +74,11 @@ export interface Medication {
   startDate: string;
   endDate?: string;
   category?: string;
+  lastTakenTime?: string;
+  lastTakenAt?: any;
+  takenCount?: number;
+  archivedAt?: any;
+  updatedAt?: any;
 }
 
 export interface HealthGoal {

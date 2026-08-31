@@ -9,7 +9,7 @@ import {
   Timestamp,
   runTransaction 
 } from 'firebase/firestore';
-import { sanitizeData } from '../lib/firestore-wrappers';
+import { sanitizeData, addDoc } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 import { useToast } from '../contexts/ToastContext.tsx';
 
@@ -53,14 +53,17 @@ const ReviewModal = ({
         const profRef = doc(db, 'professionals', professionalId);
         const profDoc = await transaction.get(profRef);
         
-        if (!profDoc.exists()) {
-          throw new Error('Profissional não encontrado.');
-        }
+        let targetDocRef = profRef;
+        let currentData = profDoc.exists() ? profDoc.data() : null;
 
-        const currentData = profDoc.data();
-        const currentTotalRating = (currentData.rating || 0) * (currentData.reviews || 0);
-        const newReviewsCount = (currentData.reviews || 0) + 1;
-        const newAverageRating = (currentTotalRating + rating) / newReviewsCount;
+        if (!currentData) {
+          const liberalRef = doc(db, 'liberal_professionals', professionalId);
+          const liberalDoc = await transaction.get(liberalRef);
+          if (liberalDoc.exists()) {
+            targetDocRef = liberalRef;
+            currentData = liberalDoc.data();
+          }
+        }
 
         // 1. Create the review document
         const reviewRef = doc(collection(db, 'reviews'));
@@ -70,22 +73,47 @@ const ReviewModal = ({
           professionalId,
           appointmentId,
           rating,
-          comment,
+          comment: comment.trim(),
           createdAt: Timestamp.now()
         }));
 
-        // 2. Update the professional document
-        transaction.update(profRef, sanitizeData({
-          rating: newAverageRating,
-          reviews: newReviewsCount
-        }));
+        // 2. Update the professional document if found
+        if (currentData) {
+          const currentTotalRating = (currentData.rating || 0) * (currentData.reviews || 0);
+          const newReviewsCount = (currentData.reviews || 0) + 1;
+          const newAverageRating = Number(((currentTotalRating + rating) / newReviewsCount).toFixed(1));
 
-        // 3. Mark the appointment as reviewed (optional, if we adding isReviewed field)
-        const appointmentRef = doc(db, 'appointments', appointmentId);
-        transaction.update(appointmentRef, sanitizeData({
-          isReviewed: true
-        }));
+          transaction.update(targetDocRef, sanitizeData({
+            rating: newAverageRating,
+            reviews: newReviewsCount,
+            updatedAt: Timestamp.now()
+          }));
+        }
+
+        // 3. Mark the appointment as reviewed
+        if (appointmentId) {
+          const appointmentRef = doc(db, 'appointments', appointmentId);
+          transaction.update(appointmentRef, sanitizeData({
+            isReviewed: true,
+            rating,
+            reviewedAt: Timestamp.now()
+          }));
+        }
       });
+
+      // 4. Send notification to professional if we have a professional document with userId
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          userId: professionalId,
+          title: 'Nova Avaliação Recebida',
+          message: `${userName || 'Um paciente'} avaliou seu atendimento com ${rating} estrela(s).`,
+          type: 'review',
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      } catch (notifyErr) {
+        console.warn('Could not dispatch professional review notification:', notifyErr);
+      }
 
       addToast('Obrigado pela sua avaliação!', 'success');
       if (onSuccess) onSuccess();

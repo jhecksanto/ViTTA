@@ -30,3 +30,11 @@ export const recordAuditLog = async (payload: AuditLogPayload): Promise<void> =>
     console.warn('[AuditLog] Erro ao gravar log de auditoria:', error);
   }
 };
+
+export const logAdminAction = async (action: string, description: string, details?: any): Promise<void> => {
+  return recordAuditLog({
+    action,
+    description,
+    after: details,
+  });
+};

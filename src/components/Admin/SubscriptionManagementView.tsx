@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../firebase';
-import { collection, query, onSnapshot, Timestamp, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot, Timestamp, doc, getDocs } from 'firebase/firestore';
 import { setDoc, deleteDoc } from '../../lib/firestore-wrappers';
 import { recordAuditLog } from '../../lib/audit';
 import { 
@@ -16,7 +16,9 @@ import {
   WifiOff,
   Pencil,
   Crown,
-  Sparkles
+  Sparkles,
+  TrendingUp,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../../contexts/ToastContext.tsx';
@@ -48,6 +50,32 @@ const SubscriptionManagementView = () => {
   const [isMercadoPagoConnected, setIsMercadoPagoConnected] = useState(true);
   const [editingPlan, setEditingPlan] = useState<MPPlan | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  const [activeSubscribersCount, setActiveSubscribersCount] = useState(0);
+  const [estimatedRealMRR, setEstimatedRealMRR] = useState(0);
+
+  useEffect(() => {
+    // Listen to active subscribers to compute accurate MRR
+    const qUsers = query(collection(db, 'users'));
+    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
+      let count = 0;
+      let mrr = 0;
+      snapshot.docs.forEach((d) => {
+        const u = d.data();
+        if (u.role === 'patient' || !u.role) {
+          if (u.planStatus === 'active' || u.subscriptionStatus === 'active' || u.plan) {
+            count++;
+            const userPlanPrice = u.planPrice || u.subscription?.price || (u.plan === 'individual' ? 39.9 : u.plan === 'familiar' ? 79.9 : 0);
+            mrr += Number(userPlanPrice) || 0;
+          }
+        }
+      });
+      setActiveSubscribersCount(count);
+      setEstimatedRealMRR(mrr);
+    });
+
+    return () => unsubscribeUsers();
+  }, []);
 
   const [formData, setFormData] = useState({
     reason: '',
@@ -340,9 +368,32 @@ const SubscriptionManagementView = () => {
   };
 
   const handleDeletePlan = async (planId: string) => {
-    if (!window.confirm("Deseja realmente excluir este plano? Esta ação removerá o plano local.")) return;
     try {
       const plan = plans.find(p => p.id === planId);
+      const planName = plan?.reason?.toLowerCase() || '';
+
+      // Check if there are active subscribers linked to this plan
+      const qUsers = query(collection(db, 'users'));
+      const snapshot = await getDocs(qUsers);
+      const activeSubs = snapshot.docs.filter(d => {
+        const u = d.data();
+        return (
+          u.planId === planId ||
+          u.subscription?.planId === planId ||
+          (u.plan && (u.plan.toLowerCase() === planName || u.plan === planId))
+        );
+      });
+
+      if (activeSubs.length > 0) {
+        addToast(
+          `Bloqueado: Não é possível excluir o plano "${plan?.reason || planId}" pois existem ${activeSubs.length} assinante(s) ativo(s) vinculado(s) a ele.`,
+          "error"
+        );
+        return;
+      }
+
+      if (!window.confirm("Deseja realmente excluir este plano? Esta ação removerá o plano local.")) return;
+
       await deleteDoc(doc(db, 'subscription_plans', planId));
       await recordAuditLog({
         action: 'DELETE_PLAN',
@@ -359,6 +410,52 @@ const SubscriptionManagementView = () => {
 
   return (
     <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm space-y-8">
+      {/* Metrics Cards: MRR, Subscribers, Total Plans */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-3xl text-white shadow-lg shadow-indigo-600/10">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wider">MRR Real Estimado</p>
+              <h3 className="text-3xl font-black mt-1">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(estimatedRealMRR)}
+              </h3>
+              <p className="text-[10px] text-indigo-200 mt-2">Receita Recorrente Mensal calculada com base nos assinantes ativos.</p>
+            </div>
+            <div className="p-3 bg-white/10 rounded-2xl">
+              <TrendingUp size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-3xl text-white shadow-lg shadow-emerald-600/10">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-emerald-100 text-xs font-semibold uppercase tracking-wider font-bold">Assinantes Ativos</p>
+              <h3 className="text-3xl font-black mt-1">{activeSubscribersCount}</h3>
+              <p className="text-[10px] text-emerald-100 mt-2">Usuários com convênio ou assinatura ativa no momento.</p>
+            </div>
+            <div className="p-3 bg-white/10 rounded-2xl">
+              <Users size={20} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-slate-700 to-slate-900 p-6 rounded-3xl text-white shadow-lg shadow-slate-900/10">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-slate-300 text-xs font-semibold uppercase tracking-wider">Planos Cadastrados</p>
+              <h3 className="text-3xl font-black mt-1">{plans.length}</h3>
+              <p className="text-[10px] text-slate-400 mt-2">
+                {plans.filter(p => p.status === 'active').length} planos ativos para novas adesões.
+              </p>
+            </div>
+            <div className="p-3 bg-white/10 rounded-2xl">
+              <Package size={20} />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
