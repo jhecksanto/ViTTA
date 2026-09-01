@@ -15,6 +15,7 @@ import { TermsAndPrivacyView } from "./components/System/TermsAndPrivacyView";
 import { ChatView } from "./components/System/ChatView";
 import { NotificationsView } from "./components/System/NotificationsView";
 import { SettingsView } from "./components/System/SettingsView";
+import { MobileBottomNav } from "./components/Navigation/MobileBottomNav";
 import AnalyticsView from "./components/Admin/AnalyticsView";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -10993,9 +10994,19 @@ export default function App() {
           </header>
 
           {/* Active View Container */}
-          <main className="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
+          <main className="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto overflow-y-auto pb-24 lg:pb-8">
             {renderActiveView()}
           </main>
+
+          {/* Mobile & PWA Bottom Navigation Menu */}
+          <MobileBottomNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            userData={userData}
+            user={user}
+            unreadNotifsCount={unreadNotifsCount}
+            onOpenSidebar={() => setIsSidebarOpen(true)}
+          />
         </div>
       </div>
 
