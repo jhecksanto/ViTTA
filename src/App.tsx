@@ -8,6 +8,8 @@ import { UserConfigView } from "./components/Admin/UserConfigView";
 import { ProfessionalsView } from "./components/Patient/ProfessionalsView";
 import { PartnersView } from "./components/Patient/PartnersView";
 import { OffersView } from "./components/Patient/OffersView";
+import { MyAppointmentsView } from "./components/Patient/MyAppointmentsView";
+import { ExamsView } from "./components/Patient/ExamsView";
 import { SupportView } from "./components/System/SupportView";
 import { TermsAndPrivacyView } from "./components/System/TermsAndPrivacyView";
 import { ChatView } from "./components/System/ChatView";
@@ -1938,10 +1940,12 @@ const PatientDashboardView = ({
   user,
   userData,
   setActiveTab,
+  setActiveTelemedicineApt,
 }: {
   user: any;
   userData: any;
   setActiveTab: (tab: string) => void;
+  setActiveTelemedicineApt?: (apt: any) => void;
 }) => {
   const { addToast } = useToast();
   const [metricsHistory, setMetricsHistory] = useState<any[]>([]);
@@ -2478,9 +2482,17 @@ const PatientDashboardView = ({
           <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-vitta-surface p-8 rounded-xl border border-vitta-border shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-vitta-text-primary">
-                  Próximas Consultas
-                </h3>
+                <div>
+                  <h3 className="text-lg font-bold text-vitta-text-primary">
+                    Próximas Consultas
+                  </h3>
+                  <button
+                    onClick={() => setActiveTab("appointments")}
+                    className="text-[11px] font-bold text-vitta-accent hover:underline flex items-center gap-1 mt-0.5 cursor-pointer"
+                  >
+                    Ver todas as consultas <ChevronRight size={12} />
+                  </button>
+                </div>
                 <Calendar size={20} className="text-vitta-accent" />
               </div>
               <div className="space-y-4">
@@ -2488,7 +2500,7 @@ const PatientDashboardView = ({
                   upcomingAppointments.map((apt) => (
                     <div
                       key={apt.id}
-                      className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border"
+                      className="flex items-center gap-4 p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border hover:border-vitta-accent/40 transition-colors"
                     >
                       <img
                         src={
@@ -2506,23 +2518,41 @@ const PatientDashboardView = ({
                           {apt.specialty}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-vitta-accent">
-                          {formatDateForDisplay(apt.date, {
-                            day: "2-digit",
-                            month: "short",
-                          })}
-                        </p>
-                        <p className="text-[10px] text-vitta-text-muted">
-                          {apt.time}
-                        </p>
+                      <div className="text-right flex flex-col items-end gap-1">
+                        <div>
+                          <p className="text-xs font-bold text-vitta-accent">
+                            {formatDateForDisplay(apt.date, {
+                              day: "2-digit",
+                              month: "short",
+                            })}
+                          </p>
+                          <p className="text-[10px] text-vitta-text-muted">
+                            {apt.time}
+                          </p>
+                        </div>
+                        {(apt.type === "telemedicine" || apt.isTelemedicine || apt.roomType === "telemedicine") && setActiveTelemedicineApt && (
+                          <button
+                            onClick={() => setActiveTelemedicineApt(apt)}
+                            className="px-2 py-0.5 bg-vitta-green/10 text-vitta-green hover:bg-vitta-green hover:text-white rounded-lg text-[10px] font-bold transition-all border border-vitta-green/20 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Video size={10} /> Entrar
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-vitta-text-secondary text-center py-4">
-                    Nenhuma consulta agendada.
-                  </p>
+                  <div className="text-center py-4 space-y-2">
+                    <p className="text-sm text-vitta-text-secondary">
+                      Nenhuma consulta agendada.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab("professionals")}
+                      className="text-xs font-bold text-vitta-accent hover:underline cursor-pointer"
+                    >
+                      Agendar uma consulta agora
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -9969,504 +9999,7 @@ const AdminView = ({ user, userData }: { user: any; userData?: any }) => {
   );
 };
 
-const ExamsView = ({ user }: { user: any }) => {
-  const { addToast } = useToast();
-  const [exams, setExams] = useState<any[]>([]);
-  const [filter, setFilter] = useState<"all" | "ready" | "pending">("all");
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedExam, setSelectedExam] = useState<any | null>(null);
-  const [previewExam, setPreviewExam] = useState<any | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, "user_exams"),
-      where("userId", "==", user.uid),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        // Sort by createdAt desc safely on client side
-        data.sort((a: any, b: any) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-        setExams(data);
-        setLoading(false);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.GET, "user_exams");
-      },
-    );
-
-    return () => unsubscribe();
-  }, [user]);
-
-  const filteredExams = useMemo(() => {
-    return exams.filter((exam) => {
-      const matchesFilter = filter === "all" || exam.status === filter;
-      const matchesSearch =
-        exam.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (exam.lab &&
-          exam.lab.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesFilter && matchesSearch;
-    });
-  }, [exams, filter, searchQuery]);
-
-  const handleDownload = async (url: string | undefined, examName: string) => {
-    if (!url) return;
-
-    try {
-      if (url.startsWith("data:")) {
-        const link = document.createElement("a");
-        link.href = url;
-        const mimeMatch = url.match(/^data:([^;]+);/);
-        let ext = "pdf";
-        if (mimeMatch) {
-          const mime = mimeMatch[1];
-          if (mime.includes("jpeg") || mime.includes("jpg")) ext = "jpg";
-          else if (mime.includes("png")) ext = "png";
-          else if (mime.includes("gif")) ext = "gif";
-          else if (mime.includes("webp")) ext = "webp";
-        }
-        link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        addToast("Download iniciado com sucesso.", "success");
-        return;
-      }
-
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Response status " + response.status);
-      const blob = await response.blob();
-      
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      
-      let ext = "pdf";
-      const contentType = response.headers.get("content-type");
-      if (contentType) {
-        if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = "jpg";
-        else if (contentType.includes("png")) ext = "png";
-        else if (contentType.includes("gif")) ext = "gif";
-        else if (contentType.includes("webp")) ext = "webp";
-      } else {
-        const cleanUrl = url.split("?")[0];
-        const match = cleanUrl.match(/\.([a-zA-Z0-9]+)$/);
-        if (match) ext = match[1];
-      }
-      
-      link.download = `${examName.replace(/[/\\?%*:|"<>]/g, "-")}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-      addToast("Download iniciado com sucesso.", "success");
-    } catch (error) {
-      console.warn("Failed to download via blob fetch, falling back to new tab:", error);
-      const link = document.createElement("a");
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.download = `${examName}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-
-  return (
-    <div className="space-y-8">
-      <section>
-        <h1 className="text-3xl font-bold mb-2 text-vitta-text-primary">
-          Meus Exames
-        </h1>
-        <p className="text-vitta-text-secondary">
-          Acompanhe seus resultados e histórico de exames.
-        </p>
-      </section>
-
-      <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === "all" ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20" : "bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2"}`}
-          >
-            Todos
-          </button>
-          <button
-            onClick={() => setFilter("ready")}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === "ready" ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20" : "bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2"}`}
-          >
-            Prontos
-          </button>
-          <button
-            onClick={() => setFilter("pending")}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === "pending" ? "bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20" : "bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2"}`}
-          >
-            Pendentes
-          </button>
-        </div>
-
-        <div className="relative w-full lg:w-80 group">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-vitta-text-muted group-focus-within:text-vitta-accent transition-colors"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Buscar exames ou laboratórios..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-vitta-surface border border-vitta-border rounded-xl text-sm focus:ring-2 focus:ring-vitta-accent/20 outline-none transition-all text-vitta-text-primary shadow-sm"
-          />
-        </div>
-      </div>
-
-      <div className="bg-vitta-surface rounded-xl border border-vitta-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-vitta-surface-2 border-b border-vitta-border">
-                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">
-                  Exame
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">
-                  Data
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">
-                  Local
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-vitta-text-muted uppercase tracking-wider text-right">
-                  Ação
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-vitta-border">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={index}>
-                    <td className="px-6 py-4">
-                      <Skeleton className="h-4 w-32" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton className="h-4 w-24" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton className="h-4 w-28" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton className="h-6 w-16 rounded-full" />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Skeleton className="h-4 w-12 ml-auto" />
-                    </td>
-                  </tr>
-                ))
-              ) : filteredExams.length > 0 ? (
-                filteredExams.map((exam) => (
-                  <tr
-                    key={exam.id}
-                    className="hover:bg-vitta-surface-2 transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-vitta-green-bg text-vitta-green rounded-lg">
-                          <FileText size={18} />
-                        </div>
-                        <span className="font-bold text-sm text-vitta-text-primary">
-                          {exam.name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-vitta-text-secondary">
-                      {exam.createdAt
-                        ? new Date(
-                            exam.createdAt.seconds * 1000,
-                          ).toLocaleDateString("pt-BR")
-                        : "N/A"}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-vitta-text-secondary">
-                      {exam.lab || "Laboratório ViTTA"}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          exam.status === "ready"
-                            ? "bg-vitta-green-bg text-vitta-green"
-                            : "bg-vitta-amber-bg text-vitta-amber"
-                        }`}
-                      >
-                        {exam.status === "ready" ? "Pronto" : "Pendente"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          onClick={() => setSelectedExam(exam)}
-                          className="text-vitta-text-muted hover:text-vitta-accent font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                          title="Ver Notas e Detalhes"
-                        >
-                          <Eye size={16} />
-                          Ver Notas
-                        </button>
-                        {exam.status === "ready" && exam.resultUrl && (
-                          <>
-                            <button
-                              onClick={() => setPreviewExam(exam)}
-                              className="text-vitta-green hover:text-vitta-green/80 font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                              title="Visualizar laudo digital"
-                            >
-                              <FileText size={16} />
-                              Ver Resultado
-                            </button>
-                            <button
-                              onClick={() => handleDownload(exam.resultUrl, exam.name)}
-                              className="text-vitta-accent hover:text-vitta-accent/80 font-bold text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                              title="Baixar arquivo de resultado"
-                            >
-                              <Download size={16} />
-                              Baixar
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-12 text-center text-vitta-text-muted"
-                  >
-                    Nenhum exame encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {selectedExam && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative bg-vitta-surface max-w-lg w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6"
-          >
-            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-vitta-green-bg text-vitta-green rounded-xl">
-                  <FileText size={22} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-vitta-text-primary">
-                    Detalhes do Exame
-                  </h3>
-                  <p className="text-xs text-vitta-text-secondary mt-0.5">
-                    Resultados e informações do laboratório.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedExam(null)}
-                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
-                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
-                    Nome do Exame
-                  </p>
-                  <p className="font-bold text-vitta-text-primary text-sm">
-                    {selectedExam.name}
-                  </p>
-                </div>
-                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
-                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
-                    Laboratório
-                  </p>
-                  <p className="font-bold text-vitta-text-primary text-sm">
-                    {selectedExam.lab || "Laboratório ViTTA"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
-                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
-                    Data de Registro
-                  </p>
-                  <p className="font-semibold text-vitta-text-primary">
-                    {selectedExam.createdAt
-                      ? new Date(selectedExam.createdAt.seconds * 1000).toLocaleDateString("pt-BR")
-                      : "N/A"}
-                  </p>
-                </div>
-                <div className="p-3 bg-vitta-surface-2 rounded-xl border border-vitta-border/50">
-                  <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider mb-1">
-                    Status do Resultado
-                  </p>
-                  <span
-                    className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mt-1 ${
-                      selectedExam.status === "ready"
-                        ? "bg-vitta-green-bg text-vitta-green"
-                        : "bg-vitta-amber-bg text-vitta-amber"
-                    }`}
-                  >
-                    {selectedExam.status === "ready" ? "Pronto" : "Pendente"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-4 bg-vitta-surface-2 rounded-xl border border-vitta-border/50 space-y-1.5">
-                <p className="text-[10px] font-bold text-vitta-text-muted uppercase tracking-wider">
-                  Notas / Observações Clínicas
-                </p>
-                <p className="text-vitta-text-secondary leading-relaxed whitespace-pre-wrap">
-                  {selectedExam.resultNote || "Nenhuma observação cadastrada para este exame."}
-                </p>
-              </div>
-
-              {selectedExam.status === "ready" && selectedExam.resultUrl && (
-                <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                  <button
-                    onClick={() => {
-                      setPreviewExam(selectedExam);
-                      setSelectedExam(null);
-                    }}
-                    className="flex-1 py-3 bg-vitta-green hover:bg-vitta-green/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-green/20 flex justify-center items-center gap-2 cursor-pointer text-sm"
-                  >
-                    <Eye size={18} />
-                    Ver Resultado
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleDownload(selectedExam.resultUrl, selectedExam.name);
-                      setSelectedExam(null);
-                    }}
-                    className="flex-1 py-3 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex justify-center items-center gap-2 cursor-pointer text-sm"
-                  >
-                    <Download size={18} />
-                    Baixar (PDF/Imagem)
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {previewExam && (
-        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative bg-vitta-surface max-w-4xl w-full rounded-2xl border border-vitta-border shadow-2xl p-6 md:p-8 space-y-6 animate-fade-in"
-          >
-            <div className="flex justify-between items-center pb-4 border-b border-vitta-border">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-vitta-green-bg text-vitta-green rounded-xl">
-                  <FileText size={22} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-vitta-text-primary">
-                    Visualizar Resultado: {previewExam.name}
-                  </h3>
-                  <p className="text-xs text-vitta-text-secondary mt-0.5">
-                    {previewExam.lab || "Laboratório ViTTA"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setPreviewExam(null)}
-                className="p-2 text-vitta-text-muted hover:text-vitta-text-primary hover:bg-vitta-surface-2 rounded-xl transition-all cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="flex flex-col items-center justify-center bg-vitta-surface-2 rounded-xl p-4 border border-vitta-border overflow-hidden min-h-[400px] max-h-[70vh]">
-              {previewExam.resultUrl ? (
-                previewExam.resultUrl.startsWith("data:application/pdf") || previewExam.resultUrl.includes(".pdf") ? (
-                  <iframe
-                    src={previewExam.resultUrl}
-                    title="Visualizador de PDF"
-                    className="w-full h-[55vh] rounded-lg border border-vitta-border"
-                  />
-                ) : previewExam.resultUrl.startsWith("data:image") || 
-                  previewExam.resultUrl.includes(".png") || 
-                  previewExam.resultUrl.includes(".jpg") || 
-                  previewExam.resultUrl.includes(".jpeg") || 
-                  previewExam.resultUrl.includes(".gif") || 
-                  previewExam.resultUrl.includes(".webp") ? (
-                  <img
-                    src={previewExam.resultUrl}
-                    alt={`Laudo de ${previewExam.name}`}
-                    className="max-w-full max-h-[55vh] object-contain rounded-lg shadow-sm"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="text-center p-6 space-y-4">
-                    <p className="text-vitta-text-secondary">
-                      Não é possível visualizar este tipo de arquivo diretamente no navegador.
-                    </p>
-                    <button
-                      onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
-                      className="px-6 py-2.5 bg-vitta-accent text-white rounded-xl font-bold flex items-center gap-2 mx-auto cursor-pointer"
-                    >
-                      <Download size={18} />
-                      Baixar Arquivo
-                    </button>
-                  </div>
-                )
-              ) : (
-                <p className="text-vitta-text-muted">Nenhum arquivo anexado a este exame.</p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setPreviewExam(null)}
-                className="px-5 py-2.5 bg-vitta-surface-2 hover:bg-vitta-surface-3 text-vitta-text-primary rounded-xl font-bold transition-all border border-vitta-border cursor-pointer text-sm"
-              >
-                Fechar
-              </button>
-              {previewExam.resultUrl && (
-                <button
-                  onClick={() => handleDownload(previewExam.resultUrl, previewExam.name)}
-                  className="px-5 py-2.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl font-bold transition-all shadow-lg shadow-vitta-accent/20 flex items-center gap-2 cursor-pointer text-sm"
-                >
-                  <Download size={16} />
-                  Baixar Arquivo
-                </button>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </div>
-  );
-};
+// ExamsView is imported from ./components/Patient/ExamsView
 
 const AvailabilityPlannerModal = ({ isOpen, onClose, professional }: any) => {
   const [schedule, setSchedule] = useState<{
@@ -11024,6 +10557,7 @@ export default function App() {
       items: [
         { id: "home", label: "Início / Resumo", icon: Home },
         { id: "patient-dashboard", label: "Painel do Paciente", icon: LayoutDashboard },
+        { id: "appointments", label: "Minhas Consultas", icon: Calendar },
         { id: "professionals", label: "Médicos & Especialistas", icon: Stethoscope },
         { id: "partners", label: "Rede de Parceiros", icon: Store },
         { id: "offers", label: "Vouchers & Benefícios", icon: Tag },
@@ -11210,7 +10744,23 @@ export default function App() {
       case "home":
         return <HomeView setActiveTab={setActiveTab} user={user} userData={userData} />;
       case "patient-dashboard":
-        return <PatientDashboardView user={user} userData={userData} setActiveTab={setActiveTab} />;
+        return (
+          <PatientDashboardView
+            user={user}
+            userData={userData}
+            setActiveTab={setActiveTab}
+            setActiveTelemedicineApt={setActiveTelemedicineApt}
+          />
+        );
+      case "appointments":
+        return (
+          <MyAppointmentsView
+            user={user}
+            userData={userData}
+            setActiveTab={setActiveTab}
+            setActiveTelemedicineApt={setActiveTelemedicineApt}
+          />
+        );
       case "professionals":
         return <ProfessionalsView user={user} setActiveTab={setActiveTab} />;
       case "partners":

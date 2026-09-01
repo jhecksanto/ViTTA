@@ -38,6 +38,8 @@ import {
 import { addDoc, setDoc, updateDoc, deleteDoc } from '../lib/firestore-wrappers';
 import { db } from '../firebase';
 import { useToast } from '../contexts/ToastContext';
+import { SOAPConsultationModal } from './Professional/SOAPConsultationModal';
+import { PrescriptionModal } from './Professional/PrescriptionModal';
 
 interface TelemedicineRoomProps {
   user: any;
@@ -110,6 +112,8 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const anamnesisTimeoutRef = useRef<any>(null);
 
   const [docPrescriptions, setDocPrescriptions] = useState<any[]>(appointment.prescriptions || []);
+  const [isSoapModalOpen, setIsSoapModalOpen] = useState(false);
+  const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
 
   // Auto-sync anamnesis to Firestore (Debounced)
   const handleAnamnesisChange = (txt: string) => {
@@ -701,7 +705,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         const data = snap.data();
         const currentStatus = data.status || 'upcoming';
 
-        if (currentStatus === 'completed' || currentStatus === 'cancelled') {
+        if (currentStatus === 'completed' || currentStatus === 'cancelled' || data.telemedicineStatus === 'closed') {
           setIsSessionClosed(true);
         }
 
@@ -1572,65 +1576,23 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                       </div>
                       
                       {/* div:nth-of-type(2) -> Right side action buttons (Selector 2 target) */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button 
                           type="button"
-                          onClick={async () => {
-                            const { jsPDF } = await import('jspdf');
-                            const pdfDoc = new jsPDF();
-                            pdfDoc.setFontSize(22);
-                            pdfDoc.setTextColor(33, 150, 243);
-                            pdfDoc.text("ViTTA - Prontuário & Prescrição", 105, 20, { align: "center" });
-                            
-                            pdfDoc.setFontSize(10);
-                            pdfDoc.setTextColor(100);
-                            pdfDoc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, 105, 28, { align: "center" });
-                            pdfDoc.line(20, 35, 190, 35);
-                            
-                            pdfDoc.setFontSize(12);
-                            pdfDoc.setTextColor(0);
-                            pdfDoc.setFont("helvetica", "bold");
-                            pdfDoc.text("Paciente:", 20, 50);
-                            pdfDoc.setFont("helvetica", "normal");
-                            pdfDoc.text(appointment.patientName || "Não informado", 45, 50);
-                            
-                            pdfDoc.setFont("helvetica", "bold");
-                            pdfDoc.text("Atendimento ID:", 20, 58);
-                            pdfDoc.setFont("helvetica", "normal");
-                            pdfDoc.text(appointment.id, 45, 58);
-                            
-                            pdfDoc.line(20, 75, 190, 75);
-                            
-                            pdfDoc.setFontSize(14);
-                            pdfDoc.setFont("helvetica", "bold");
-                            pdfDoc.text("Sintomas & Prescrições Clínicas", 20, 90);
-                            
-                            pdfDoc.setFontSize(11);
-                            pdfDoc.setFont("helvetica", "normal");
-                            const anamSplit = pdfDoc.splitTextToSize(`Anamnese: ${docAnamnesis || "Não preenchido"}`, 170);
-                            pdfDoc.text(anamSplit, 20, 105);
-                            
-                            const notesSplit = pdfDoc.splitTextToSize(`Evolução e Recomendações: ${docNotes || "Não preenchido"}`, 170);
-                            pdfDoc.text(notesSplit, 20, 130);
-                            
-                            if (docPrescriptions.length > 0) {
-                              pdfDoc.setFont("helvetica", "bold");
-                              pdfDoc.text("Medicamentos Recomendados:", 20, 160);
-                              pdfDoc.setFont("helvetica", "normal");
-                              let currentY = 170;
-                              docPrescriptions.forEach((item, idx) => {
-                                pdfDoc.text(`${idx + 1}. ${item.medicine} - ${item.dosage}`, 25, currentY);
-                                pdfDoc.text(`   Orientações: ${item.instructions}`, 25, currentY + 6);
-                                currentY += 15;
-                              });
-                            }
-                            
-                            pdfDoc.save(`prontuario_${appointment.patientName.replace(/\s+/g, "_").toLowerCase()}.pdf`);
-                            addToast("Registro e receitas exportados em PDF!", "success");
-                          }}
-                          className="px-3 py-1.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white font-bold rounded-lg text-[10px] flex items-center gap-1.5 transition-all shadow shadow-vitta-accent/20"
+                          onClick={() => setIsPrescriptionModalOpen(true)}
+                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-sky-400 font-bold rounded-lg text-[10px] flex items-center gap-1 transition-all border border-slate-700"
+                          title="Gerar Receita, Atestado ou Pedido de Exames"
                         >
-                          <Download size={11} /> Exportar Receita
+                          <FileText size={11} /> Receita / Atestado
+                        </button>
+                        
+                        <button 
+                          type="button"
+                          onClick={() => setIsSoapModalOpen(true)}
+                          className="px-2.5 py-1.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 transition-all shadow shadow-vitta-accent/20"
+                          title="Abrir Prontuário SOAP e Finalizar Atendimento com Repasse"
+                        >
+                          <Stethoscope size={11} /> SOAP & Finalizar
                         </button>
                       </div>
                     </div>
@@ -1801,6 +1763,31 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
         </div>
       </div>
+
+      {/* SOAP Consultation Modal */}
+      {isProfessional && (
+        <SOAPConsultationModal
+          isOpen={isSoapModalOpen}
+          onClose={() => setIsSoapModalOpen(false)}
+          appointment={appointment}
+          professional={userData}
+          onCompleted={() => {
+            setIsSoapModalOpen(false);
+            onLeave();
+          }}
+        />
+      )}
+
+      {/* Prescription, Medical Certificate & Exam Order Modal */}
+      {isProfessional && (
+        <PrescriptionModal
+          isOpen={isPrescriptionModalOpen}
+          onClose={() => setIsPrescriptionModalOpen(false)}
+          appointment={appointment}
+          professional={userData}
+          patient={{ name: appointment.patientName, id: appointment.userId }}
+        />
+      )}
     </div>
   );
 }
