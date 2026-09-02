@@ -94,6 +94,20 @@ service cloud.firestore {
         isAdmin()
       );
       allow delete: if isAdmin();
+
+      // Subcoleções de Telemedicina WebRTC e Chat
+      match /webrtc/{signalDoc} {
+        allow read, write: if isAuthenticated();
+      }
+      match /doctorCandidates/{candidateId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /patientCandidates/{candidateId} {
+        allow read, write: if isAuthenticated();
+      }
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
     }
 
     match /professionals/{professionalId} {
@@ -278,6 +292,36 @@ service cloud.firestore {
       allow create: if isAuthenticated() && incoming().userId == request.auth.uid;
       allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /patient_records/{recordId} {
+      allow get, list: if isAuthenticated() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.professionalUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.professionalUserId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    match /prescriptions/{prescriptionId} {
+      allow get, list: if isAuthenticated() && (
+        resource.data.patientId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.professionalUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        resource.data.professionalUserId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
     }
   }
 }

@@ -2531,7 +2531,7 @@ const PatientDashboardView = ({
                             {apt.time}
                           </p>
                         </div>
-                        {(apt.type === "telemedicine" || apt.isTelemedicine || apt.roomType === "telemedicine") && setActiveTelemedicineApt && (
+                        {(apt.type === "telemedicine" || apt.isTelemedicine || apt.roomType === "telemedicine" || apt.modality === "telemedicine" || apt.modality === "telemedicina" || apt.modality === "online") && setActiveTelemedicineApt && (
                           <button
                             onClick={() => setActiveTelemedicineApt(apt)}
                             className="px-2 py-0.5 bg-vitta-green/10 text-vitta-green hover:bg-vitta-green hover:text-white rounded-lg text-[10px] font-bold transition-all border border-vitta-green/20 flex items-center gap-1 cursor-pointer"
@@ -10474,6 +10474,32 @@ export default function App() {
     return () => unsub();
   }, [user]);
 
+  // Direct Telemedicine Room Link Handler (?room=appointmentId)
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get("room");
+    if (!roomId) return;
+
+    let isMounted = true;
+    const loadRoomAppointment = async () => {
+      try {
+        const aptDoc = await getDoc(doc(db, "appointments", roomId));
+        if (aptDoc.exists() && isMounted) {
+          const aptData = { id: aptDoc.id, ...aptDoc.data() };
+          setActiveTelemedicineApt(aptData);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar consulta via link de telemedicina:", err);
+      }
+    };
+
+    loadRoomAppointment();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -11017,7 +11043,14 @@ export default function App() {
           appointment={activeTelemedicineApt}
           user={user}
           userData={userData}
-          onLeave={() => setActiveTelemedicineApt(null)}
+          onLeave={() => {
+            setActiveTelemedicineApt(null);
+            if (typeof window !== "undefined" && window.location.search.includes("room=")) {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("room");
+              window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+            }
+          }}
         />
       )}
 

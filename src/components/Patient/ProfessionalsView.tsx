@@ -142,16 +142,23 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
         transaction.update(userRef, { walletBalance: newBal });
 
         const aptRef = doc(collection(db, "appointments"));
+        const isTele = bookingModality === "telemedicine";
         transaction.set(aptRef, {
+          userId: user.uid,
           patientId: user.uid,
           patientName: user.displayName || user.email || "Paciente",
           patientEmail: user.email,
           professionalId: selectedProf.id,
+          professionalUserId: selectedProf.userId || null,
           professionalName: selectedProf.name,
           professionalSpecialty: selectedProf.specialty,
           date: bookingDate,
           time: bookingTime,
           modality: bookingModality,
+          isTelemedicine: isTele,
+          type: isTele ? "telemedicine" : "presencial",
+          telemedicineRoomId: isTele ? aptRef.id : null,
+          telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
           status: "upcoming",
           price: priceNum,
           paymentMethod: "vitta_coins",

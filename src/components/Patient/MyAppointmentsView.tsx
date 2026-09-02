@@ -14,7 +14,10 @@ import {
   AlertTriangle,
   RotateCcw,
   Search,
-  Star
+  Star,
+  FileText,
+  Pill,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -31,6 +34,7 @@ import { db } from '../../firebase';
 import { useToast } from '../../contexts/ToastContext';
 import { formatDateForDisplay } from '../../utils/date';
 import { ReviewModal } from '../ReviewModal';
+import { PatientPrescriptionModal } from './PatientPrescriptionModal';
 
 interface MyAppointmentsViewProps {
   user: any;
@@ -58,6 +62,9 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
 
   // Review appointment modal state (Issue 01)
   const [selectedAppointmentForReview, setSelectedAppointmentForReview] = useState<any | null>(null);
+
+  // Prescription modal state (Issue 04)
+  const [selectedAptForPrescription, setSelectedAptForPrescription] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -325,7 +332,13 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
             const isUpcoming = apt.status === 'upcoming' || apt.status === 'in_progress' || apt.status === 'scheduled';
             const isCompleted = apt.status === 'completed';
             const isCancelled = apt.status === 'cancelled';
-            const isTelemedicine = apt.type === 'telemedicine' || apt.isTelemedicine || apt.roomType === 'telemedicine';
+            const isTelemedicine = 
+              apt.type === 'telemedicine' || 
+              apt.isTelemedicine === true || 
+              apt.roomType === 'telemedicine' || 
+              apt.modality === 'telemedicine' || 
+              apt.modality === 'telemedicina' || 
+              apt.modality === 'online';
             const price = apt.priceNumeric || (apt.price ? parseFloat(apt.price) : 0);
 
             return (
@@ -428,6 +441,18 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                         title="Cancelar consulta e estornar valor pago"
                       >
                         Cancelar
+                      </button>
+                    )}
+
+                    {/* Action: Prescription Button for Completed Telemedicine (Issue 04) */}
+                    {(isCompleted || (apt.prescriptions && apt.prescriptions.length > 0)) && (
+                      <button
+                        onClick={() => setSelectedAptForPrescription(apt)}
+                        className="px-3.5 py-2 bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-500 hover:text-white rounded-xl text-xs font-bold transition-all border border-sky-500/20 flex items-center gap-1.5 cursor-pointer"
+                        title="Visualizar receitas e documentos digitais"
+                      >
+                        <FileText size={14} />
+                        Receita Digital
                       </button>
                     )}
 
@@ -580,6 +605,16 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
             );
             setSelectedAppointmentForReview(null);
           }}
+        />
+      )}
+
+      {/* Patient Prescription Modal (Issue 04) */}
+      {selectedAptForPrescription && (
+        <PatientPrescriptionModal
+          isOpen={!!selectedAptForPrescription}
+          onClose={() => setSelectedAptForPrescription(null)}
+          appointment={selectedAptForPrescription}
+          user={user}
         />
       )}
     </div>

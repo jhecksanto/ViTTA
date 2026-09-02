@@ -51,13 +51,17 @@ interface Appointment {
   date: string;
   time: string;
   status: "pending" | "upcoming" | "completed" | "cancelled";
-  modality?: "presencial" | "telemedicina";
+  modality?: "presencial" | "telemedicina" | "telemedicine" | "online";
+  isTelemedicine?: boolean;
+  type?: string;
   price?: number;
   paidWithCoins?: boolean;
   paymentMethod?: string;
   cancellationReason?: string;
   cancelledAt?: string;
   rescheduledBy?: string;
+  telemedicineRoomId?: string;
+  telemedicineUrl?: string;
 }
 
 export const AdminAppointmentsView = () => {
@@ -73,7 +77,7 @@ export const AdminAppointmentsView = () => {
   const [reschedulingApt, setReschedulingApt] = useState<Appointment | null>(null);
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
-  const [newModality, setNewModality] = useState<"presencial" | "telemedicina">("presencial");
+  const [newModality, setNewModality] = useState<"presencial" | "telemedicina" | "telemedicine">("presencial");
   const [isProcessingReschedule, setIsProcessingReschedule] = useState(false);
 
   // Cancellation Modal with Refund
@@ -187,17 +191,22 @@ export const AdminAppointmentsView = () => {
     setIsProcessingReschedule(true);
     const apt = reschedulingApt;
     try {
+      const isTele = newModality === "telemedicine" || newModality === "telemedicina";
       await updateDoc(doc(db, "appointments", apt.id), {
         date: newDate,
         time: newTime,
-        modality: newModality,
+        modality: isTele ? "telemedicine" : "presencial",
+        isTelemedicine: isTele,
+        type: isTele ? "telemedicine" : "presencial",
+        telemedicineRoomId: isTele ? apt.id : null,
+        telemedicineUrl: isTele ? `${window.location.origin}/?room=${apt.id}` : null,
         status: "upcoming",
         rescheduledBy: "admin",
         rescheduledAt: new Date().toISOString(),
         updatedAt: Timestamp.now()
       });
 
-      const modLabel = newModality === "presencial" ? "Presencial" : "Telemedicina";
+      const modLabel = isTele ? "Telemedicina" : "Presencial";
 
       // 1. Notify Patient
       if (apt.userId) {
@@ -474,10 +483,15 @@ export const AdminAppointmentsView = () => {
 
                     <td className="px-6 py-4">
                       <div className="space-y-0.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-vitta-text-secondary uppercase">
-                          {apt.modality === "telemedicina" ? <Video size={11} className="text-indigo-500" /> : <MapPin size={11} className="text-emerald-500" />}
-                          {apt.modality === "telemedicina" ? "Telemedicina" : "Presencial"}
-                        </span>
+                        {(() => {
+                          const isTele = apt.modality === "telemedicina" || apt.modality === "telemedicine" || apt.isTelemedicine || apt.type === "telemedicine";
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-vitta-text-secondary uppercase">
+                              {isTele ? <Video size={11} className="text-indigo-500" /> : <MapPin size={11} className="text-emerald-500" />}
+                              {isTele ? "Telemedicina" : "Presencial"}
+                            </span>
+                          );
+                        })()}
                         <p className="text-xs font-extrabold text-vitta-text-primary">
                           {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(apt.price || 0)}
                         </p>
@@ -518,7 +532,8 @@ export const AdminAppointmentsView = () => {
                               setReschedulingApt(apt);
                               setNewDate(apt.date || "");
                               setNewTime(apt.time || "");
-                              setNewModality(apt.modality || "presencial");
+                              const isTele = apt.modality === "telemedicina" || apt.modality === "telemedicine" || apt.isTelemedicine || apt.type === "telemedicine";
+                              setNewModality(isTele ? "telemedicine" : "presencial");
                             }}
                             className="p-2 text-vitta-accent hover:bg-vitta-accent-bg rounded-xl transition-colors"
                             title="Reagendar Consulta (Notifica Paciente e Médico)"
@@ -637,30 +652,30 @@ export const AdminAppointmentsView = () => {
                   <label className="block text-[11px] font-bold text-vitta-text-primary uppercase mb-1">
                     Modalidade
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewModality("presencial")}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all ${
-                        newModality === "presencial"
-                          ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/20"
-                          : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border"
-                      }`}
-                    >
-                      Presencial
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewModality("telemedicina")}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all ${
-                        newModality === "telemedicina"
-                          ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/20"
-                          : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border"
-                      }`}
-                    >
-                      Telemedicina
-                    </button>
-                  </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewModality("presencial")}
+                        className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                          newModality === "presencial"
+                            ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/20"
+                            : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border"
+                        }`}
+                      >
+                        Presencial
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewModality("telemedicine")}
+                        className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                          newModality === "telemedicine" || newModality === "telemedicina"
+                            ? "bg-vitta-accent text-white shadow-md shadow-vitta-accent/20"
+                            : "bg-vitta-surface-2 text-vitta-text-secondary hover:bg-vitta-border"
+                        }`}
+                      >
+                        Telemedicina
+                      </button>
+                    </div>
                 </div>
 
                 <p className="text-[10px] text-vitta-text-muted">

@@ -57,6 +57,8 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
   const [isMuted, setIsMuted] = useState(false);
   const [isCamOff, setIsCamOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoWaitingRef = useRef<HTMLVideoElement | null>(null);
   
@@ -234,6 +236,16 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
   // Helper to instantly release all physical media tracks & video sources (Issue #1)
   const stopAllMediaStreams = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+          track.enabled = false;
+        } catch (e) {}
+      });
+      screenStreamRef.current = null;
+    }
+
     if (localStream) {
       localStream.getTracks().forEach(track => {
         try {
@@ -1025,6 +1037,131 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     }
   };
 
+  // Real file upload from device
+  const handleRealFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 3 * 1024 * 1024) {
+      addToast('O arquivo selecionado deve ter no máximo 3MB.', 'warning');
+      return;
+    }
+
+    try {
+      setIsSendingMessage(true);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const fileData = reader.result as string;
+        await addDoc(collection(db, 'appointments', appointment.id, 'messages'), {
+          senderId: user.uid,
+          senderName: isProfessional ? `Dr(a). ${userData?.name || appointment.professionalName}` : (userData?.name || appointment.patientName),
+          senderRole: userData?.role || 'user',
+          text: `📁 Anexo: ${file.name}`,
+          isFile: true,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          fileUrl: fileData,
+          createdAt: Timestamp.now()
+        });
+        addToast(`Arquivo "${file.name}" enviado com sucesso!`, 'success');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Erro ao anexar arquivo:', err);
+      addToast('Erro ao anexar arquivo.', 'error');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  // Toggle real screen share via WebRTC
+  const handleToggleScreenShare = async () => {
+    if (isScreenSharing) {
+      // Stop screen sharing
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(t => t.stop());
+        screenStreamRef.current = null;
+      }
+      // Restore camera track in WebRTC
+      if (peerConnectionRef.current && localStream) {
+        const cameraTrack = localStream.getVideoTracks()[0];
+        const videoSender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
+        if (videoSender && cameraTrack) {
+          await videoSender.replaceTrack(cameraTrack);
+        }
+      }
+      // Restore local preview
+      if (localVideoRef.current && localStream) {
+        localVideoRef.current.srcObject = localStream;
+      }
+      setIsScreenSharing(false);
+      addToast('Compartilhamento de tela encerrado.', 'info');
+      return;
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        addToast('Compartilhamento de tela não suportado neste navegador.', 'warning');
+        return;
+      }
+
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+
+      screenStreamRef.current = screenStream;
+      const screenTrack = screenStream.getVideoTracks()[0];
+
+      if (!screenTrack) {
+        throw new Error('Nenhum sinal de tela capturado.');
+      }
+
+      // Replace track in peer connection
+      if (peerConnectionRef.current) {
+        const videoSender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video');
+        if (videoSender) {
+          await videoSender.replaceTrack(screenTrack);
+        }
+      }
+
+      // Show in local preview
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = screenStream;
+      }
+
+      setIsScreenSharing(true);
+      addToast('Compartilhamento de tela iniciado!', 'success');
+
+      // Native browser "Stop sharing" hook
+      screenTrack.onended = async () => {
+        setIsScreenSharing(false);
+        screenStreamRef.current = null;
+        if (peerConnectionRef.current && localStream) {
+          const cameraTrack = localStream.getVideoTracks()[0];
+          const videoSender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video' || s.track === null);
+          if (videoSender && cameraTrack) {
+            await videoSender.replaceTrack(cameraTrack);
+          }
+        }
+        if (localVideoRef.current && localStream) {
+          localVideoRef.current.srcObject = localStream;
+        }
+        addToast('Compartilhamento de tela encerrado.', 'info');
+      };
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        // User cancelled window selection
+        console.log('Compartilhamento de tela cancelado pelo usuário');
+      } else {
+        console.error('Erro ao compartilhar tela:', err);
+        addToast('Não foi possível compartilhar a tela.', 'error');
+      }
+    }
+  };
+
   // Finalize consultation
   const handleHangUp = async () => {
     stopAllMediaStreams();
@@ -1035,6 +1172,7 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         // Complete appointment in database
         await updateDoc(doc(db, 'appointments', appointment.id), {
           status: 'completed',
+          telemedicineStatus: 'closed',
           doctorJoined: false,
           patientJoined: false,
           completedAt: Timestamp.now()
@@ -1044,13 +1182,21 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
         await addDoc(collection(db, 'notifications'), {
           userId: appointment.userId,
           title: 'Teleconsulta Finalizada',
-          message: `Sua consulta com ${appointment.professionalName} foi concluída. Prontuário e receitas estão disponíveis nos seus registros acadêmicos.`,
+          message: `Sua consulta com ${appointment.professionalName} foi concluída. Prontuário e receitas estão disponíveis nos seus registros de saúde.`,
           type: 'appointment',
           read: false,
           createdAt: Timestamp.now()
         });
 
         addToast('Consulta concluída e registrada com sucesso!', 'success');
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      try {
+        await updateDoc(doc(db, 'appointments', appointment.id), {
+          patientJoined: false
+        });
       } catch (err) {
         console.error(err);
       }
@@ -1367,14 +1513,11 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
           </button>
 
           <button 
-            onClick={() => {
-              setIsScreenSharing(!isScreenSharing);
-              addToast(isScreenSharing ? 'Compartilhamento de tela encerrado' : 'Compartilhamento de tela simulado iniciado', 'success');
-            }}
+            onClick={handleToggleScreenShare}
             className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shrink-0 ${
-              isScreenSharing ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              isScreenSharing ? 'bg-vitta-accent text-white shadow-lg shadow-vitta-accent/20 ring-2 ring-vitta-accent/50' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
-            title={isScreenSharing ? "Parar Compartilhamento" : "Compartilhar Tela"}
+            title={isScreenSharing ? "Parar Compartilhamento de Tela" : "Compartilhar Tela"}
           >
             <Share2 size={18} />
           </button>
@@ -1541,6 +1684,22 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
 
                   {/* Footer Input for Chat */}
                   <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-800 bg-slate-950/80 shrink-0 flex items-center gap-2">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleRealFileUpload} 
+                      accept="image/*,application/pdf,.doc,.docx" 
+                      className="hidden" 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSendingMessage}
+                      className="w-11 h-11 shrink-0 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+                      title="Anexar documento ou exame (PDF / Imagem)"
+                    >
+                      <Paperclip size={18} />
+                    </button>
                     <input 
                       type="text"
                       value={newMessageText}
