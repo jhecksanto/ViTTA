@@ -10845,8 +10845,9 @@ export default function App() {
             </div>
 
             <button
+              id="sidebar-collapse-btn"
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="hidden lg:flex p-1.5 hover:bg-vitta-surface-2 rounded-xl text-vitta-text-muted transition-colors"
+              className="hidden lg:flex p-1 ml-0 -mr-[21px] hover:bg-vitta-surface-2 rounded-xl text-vitta-text-muted transition-colors cursor-pointer"
             >
               {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             </button>

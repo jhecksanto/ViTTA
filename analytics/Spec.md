@@ -1,49 +1,77 @@
-# Especificação Técnica das Pendências do Sistema ViTTA
-**Data e Hora de Geração:** 01/09/2026 às 16:59 (Horário de Brasília - UTC-3)  
-**Documento Base:** `analytics/report.md`  
-**Objetivo:** Especificar exclusivamente o que resta para finalizar no sistema existente (Páginas, Comportamentos e Componentes), sem inclusão de novas funcionalidades.
+# Especificação Técnica de Finalização do Sistema ViTTA (Spec.md)
+**Data e Hora de Geração:** 02/09/2026 às 07:36 (Horário de Brasília - UTC-3)  
+**Objetivo:** Especificar estritamente os comportamentos, conexões e componentes que faltam ser finalizados com base no `analytics/report.md`.
 
 ---
 
-## 1. Especificação de Componentes e Telas
+## 1. Módulo: Avaliação de Consultas Concluídas (Patient Review Flow)
 
-### 1.1 Modal de Cancelamento de Consulta pelo Paciente (`PatientCancelAppointmentModal.tsx`)
-*   **Contexto / Página:** Aba de Consultas do Paciente (`MyAppointments` / `PatientView`).
-*   **Comportamento Requerido:**
-    *   Exibir botão de "Cancelar Consulta" para agendamentos com status `"upcoming"`.
-    *   Ao clicar, abrir modal solicitando confirmação e motivo do cancelamento (opcional).
-    *   Verificar o valor pago na consulta (campo `price` ou ViTTA Coins).
-    *   Atualizar o documento da consulta em `appointments` para `status: "cancelled"`, `cancelledBy: "patient"`, `cancelledAt: Timestamp.now()`, `cancelReason: string`.
-    *   Efetuar o estorno do valor na carteira do paciente via `increment(price)` no documento `users/{userId}`.
-    *   Registrar documento na coleção `transactions` com tipo `"refund"`, descrevendo o reembolso da consulta desmarcada.
-    *   Disparar notificação in-app para o profissional informando o cancelamento do paciente.
+### 1.1. Contexto & Localização
+*   **Página / View:** `MyAppointmentsView` (`src/components/Patient/MyAppointmentsView.tsx`).
+*   **Componente Existente:** `ReviewModal` (`src/components/ReviewModal.tsx`).
 
-### 1.2 Encerramento Automático da Sala de Telemedicina (`SOAPConsultationModal.tsx` e `TelemedicineView.tsx`)
-*   **Contexto / Página:** Atendimento Telemedicina e Modal SOAP do Profissional de Saúde.
-*   **Comportamento Requerido:**
-    *   Ao finalizar o atendimento clínico e clicar em "Concluir Atendimento" no `SOAPConsultationModal.tsx`, atualizar a consulta para `status: "completed"`, `telemedicineStatus: "closed"`, `completedAt: Timestamp.now()`.
-    *   No componente de Telemedicina (`TelemedicineView`), verificar em tempo real se a sala foi fechada pelo médico e redirecionar o paciente com modal de conclusão de atendimento.
-
-### 1.3 Filtro Avançado e Ordenação na Central de Exames (`ExamsView`)
-*   **Contexto / Página:** Painel de Exames do Paciente (`ExamsView`).
-*   **Comportamento Requerido:**
-    *   Adicionar seletor de status ("Todos", "Pronto / Disponível", "Aguardando Resultado").
-    *   Adicionar campo de busca por nome do exame e laboratório em tempo real.
-    *   Adicionar ordenação rápida por data (mais recente / mais antigo).
-
-### 1.4 Higienização e Modularização das Views em `src/App.tsx`
-*   **Contexto / Arquitetura:** `src/App.tsx`.
-*   **Comportamento Requerido:**
-    *   Garantir que a renderização dos painéis no `App.tsx` delegue totalmente para os módulos extraídos em `src/components/Admin/`, `src/components/Professional/`, `src/components/Patient/` e `src/components/System/`.
-    *   Remover duplicidades de modais já migrados para componentes dedicados.
+### 1.2. Comportamento Esperado (Behavior)
+1.  **Exibição Condicional da Ação:**
+    *   Para cada consulta com status `status === "completed"`:
+        *   Se `apt.isReviewed === true`: exibir badge ou texto sutil *"Avaliado ⭐ {apt.rating}"*.
+        *   Se `apt.isReviewed !== true`: exibir botão destacado *"Avaliar Atendimento"* com ícone de estrela (`Star`).
+2.  **Abertura do Modal de Avaliação:**
+    *   Ao clicar no botão, definir o estado `selectedAppointmentForReview` com o objeto da consulta e abrir o `ReviewModal`.
+3.  **Execução da Transação e Feedback:**
+    *   O modal grava a avaliação na coleção `reviews`, atualiza a média e contagem de avaliações do médico em `professionals/{id}` e marca `isReviewed: true` em `appointments/{id}`.
+    *   Ao concluir com sucesso, atualizar o card da consulta instantaneamente na tela do paciente e exibir notificação toast de agradecimento.
 
 ---
 
-## 2. Tabela Resumo das Especificações
+## 2. Módulo: Sincronização Unificada do Catálogo e Trava de Vouchers
 
-| Componente / Área | Arquivo Alvo | Ação / Comportamento |
-| :--- | :--- | :--- |
-| **Cancelamento de Consulta** | `src/components/Patient/PatientAppointmentsView.tsx` ou `src/App.tsx` | Cancelamento com estorno em carteira e registro de transação `refund`. |
-| **Fechamento de Telemedicina**| `src/components/Professional/SOAPConsultationModal.tsx` & Telemedicina | Fechamento de sala e bloqueio de reentrada após conclusão da consulta. |
-| **Filtros de Exames** | `src/App.tsx` (`ExamsView`) | Filtros por status, busca por texto e ordenação temporal. |
-| **Limpeza de Código** | `src/App.tsx` | Redução de duplicidade e desacoplamento de rotas. |
+### 2.1. Contexto & Localização
+*   **Página / View:** `OffersView` (`src/components/Patient/OffersView.tsx`) e `AdminVoucherManagementView` (`src/components/Admin/AdminVoucherManagementView.tsx`).
+*   **Entidades Firestore:** `vouchers_catalog` (ou `vouchers`), `system_configs/vouchers`.
+
+### 2.2. Comportamento Esperado (Behavior)
+1.  **Respeito à Trava Global de Vouchers:**
+    *   Em `OffersView.tsx`, adicionar listener em tempo real para `doc(db, "system_configs", "vouchers")`.
+    *   Se `vouchersEnabled === false`, exibir banner informativo amigável: *"O Clube de Vouchers está temporariamente em manutenção para atualização de benefícios. Volte em breve!"* desativando a listagem de resgate.
+2.  **Fonte Unificada de Dados de Ofertas:**
+    *   Garantir que a visão do paciente leia a mesma coleção alimentada e gerenciada pelo módulo administrativo (`vouchers` / `vouchers_catalog`).
+    *   Exibir badges de desconto formatados, parceiro responsável e validade.
+
+---
+
+## 3. Módulo: Disparo de Notificação no Ciclo de Aprovação de KYC
+
+### 3.1. Contexto & Localização
+*   **Página / View:** `ProfessionalsManagementView` (`src/components/Admin/ProfessionalsManagementView.tsx`).
+*   **Entidades Firestore:** `professionals/{profId}`, `notifications`.
+
+### 3.2. Comportamento Esperado (Behavior)
+1.  **Feedback Instantâneo de Aprovação:**
+    *   Ao acionar `handleApproveKYC(prof, true)`:
+        *   Atualizar documento do profissional (`kycStatus: "approved"`, `status: "active"`).
+        *   Criar documento na coleção `notifications` com:
+            ```json
+            {
+              "userId": "prof.userId || prof.id",
+              "title": "Documentação Aprovada!",
+              "message": "Seu cadastro profissional foi validado com sucesso pela equipe ViTTA. Sua agenda já está disponível para pacientes.",
+              "type": "kyc_approved",
+              "read": false,
+              "createdAt": "Timestamp.now()"
+            }
+            ```
+2.  **Feedback Instantâneo de Reprovação com Instrução:**
+    *   Ao acionar `handleApproveKYC(prof, false)`:
+        *   Atualizar documento (`kycStatus: "rejected"`, `status: "pending"`).
+        *   Criar notificação in-app informando que os documentos precisam ser reenviados pelo painel do profissional.
+
+---
+
+## 4. Módulo: Validação e Higienização de Tipagem TypeScript
+
+### 4.1. Contexto & Localização
+*   **Arquivos:** `src/App.tsx`, `src/components/Patient/*`, `src/components/Professional/*`, `src/components/Admin/*`.
+
+### 4.2. Comportamento Esperado (Behavior)
+1.  **Verificação Estática:** Garantir que todas as props passadas aos componentes modulares atendam às interfaces TypeScript sem uso de `any` desnecessário ou propriedades ausentes.
+2.  **Compilação Limpa:** Zero erros durante a execução de `lint_applet` e `compile_applet`.

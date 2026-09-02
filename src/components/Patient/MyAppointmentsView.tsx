@@ -13,7 +13,8 @@ import {
   ChevronRight, 
   AlertTriangle,
   RotateCcw,
-  Search
+  Search,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -29,6 +30,7 @@ import { updateDoc, addDoc } from '../../lib/firestore-wrappers';
 import { db } from '../../firebase';
 import { useToast } from '../../contexts/ToastContext';
 import { formatDateForDisplay } from '../../utils/date';
+import { ReviewModal } from '../ReviewModal';
 
 interface MyAppointmentsViewProps {
   user: any;
@@ -53,6 +55,9 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
   const [cancellingApt, setCancellingApt] = useState<any | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+
+  // Review appointment modal state (Issue 01)
+  const [selectedAppointmentForReview, setSelectedAppointmentForReview] = useState<any | null>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -425,6 +430,24 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                         Cancelar
                       </button>
                     )}
+
+                    {/* Action: Review Button for Completed Appointments (Issue 01) */}
+                    {isCompleted && (
+                      apt.isReviewed ? (
+                        <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                          <Star size={13} fill="currentColor" />
+                          <span>Avaliado {apt.rating ? `(${apt.rating}★)` : ''}</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedAppointmentForReview(apt)}
+                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Star size={14} fill="currentColor" />
+                          Avaliar Atendimento
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -538,6 +561,27 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Review Modal (Issue 01) */}
+      {selectedAppointmentForReview && (
+        <ReviewModal
+          isOpen={!!selectedAppointmentForReview}
+          onClose={() => setSelectedAppointmentForReview(null)}
+          userId={user?.uid || ''}
+          userName={userData?.name || user?.displayName || 'Paciente'}
+          professionalId={selectedAppointmentForReview.professionalId || selectedAppointmentForReview.professionalUserId || ''}
+          professionalName={selectedAppointmentForReview.professionalName || 'Profissional de Saúde'}
+          appointmentId={selectedAppointmentForReview.id}
+          onSuccess={() => {
+            setAppointments((prev) =>
+              prev.map((a) =>
+                a.id === selectedAppointmentForReview.id ? { ...a, isReviewed: true } : a
+              )
+            );
+            setSelectedAppointmentForReview(null);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -8,7 +8,6 @@ process.env.TZ = "America/Sao_Paulo";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 import fs from "fs";
 import nodemailer from "nodemailer";
@@ -31,8 +30,7 @@ import {
 import { MercadoPagoConfig, PreApprovalPlan, PreApproval, Payment } from 'mercadopago';
 import twilio from 'twilio';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentDirname = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 // Env helper to handle surrounding quotes responsibly
 function getEnv(key: string, defaultValue = ""): string {
@@ -66,22 +64,51 @@ const getMPClient = () => {
 };
 
 // Load Firebase config to get project ID
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(__dirname, "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    if (firebaseConfig.projectId) {
-      // FORCE the environment to use the project from config
-      process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
-      process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
-      console.log(`[Env] Forcing Project ID: ${firebaseConfig.projectId}`);
+let firebaseConfig: any = {
+  projectId: "gen-lang-client-0653022846",
+  appId: "1:458057002627:web:cf982d58986b9176d4b5b6",
+  apiKey: "AIzaSyDtBAZWIrI-GH9yYpElRQGyW5GZvTm-XJw",
+  authDomain: "gen-lang-client-0653022846.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-09affc5a-60b5-4bb9-a51a-a85ec895e0a9",
+  storageBucket: "gen-lang-client-0653022846.firebasestorage.app",
+  messagingSenderId: "458057002627",
+  measurementId: ""
+};
+
+const candidateConfigPaths = [
+  path.join(process.cwd(), "firebase-applet-config.json"),
+  path.join(currentDirname, "firebase-applet-config.json"),
+  path.join(currentDirname, "..", "firebase-applet-config.json"),
+  path.join("/workspace", "firebase-applet-config.json"),
+];
+
+let loadedFromDisk = false;
+for (const configPath of candidateConfigPaths) {
+  try {
+    if (fs.existsSync(configPath)) {
+      const fileData = fs.readFileSync(configPath, "utf-8");
+      const parsed = JSON.parse(fileData);
+      if (parsed && parsed.projectId) {
+        firebaseConfig = { ...firebaseConfig, ...parsed };
+        console.log(`[Firebase Config] Loaded config from: ${configPath}`);
+        loadedFromDisk = true;
+        break;
+      }
     }
-  } else {
-    console.error("CRITICAL: firebase-applet-config.json not found!");
+  } catch (err) {
+    console.warn(`[Firebase Config] Error checking path ${configPath}:`, err);
   }
-} catch (err) {
-  console.error("Error loading firebase config:", err);
+}
+
+if (!loadedFromDisk) {
+  console.log(`[Firebase Config] Using default embedded config with projectId: ${firebaseConfig.projectId}`);
+}
+
+if (firebaseConfig.projectId) {
+  // FORCE the environment to use the project from config
+  process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+  process.env.GCLOUD_PROJECT = firebaseConfig.projectId;
+  console.log(`[Env] Forcing Project ID: ${firebaseConfig.projectId}`);
 }
 
 // Initialize Firebase Admin
@@ -94,9 +121,19 @@ if (admin.apps.length === 0) {
 }
 
 // Initialize Firebase Client SDK for Firestore (to bypass server-side project identity issues)
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-console.log(`[Firestore Client] Initialized with database ID: ${firebaseConfig.firestoreDatabaseId}`);
+let firebaseApp: any = null;
+let db: any = null;
+try {
+  if (firebaseConfig && firebaseConfig.projectId) {
+    firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    console.log(`[Firestore Client] Initialized with database ID: ${firebaseConfig.firestoreDatabaseId || "(default)"}`);
+  } else {
+    console.warn("[Firestore Client] firebaseConfig missing projectId; skipping initializeApp.");
+  }
+} catch (sdkErr: any) {
+  console.error("[Firestore Client] Failed to initialize Firebase Client SDK:", sdkErr);
+}
 
 // Test Firestore Connectivity
 if (db) {
@@ -155,10 +192,18 @@ async function startServer() {
   app.use(express.json());
 
   app.get("/api/health", (req, res) => {
+    let projectId = "ambient";
+    try {
+      if (admin.apps.length > 0 && admin.app().options.projectId) {
+        projectId = admin.app().options.projectId!;
+      }
+    } catch {
+      // ignore
+    }
     res.json({ 
       status: "ok",
       firebase: {
-        projectId: admin.app().options.projectId || "ambient",
+        projectId,
         dbInitialized: !!db,
         databaseId: firebaseConfig.firestoreDatabaseId || "default"
       }
@@ -606,12 +651,19 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))
+      ? path.join(process.cwd(), 'dist')
+      : fs.existsSync(path.join(currentDirname, 'index.html'))
+      ? currentDirname
+      : path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

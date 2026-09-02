@@ -12,6 +12,8 @@ import {
   Store,
   X,
   Percent,
+  Lock,
+  AlertCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -34,19 +36,98 @@ interface OffersViewProps {
 export const OffersView: React.FC<OffersViewProps> = ({ user }) => {
   const { addToast } = useToast();
   const [offers, setOffers] = useState<any[]>([]);
+  const [vouchersEnabled, setVouchersEnabled] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "vouchers"), (snapshot) => {
-      const all = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setOffers(all.filter((v: any) => v.status === "active" || !v.status));
-      setLoading(false);
-    });
+    // 1. Sync global voucher toggle from system_configs/vouchers (Issue 02)
+    const configRef = doc(db, "system_configs", "vouchers");
+    const unsubConfig = onSnapshot(
+      configRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setVouchersEnabled(data.vouchersEnabled !== undefined ? data.vouchersEnabled : true);
+        } else {
+          setVouchersEnabled(true);
+        }
+      },
+      (err) => {
+        console.warn("Could not read system_configs/vouchers, defaulting to enabled", err);
+        setVouchersEnabled(true);
+      }
+    );
 
-    return () => unsub();
+    // 2. Sync vouchers from vouchers_catalog and vouchers (Issue 02)
+    let catalogList: any[] = [];
+    let vouchersList: any[] = [];
+
+    const updateCombinedOffers = () => {
+      const map = new Map<string, any>();
+      // Catalog items first
+      catalogList.forEach((item) => {
+        const discountText = item.discount || (
+          item.benefitValue && item.price && item.benefitValue > item.price
+            ? `${Math.round(((item.benefitValue - item.price) / item.benefitValue) * 100)}% OFF`
+            : item.benefitValue ? `R$ ${item.benefitValue} em consumo` : "Oferta Especial"
+        );
+        map.set(item.id, {
+          ...item,
+          partnerName: item.partnerName || item.partner || "Parceiro ViTTA",
+          discount: discountText,
+          code: item.code || `VITTA-${item.id.slice(0, 6).toUpperCase()}`,
+        });
+      });
+
+      // Secondary/Legacy vouchers items
+      vouchersList.forEach((item) => {
+        if (!map.has(item.id)) {
+          map.set(item.id, {
+            ...item,
+            partnerName: item.partnerName || item.partner || "Parceiro ViTTA",
+            discount: item.discount || "Oferta Especial",
+            code: item.code || "VITTAPASS",
+          });
+        }
+      });
+
+      const all = Array.from(map.values()).filter((v: any) => v.status === "active" || !v.status);
+      setOffers(all);
+      setLoading(false);
+    };
+
+    const unsubCatalog = onSnapshot(
+      collection(db, "vouchers_catalog"),
+      (snapshot) => {
+        catalogList = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        updateCombinedOffers();
+      },
+      (error) => {
+        console.error("Error fetching vouchers_catalog:", error);
+        setLoading(false);
+      }
+    );
+
+    const unsubVouchers = onSnapshot(
+      collection(db, "vouchers"),
+      (snapshot) => {
+        vouchersList = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        updateCombinedOffers();
+      },
+      (error) => {
+        console.error("Error fetching vouchers:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      unsubConfig();
+      unsubCatalog();
+      unsubVouchers();
+    };
   }, []);
 
   const handleCopyCode = (code: string, id: string) => {
@@ -89,7 +170,19 @@ export const OffersView: React.FC<OffersViewProps> = ({ user }) => {
       </div>
 
       {/* Offers List */}
-      {loading ? (
+      {!vouchersEnabled ? (
+        <div className="p-12 text-center bg-vitta-surface rounded-3xl border border-vitta-border shadow-sm space-y-3">
+          <div className="w-14 h-14 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
+            <Lock size={28} />
+          </div>
+          <h3 className="text-base font-bold text-vitta-text-primary">
+            Serviço de Vouchers Temporariamente Indisponível
+          </h3>
+          <p className="text-xs text-vitta-text-muted max-w-md mx-auto leading-relaxed">
+            O Clube de Vouchers está temporariamente em manutenção para atualização de benefícios. Volte em breve!
+          </p>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map((n) => (
             <div key={n} className="h-52 bg-vitta-surface rounded-3xl border border-vitta-border animate-pulse" />

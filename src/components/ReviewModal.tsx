@@ -213,4 +213,5 @@ const ReviewModal = ({
   );
 };
 
+export { ReviewModal };
 export default ReviewModal;

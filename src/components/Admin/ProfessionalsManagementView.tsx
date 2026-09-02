@@ -29,6 +29,7 @@ import {
   getDocs,
   query,
   where,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useToast } from "../../contexts/ToastContext";
@@ -204,6 +205,31 @@ export const ProfessionalsManagementView: React.FC<ProfessionalsManagementViewPr
         status: approve ? "active" : "pending",
         approvedAt: new Date().toISOString(),
       });
+
+      // Issue 03: Disparo de Notificações no Ciclo de KYC de Especialistas
+      const recipientUserId = prof.userId || prof.uid || prof.id;
+      if (recipientUserId) {
+        if (approve) {
+          await addDoc(collection(db, "notifications"), {
+            userId: recipientUserId,
+            title: "Documentação Aprovada!",
+            message: "Seu cadastro profissional foi validado com sucesso pela equipe ViTTA. Sua agenda já está disponível para pacientes.",
+            type: "kyc_approved",
+            read: false,
+            createdAt: Timestamp.now(),
+          });
+        } else {
+          await addDoc(collection(db, "notifications"), {
+            userId: recipientUserId,
+            title: "Documentação Pendente / Recusada",
+            message: "Foram identificadas pendências na verificação dos seus documentos. Por favor, acesse seu painel profissional e reenvie seu CRM/diploma para nova análise.",
+            type: "kyc_rejected",
+            read: false,
+            createdAt: Timestamp.now(),
+          });
+        }
+      }
+
       await logAdminAction("KYC_APPROVAL", `${approve ? "Aprovou" : "Rejeitou"} KYC de ${prof.name}`);
       addToast(`Profissional ${approve ? "aprovado" : "rejeitado"} com sucesso.`, "success");
     } catch (err) {

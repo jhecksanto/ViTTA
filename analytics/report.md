@@ -1,101 +1,75 @@
-# Relatório Geral do Sistema ViTTA Saúde & Convênios
-**Data e Hora de Geração:** 01/09/2026 às 16:58 (Horário de Brasília - UTC-3)  
-**Status do Projeto:** Análise Geral e Mapeamento de Pendências do Sistema Existente
+# Relatório de Diagnóstico e Pendências de Finalização do Sistema ViTTA
+**Data e Hora de Geração:** 02/09/2026 às 07:36 (Horário de Brasília - UTC-3)  
+**Escopo:** Mapeamento exclusivo de recursos em andamento e ajustes finos pendentes (sem adição de novas funcionalidades).
 
 ---
 
-## 1. Sumário Executivo
+## 1. Sumário Executivo do Ecossistema
 
-Este documento apresenta a análise técnica detalhada do sistema **ViTTA Saúde & Convênios**, identificando o estado atual de cada módulo, o que já foi completamente finalizado e **estritamente o que resta para finalizar**, sem adição de novos recursos ou escopos fora da arquitetura existente.
+O ecossistema ViTTA Saúde e Benefícios é uma plataforma completa de telemedicina, agendamento de consultas presenciais e online, carteira digital com estorno/repasses, central de laudos e exames, e clube de benefícios para parceiros credenciados.
 
----
-
-## 2. Diagnóstico dos Módulos do Sistema
-
-### 2.1 Módulo Administrativo (Admin Master)
-*   **Status Atual:** Concluído e Estabilizado (~95%).
-*   **O que já está implementado e funcional:**
-    *   Painel Geral com métricas de pacientes, profissionais, faturamento e consultas.
-    *   Gestão de Profissionais com aprovação, edição, comissão (ViTTA Coins e %), status e especialidades.
-    *   Gestão de Pacientes com visualização de dados, carteirinha, biometria e status.
-    *   Gestão de Planos de Saúde com CRUD, benefícios, carências e precificação.
-    *   Gestão de Conteúdo (Banners do carrossel, artigos de saúde e notícias).
-    *   Gestão de Vouchers e Cupons de Desconto com regras, parceiros e validade.
-    *   Rede Credenciada de Parceiros (Farmácias, Clínicas, Laboratórios) com categorização e geolocalização.
-    *   Auditoria e Logs de Ações Administrativas no Firestore.
-    *   Painel Financeiro Global com aprovação/rejeição de saques e ajuste manual de saldo.
-    *   Disparo de Notificações em Massa (Broadcast push/in-app).
-*   **O que falta finalizar (Refinamentos & Pendências):**
-    *   **Unificação de Importações/Renderização Modular:** Alguns componentes administrativos legados ainda residem diretamente no `src/App.tsx` (como o modal de agendamento de agenda), gerando redundância com as novas visões modulares em `src/components/Admin/`.
-    *   **Tratamento de Exclusão em Cascata:** Garantir que a desativação ou remoção de um profissional/parceiro no Admin atualize devidamente o status de seus agendamentos ou vouchers associados.
+Após uma auditoria aprofundada em todo o código-fonte (`/src/components/`, `/src/App.tsx`, rotas do Firestore e regras de negócio), identificamos que o núcleo funcional está robusto, restando apenas **4 conexões e finalizações pontuais de fluxos já iniciados** para fechamento completo do ciclo operacional.
 
 ---
 
-### 2.2 Módulo Profissional de Saúde (Portal do Médico / Especialista)
-*   **Status Atual:** Concluído (~98%).
-*   **O que já está implementado e funcional:**
-    *   Dashboard profissional com próximos atendimentos, estatísticas e faturamento.
-    *   Configuração de Agenda Semanal e Bloqueio Global de Datas (Folgas/Feriados).
-    *   Inserção de Agendamento Manual (Pacientes cadastrados ou pacientes externos offline).
-    *   Atendimento Clínico SOAP completo (Subjetivo, Objetivo, Avaliação, Plano) em `SOAPConsultationModal.tsx`.
-    *   Geração e Exportação de Receituário Médico e Atestados Médicos (Repouso, Comparecimento e Aptidão Física) em PDF via `PrescriptionModal.tsx`.
-    *   Painel de Histórico Biométrico e visualização de evolução do paciente (`BiometricHistoryPanel.tsx`).
-    *   Módulo Financeiro do Profissional (`ProfessionalFinanceView.tsx`) com cálculo de comissão, débito de taxas de consultas em dinheiro, extrato e solicitação de saque Pix com validação e comprovante (`PayoutReceiptModal.tsx`).
-*   **O que falta finalizar (Refinamentos & Pendências):**
-    *   **Sincronização de Status de Sala de Telemedicina:** Assegurar que quando o médico finaliza o atendimento clínico no modal SOAP, a sala virtual de telemedicina seja automaticamente marcada como concluída/fechada para evitar reentradas indevidas.
+## 2. Status Geral dos Módulos e Recursos em Andamento
+
+### 2.1. Módulo do Paciente
+*   **Agendamentos e Cancelamentos (`MyAppointmentsView.tsx`):**
+    *   *Implementado:* Listagem unificada de consultas agendadas, em andamento, concluídas e canceladas; contadores em tempo real; cancelamento com estorno em carteira (`walletBalance`) e registro de transação.
+    *   *Pendente de Finalização:* O componente modal de avaliação de consultas (`ReviewModal.tsx`) já existe e está pronto, mas o botão de acionamento ("Avaliar Consulta") nos cards de consultas com status `completed` ainda não está conectado no `MyAppointmentsView.tsx`.
+*   **Central de Exames e Laudos (`ExamsView.tsx`):**
+    *   *Implementado:* Listagem com ordenação temporal, busca textual, filtros por status ("Pronto" / "Pendente"), modal para visualização de PDFs/imagens e download com fallback.
+    *   *Status:* 100% finalizado e operacional.
+*   **Clube de Benefícios e Vouchers (`OffersView.tsx`):**
+    *   *Implementado:* Visualização em grade, busca de cupons e cópia de código.
+    *   *Pendente de Finalização:* Unificação da leitura da coleção de ofertas entre a visão do paciente (`vouchers`) e o painel de governança do administrador (`vouchers_catalog` e `system_configs/vouchers`), garantindo que o interruptor global `vouchersEnabled` seja respeitado em tempo real no app do paciente.
 
 ---
 
-### 2.3 Módulo Paciente (Portal do Beneficiário)
-*   **Status Atual:** Concluído (~92%).
-*   **O que já está implementado e funcional:**
-    *   Dashboard com resumo de saúde, passos, métricas vitais e economia conquistada no ViTTA.
-    *   Carteira Digital e Saldo de ViTTA Coins com histórico de transações e recarga.
-    *   Carteirinha Digital com QR Code dinâmico, código do beneficiário e dados do plano.
-    *   Listagem e busca de Especialistas e Médicos credenciados com filtro de modalidade (Presencial/Telemedicina).
-    *   Agendamento direto de consultas pelo paciente com dedução automática do saldo da carteira e sincronização com Google Calendar.
-    *   Clube de Vouchers e Benefícios com cópia de cupom e QR Code para validação em estabelecimentos.
-    *   Rede de Parceiros Credenciados com filtro por categoria, busca, WhatsApp direto e rota no Google Maps.
-    *   Central de Exames e Laudos (`ExamsView`) com upload de arquivos, download e visualização digital de laudos anexados.
-    *   Acesso à Sala de Telemedicina WebRTC com chat, vídeo e controles de microfone/câmera.
-*   **O que falta finalizar (Refinamentos & Pendências):**
-    *   **Cancelamento de Consulta pelo Paciente com Política de Reembolso:** Permitir que o paciente cancele um agendamento com antecedência no seu painel com estorno automático dos ViTTA Coins / Saldo pago para sua carteira.
-    *   **Filtro e Busca no Histórico de Exames:** Aperfeiçoar o filtro por período e tipo de exame no painel do paciente para acelerar a localização de laudos antigos.
+### 2.2. Módulo do Profissional de Saúde
+*   **Atendimento Clínico e Telemedicina (`SOAPConsultationModal.tsx` & `TelemedicineRoom.tsx`):**
+    *   *Implementado:* Prontuário eletrônico padrão SOAP, histórico biométrico, emissão de prescrição digital com QR code e fechamento sincronizado da sala virtual (`telemedicineStatus: "closed"`).
+    *   *Status:* 100% finalizado e operacional.
+*   **Gestão Financeira e Repasses (`ProfessionalFinanceView.tsx`):**
+    *   *Implementado:* Saldo líquido em carteira, extrato de repasses, solicitação de saque via chave PIX e modal de comprovante de liquidação.
+    *   *Status:* 100% finalizado e operacional.
+*   **Validação de Identidade e Credenciamento (`KYCWizard.tsx`):**
+    *   *Implementado:* Upload com compressão de imagens no cliente (frente, verso e selfie com documento) e gravação de status `kycStatus: "pending"`.
+    *   *Status:* Finalizado no lado do profissional.
 
 ---
 
-### 2.4 Módulo Sistema & Suporte Compartilhado
-*   **Status Atual:** Concluído (~95%).
-*   **O que já está implementado e funcional:**
-    *   Central de Configurações do Usuário (`SettingsView.tsx`) com atualização de perfil, busca automática de CEP via ViaCEP, alteração de senha e preferências de notificação.
-    *   Central de Notificações (`NotificationsView.tsx`) com marcação de leitura, exclusão e contadores em tempo real.
-    *   Chat de Atendimento e Suporte (`ChatView.tsx`) com envio e persistência no Firestore.
-    *   Central de Ajuda & FAQ (`SupportView.tsx`) com pesquisa de perguntas frequentes e link direto para WhatsApp de suporte.
-    *   Página de Termos de Uso, Privacidade e LGPD (`TermsAndPrivacyView.tsx`) com impressão e solicitação formal de exportação de dados.
-*   **O que falta finalizar (Refinamentos & Pendências):**
-    *   **Limpeza de Código em `App.tsx`:** Extrair as seções inline remanescentes de `App.tsx` para seus respectivos módulos dedicados, diminuindo a complexidade do arquivo principal.
+### 2.3. Módulo Administrativo e de Governança
+*   **Aprovação de KYC de Especialistas (`ProfessionalsManagementView.tsx`):**
+    *   *Implementado:* Fila de validação com visualização de pendências e botões de aprovar/rejeitar.
+    *   *Pendente de Finalização:* Ao aprovar ou reprovar o KYC de um profissional, disparar automaticamente o registro na coleção `notifications` para que o especialista receba o feedback in-app e push em tempo real sobre a liberação de sua agenda.
+*   **Gestão Financeira e Saques (`AdminWalletManagementView.tsx`):**
+    *   *Implementado:* Aprovação de liquidações PIX com código de conferência, congelamento preventivo de carteiras e auditoria completa (`audit_logs`).
+    *   *Status:* 100% finalizado e operacional.
+*   **Parceiros Credenciados (`PartnershipManager.tsx`):**
+    *   *Implementado:* Cadastro com busca automática de endereço via CEP (ViaCEP), categorias dinâmicas e status ativo/inativo.
+    *   *Status:* 100% finalizado e operacional.
 
 ---
 
-## 3. Matriz de Conclusão e Pendências
-
-| Módulo / Funcionalidade | Estado Atual | O que Falta para Finalizar |
-| :--- | :--- | :--- |
-| **Admin - Gestão Geral** | 95% Funcional | Validação de cascata na exclusão/desativação de profissionais e parceiros. |
-| **Admin - Agendamentos & Vouchers** | 100% Funcional | Concluído. |
-| **Profissional - Agenda & Folgas** | 100% Funcional | Concluído. |
-| **Profissional - Atendimento Clínico & PDF**| 100% Funcional | Concluído (SOAP, Receitas, Atestados e Histórico). |
-| **Profissional - Financeiro & Saques** | 100% Funcional | Concluído (Validação Pix, Comprovante e Extrato). |
-| **Profissional - Telemedicina** | 95% Funcional | Fechamento automático de sala ao concluir atendimento. |
-| **Paciente - Dashboard & Carteirinha** | 100% Funcional | Concluído. |
-| **Paciente - Agendamentos & Carteira** | 90% Funcional | Fluxo de cancelamento de consulta com estorno automático de saldo. |
-| **Paciente - Exames & Laudos** | 95% Funcional | Filtro dinâmico por data/tipo e ordenação aprimorada. |
-| **Paciente - Benefícios & Parceiros** | 100% Funcional | Concluído. |
-| **Sistema - Configurações & LGPD** | 100% Funcional | Concluído. |
-| **Sistema - Notificações & Suporte** | 100% Funcional | Concluído. |
+### 2.4. Navegação e Experiência Mobile / PWA
+*   **Barra Inferior (`MobileBottomNav.tsx`):**
+    *   *Implementado:* Reativada com ergonomia para telas sensíveis ao toque, respeitando safe-area e alternando atalhos dinamicamente conforme a role do usuário (Paciente, Médico ou Administrador).
+    *   *Status:* 100% finalizado e operacional.
 
 ---
 
-## 4. Conclusão da Análise
+## 3. Matriz de Pendências para Finalização (Sem Novas Funcionalidades)
 
-O sistema encontra-se em estágio muito avançado de maturidade funcional e operacional. Todas as principais regras de negócio dos três atores (Administrador, Profissional de Saúde e Paciente) estão implementadas e conectadas ao Firestore. As únicas etapas pendentes concentram-se no fechamento do ciclo de cancelamento/estorno de agendamentos pelo paciente, sincronização do encerramento de salas virtuais de telemedicina e refinamentos de busca e manutenibilidade do código.
+| # | Módulo / Componente | O que está feito | O que falta finalizar | Complexidade |
+|---|---------------------|------------------|-----------------------|--------------|
+| **1** | `MyAppointmentsView` + `ReviewModal` | Modal de avaliação criado com cálculo de média e atualização transacional do médico. | Adicionar botão "Avaliar Consulta" nos cards de consultas concluídas (`completed`) e abrir o modal. | Baixa |
+| **2** | `OffersView` + `AdminVoucherManagementView` | Catálogo de cupons no paciente e controle de taxas/status global no Admin. | Unificar a fonte de dados das ofertas (`vouchers` / `vouchers_catalog`) e refletir a trava `vouchersEnabled`. | Baixa |
+| **3** | `ProfessionalsManagementView` (KYC) | Fila de aprovação/reprovação de documentos no Admin. | Disparar notificação in-app (`notifications`) para o usuário ao mudar status para `approved` ou `rejected`. | Baixa |
+| **4** | Base de Código e Build | Sistema compilando sem erros em Vite / React 18 / TypeScript. | Varredura de integridade para garantir zero regressões e consistência de tipos em tempo de execução. | Baixa |
+
+---
+
+## 4. Conclusão do Diagnóstico
+O sistema ViTTA está em estágio maduro e pronto para fechamento do ciclo. As pendências mapeadas acima não exigem criação de novas páginas ou arquiteturas inéditas, tratando-se exclusivamente de **conectar os módulos existentes de ponta a ponta**.

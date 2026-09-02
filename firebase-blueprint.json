@@ -270,7 +270,7 @@
         "userId": { "type": "string" },
         "title": { "type": "string" },
         "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["exam", "appointment", "system"] },
+        "type": { "type": "string", "enum": ["exam", "appointment", "system", "kyc_approved", "kyc_rejected"] },
         "read": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
