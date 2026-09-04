@@ -54,8 +54,10 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
   const [cashTransactions, setCashTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Tab: 'statement' | 'transactions' | 'invoices'
-  const [activeSubTab, setActiveSubTab] = useState<'statement' | 'transactions'>('statement');
+  // Tab: 'statement' | 'invoices' | 'transactions'
+  const [activeSubTab, setActiveSubTab] = useState<'statement' | 'invoices' | 'transactions'>('statement');
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const [isPayingAll, setIsPayingAll] = useState(false);
 
   // Payout Modal states
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
@@ -223,6 +225,123 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
   const totalPaidFees = cashTransactions
     .filter((t) => t.invoicePaid === true)
     .reduce((sum, t) => sum + (t.feeCharged || 0), 0);
+
+  const handlePayInvoiceWithOnlineBalance = async (tx: any) => {
+    const feeToPay = tx.feeCharged || Math.abs(tx.amount) || 0;
+    if (feeToPay <= 0) {
+      addToast('Valor de fatura inválido.', 'error');
+      return;
+    }
+
+    if (walletBalance < feeToPay) {
+      addToast(
+        `Saldo insuficiente em carteira (R$ ${walletBalance.toFixed(2).replace('.', ',')}) para quitar a fatura de R$ ${feeToPay.toFixed(2).replace('.', ',')}.`,
+        'error'
+      );
+      return;
+    }
+
+    setPayingInvoiceId(tx.id);
+    try {
+      // 1. Debita o saldo da carteira do profissional
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        walletBalance: increment(-feeToPay),
+      });
+
+      // 2. Marca a transação da fatura como paga
+      const txRef = doc(db, 'transactions', tx.id);
+      await updateDoc(txRef, {
+        invoicePaid: true,
+        status: 'completed',
+        paidWith: 'online_balance',
+        paidAt: new Date().toISOString(),
+      });
+
+      // 3. Registra comprovante da transação de débito no extrato
+      await addDoc(collection(db, 'transactions'), {
+        userId: user.uid,
+        type: 'fee_payment',
+        category: 'Pagamento de Fatura',
+        amount: -feeToPay,
+        title: `Pagamento de Fatura Presencial - ${tx.patientName || 'Paciente'}`,
+        description: `Liquidação da taxa de intermediação (${tx.feeRatio || 10}%) com débito no saldo online.`,
+        patientName: tx.patientName || 'Paciente',
+        date: new Date().toISOString(),
+        status: 'completed',
+        createdAt: Timestamp.now(),
+      });
+
+      addToast(
+        `Fatura de R$ ${feeToPay.toFixed(2).replace('.', ',')} liquidada com sucesso utilizando seu saldo online!`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Erro ao pagar fatura:', err);
+      addToast(err.message || 'Erro ao processar pagamento da fatura.', 'error');
+    } finally {
+      setPayingInvoiceId(null);
+    }
+  };
+
+  const handlePayAllInvoicesWithOnlineBalance = async () => {
+    const unpaidList = cashTransactions.filter((t) => t.invoicePaid !== true);
+    if (unpaidList.length === 0 || totalUnpaidFees <= 0) {
+      addToast('Não há faturas pendentes de pagamento.', 'info');
+      return;
+    }
+
+    if (walletBalance < totalUnpaidFees) {
+      addToast(
+        `Saldo insuficiente em carteira (R$ ${walletBalance.toFixed(2).replace('.', ',')}) para quitar o montante total de R$ ${totalUnpaidFees.toFixed(2).replace('.', ',')}.`,
+        'error'
+      );
+      return;
+    }
+
+    setIsPayingAll(true);
+    try {
+      // 1. Debita o valor total da carteira do profissional
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        walletBalance: increment(-totalUnpaidFees),
+      });
+
+      // 2. Marca todas as faturas como pagas
+      for (const tx of unpaidList) {
+        const txRef = doc(db, 'transactions', tx.id);
+        await updateDoc(txRef, {
+          invoicePaid: true,
+          status: 'completed',
+          paidWith: 'online_balance',
+          paidAt: new Date().toISOString(),
+        });
+      }
+
+      // 3. Registra transação de comprovante de quitação total
+      await addDoc(collection(db, 'transactions'), {
+        userId: user.uid,
+        type: 'fee_payment',
+        category: 'Pagamento de Faturas',
+        amount: -totalUnpaidFees,
+        title: `Liquidação Geral de Faturas Presenciais (${unpaidList.length} consultas)`,
+        description: `Quitação consolidada de ${unpaidList.length} faturas de intermediação presenciais via saldo digital.`,
+        date: new Date().toISOString(),
+        status: 'completed',
+        createdAt: Timestamp.now(),
+      });
+
+      addToast(
+        `Todas as ${unpaidList.length} faturas (Total: R$ ${totalUnpaidFees.toFixed(2).replace('.', ',')}) foram liquidadas com sucesso com débito no saldo online!`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Erro ao quitar faturas:', err);
+      addToast(err.message || 'Erro ao processar liquidação das faturas.', 'error');
+    } finally {
+      setIsPayingAll(false);
+    }
+  };
 
   // Statement calculations
   const filteredStatement = consultationsTxs.filter((t) => {
@@ -402,7 +521,7 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
                     : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                 }`}
               >
-                {totalUnpaidFees > 0 ? 'Fatura Aberta' : 'Em Dia'}
+                {totalUnpaidFees > 0 ? `${cashTransactions.filter(t => t.invoicePaid !== true).length} Pendente(s)` : 'Em Dia'}
               </span>
             </div>
 
@@ -432,14 +551,26 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
             </div>
           </div>
 
-          {setActiveTab && (
+          <div className="space-y-2">
+            {totalUnpaidFees > 0 && (
+              <button
+                onClick={handlePayAllInvoicesWithOnlineBalance}
+                disabled={isPayingAll || walletBalance < totalUnpaidFees}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle size={14} />
+                {isPayingAll ? 'Debitando do Saldo...' : 'Quitar com Saldo Online'}
+              </button>
+            )}
+
             <button
-              onClick={() => setActiveTab('wallets')}
-              className="w-full py-2.5 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              onClick={() => setActiveSubTab('invoices')}
+              className="w-full py-2 bg-vitta-surface-2 hover:bg-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <span>💳 Ver Detalhes na Carteira</span>
+              <Receipt size={13} />
+              <span>Ver Faturas Presenciais</span>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Card 3: Fee Rate Summary */}
@@ -470,26 +601,41 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
         
         {/* Navigation Bar */}
         <div className="p-6 border-b border-vitta-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex bg-vitta-surface-2 p-1 rounded-2xl border border-vitta-border">
+          <div className="flex bg-vitta-surface-2 p-1 rounded-2xl border border-vitta-border flex-wrap gap-1">
             <button
               onClick={() => setActiveSubTab('statement')}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                 activeSubTab === 'statement'
                   ? 'bg-vitta-accent text-white shadow-md'
                   : 'text-vitta-text-secondary hover:text-vitta-text-primary'
               }`}
             >
-              <FileText size={14} /> Extrato Detalhado de Consultas
+              <FileText size={14} /> Extrato de Consultas
+            </button>
+            <button
+              onClick={() => setActiveSubTab('invoices')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'invoices'
+                  ? 'bg-vitta-accent text-white shadow-md'
+                  : 'text-vitta-text-secondary hover:text-vitta-text-primary'
+              }`}
+            >
+              <Receipt size={14} /> Faturas Presenciais
+              {cashTransactions.filter(t => t.invoicePaid !== true).length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-900 ml-0.5">
+                  {cashTransactions.filter(t => t.invoicePaid !== true).length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setActiveSubTab('transactions')}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                 activeSubTab === 'transactions'
                   ? 'bg-vitta-accent text-white shadow-md'
                   : 'text-vitta-text-secondary hover:text-vitta-text-primary'
               }`}
             >
-              <ArrowRightLeft size={14} /> Histórico Geral de Transações
+              <ArrowRightLeft size={14} /> Histórico Geral
             </button>
           </div>
 
@@ -599,7 +745,112 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
           </div>
         )}
 
-        {/* Tab 2: Histórico Geral de Transações */}
+        {/* Tab 2: Faturas de Atendimentos Presenciais */}
+        {activeSubTab === 'invoices' && (
+          <div className="p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border">
+              <div>
+                <h4 className="text-sm font-bold text-vitta-text-primary">
+                  Gestão de Faturas de Atendimento Presencial
+                </h4>
+                <p className="text-xs text-vitta-text-secondary mt-0.5">
+                  Consultas presenciais recebidas em consultório geram faturas da taxa ViTTA. Você pode liquidá-las diretamente com o saldo acumulado das suas teleconsultas online.
+                </p>
+              </div>
+
+              {totalUnpaidFees > 0 && (
+                <button
+                  onClick={handlePayAllInvoicesWithOnlineBalance}
+                  disabled={isPayingAll || walletBalance < totalUnpaidFees}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <CheckCircle size={15} />
+                  {isPayingAll ? 'Processando Quitação...' : `Quitar Todas (R$ ${totalUnpaidFees.toFixed(2).replace('.', ',')})`}
+                </button>
+              )}
+            </div>
+
+            {/* Invoices Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-vitta-border text-[10px] uppercase font-bold text-vitta-text-muted tracking-wider">
+                    <th className="py-3 px-4">Data</th>
+                    <th className="py-3 px-4">Paciente</th>
+                    <th className="py-3 px-4 text-right">Valor no Consultório</th>
+                    <th className="py-3 px-4 text-right">Taxa ViTTA (Fatura)</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-vitta-border/50 text-vitta-text-primary">
+                  {cashTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-vitta-text-muted">
+                        Nenhuma fatura de atendimento presencial registrada até o momento.
+                      </td>
+                    </tr>
+                  ) : (
+                    cashTransactions.map((item) => {
+                      const isPaid = item.invoicePaid === true;
+                      const fee = item.feeCharged || Math.abs(item.amount) || 0;
+                      const gross = item.grossAmount || (fee / ((item.feeRatio || 10) / 100));
+                      const feeRatio = item.feeRatio || 10;
+                      const isPayingThis = payingInvoiceId === item.id;
+
+                      return (
+                        <tr key={item.id} className="hover:bg-vitta-surface-2/60 transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-vitta-text-secondary">
+                            {item.date ? formatDateForDisplay(item.date) : 'Data recente'}
+                          </td>
+                          <td className="py-3.5 px-4 font-bold">
+                            {item.patientName || 'Paciente Presencial'}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-medium text-vitta-text-secondary">
+                            R$ {gross.toFixed(2).replace('.', ',')}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-bold text-rose-400">
+                            R$ {fee.toFixed(2).replace('.', ',')} ({feeRatio}%)
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            {isPaid ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                Liquidada
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                Aberta
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {isPaid ? (
+                              <span className="text-[11px] text-emerald-500 font-semibold flex items-center justify-end gap-1">
+                                <CheckCircle2 size={13} /> Paga via Saldo
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handlePayInvoiceWithOnlineBalance(item)}
+                                disabled={isPayingThis || walletBalance < fee}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1.5 ml-auto cursor-pointer"
+                                title={walletBalance < fee ? 'Saldo online insuficiente' : 'Debitar taxa do saldo em carteira'}
+                              >
+                                <DollarSign size={12} />
+                                {isPayingThis ? 'Debitando...' : 'Pagar c/ Saldo'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Histórico Geral de Transações */}
         {activeSubTab === 'transactions' && (
           <div className="p-6 space-y-3">
             {loading ? (

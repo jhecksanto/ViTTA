@@ -58,9 +58,32 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [bookingModality, setBookingModality] = useState<"telemedicine" | "in_person">("telemedicine");
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"online" | "in_person">("online");
   const [isProcessing, setIsProcessing] = useState(false);
   const [userWalletBalance, setUserWalletBalance] = useState(0);
   const [successBooking, setSuccessBooking] = useState<any | null>(null);
+
+  const getPriceDetails = (prof: any) => {
+    // Valor Particular (Normal) cadastrado em 'Valor Particular da Consulta *' no Admin
+    const origPrice = parseFloat(
+      String(prof?.price || "150").replace(/[^0-9.,]/g, "").replace(",", ".")
+    ) || 150;
+
+    const discountStr = prof?.vittaHealthDiscount || "20% OFF";
+    const discountDigits = parseInt(discountStr.replace(/\D/g, "")) || 20;
+
+    // Desconto sobre o valor particular oferecido pelo convênio ViTTA
+    const savings = (origPrice * discountDigits) / 100;
+    const priceNum = Math.max(origPrice - savings, 0);
+
+    return {
+      priceNum, // Valor com Desconto ViTTA
+      origPrice, // Valor Normal (Particular)
+      discountDigits,
+      discountStr,
+      savings,
+    };
+  };
 
   useEffect(() => {
     const unsubProfs = onSnapshot(collection(db, "professionals"), (snapshot) => {
@@ -108,6 +131,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
   const handleOpenBooking = (prof: any) => {
     setSelectedProf(prof);
     setBookingModality(prof.telemedicineEnabled !== false ? "telemedicine" : "in_person");
+    setBookingPaymentMethod("online");
     setBookingDate("");
     setBookingTime("");
     setSuccessBooking(null);
@@ -119,34 +143,117 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
       return;
     }
 
-    const priceNum = parseFloat(
-      String(selectedProf.price || "150").replace(/[^0-9.,]/g, "").replace(",", ".")
-    ) || 150;
+    const { priceNum, origPrice, savings } = getPriceDetails(selectedProf);
+    const isOnlinePayment = bookingPaymentMethod === "online";
 
-    if (userWalletBalance < priceNum) {
-      addToast(`Saldo insuficiente (R$ ${userWalletBalance.toFixed(2)}). Recarregue sua carteira.`, "error");
+    if (isOnlinePayment && userWalletBalance < priceNum) {
+      addToast(
+        `Saldo insuficiente (R$ ${userWalletBalance.toFixed(2).replace(".", ",")}). Recarregue sua carteira ou escolha o Pagamento Presencial.`,
+        "error"
+      );
       return;
     }
 
     setIsProcessing(true);
     try {
-      // Create appointment and debit wallet in batch / transaction
-      await runTransaction(db, async (transaction) => {
-        const userRef = doc(db, "users", user.uid);
-        const userSnap = await transaction.get(userRef);
-        if (!userSnap.exists() || (userSnap.data().walletBalance || 0) < priceNum) {
-          throw new Error("Saldo insuficiente");
-        }
+      const isTele = bookingModality === "telemedicine";
+      const feeRate = typeof selectedProf.feeRate === "number" ? selectedProf.feeRate : 10;
+      const feeAmount = (priceNum * feeRate) / 100;
+      const netAmount = priceNum - feeAmount;
 
-        const newBal = (userSnap.data().walletBalance || 0) - priceNum;
-        transaction.update(userRef, { walletBalance: newBal });
+      if (isOnlinePayment) {
+        // Create appointment and debit wallet in batch / transaction
+        await runTransaction(db, async (transaction) => {
+          const userRef = doc(db, "users", user.uid);
+          const userSnap = await transaction.get(userRef);
+          if (!userSnap.exists() || (userSnap.data().walletBalance || 0) < priceNum) {
+            throw new Error("Saldo insuficiente");
+          }
 
+          const newBal = (userSnap.data().walletBalance || 0) - priceNum;
+          transaction.update(userRef, { walletBalance: newBal });
+
+          const aptRef = doc(collection(db, "appointments"));
+          transaction.set(aptRef, {
+            userId: user.uid,
+            patientId: user.uid,
+            patientName: user.displayName || user.name || user.email || "Paciente",
+            patientEmail: user.email,
+            professionalId: selectedProf.id,
+            professionalUserId: selectedProf.userId || null,
+            professionalName: selectedProf.name,
+            professionalSpecialty: selectedProf.specialty,
+            date: bookingDate,
+            time: bookingTime,
+            modality: bookingModality,
+            isTelemedicine: isTele,
+            type: isTele ? "telemedicine" : "presencial",
+            telemedicineRoomId: isTele ? aptRef.id : null,
+            telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
+            status: "upcoming",
+            price: priceNum,
+            originalPrice: origPrice,
+            discountAmount: savings,
+            paymentMethod: "online",
+            paymentType: "vitta_coins",
+            paymentStatus: "paid",
+            paid: true,
+            paidAt: new Date().toISOString(),
+            feeRate: feeRate,
+            feeCharged: feeAmount,
+            netAmount: netAmount,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+
+          // Add patient transaction log
+          const txRef = doc(collection(db, "transactions"));
+          transaction.set(txRef, {
+            userId: user.uid,
+            type: "appointment_payment",
+            amount: -priceNum,
+            grossAmount: priceNum,
+            title: `Consulta com ${selectedProf.name}`,
+            description: `Pagamento de Consulta Online (${selectedProf.specialty})`,
+            createdAt: new Date().toISOString(),
+            date: new Date().toISOString(),
+            status: "completed",
+          });
+
+          // Credit professional online wallet with split if professional has userId
+          if (selectedProf.userId) {
+            const profUserRef = doc(db, "users", selectedProf.userId);
+            transaction.update(profUserRef, {
+              walletBalance: increment(netAmount),
+            });
+
+            const profTxRef = doc(collection(db, "transactions"));
+            transaction.set(profTxRef, {
+              userId: selectedProf.userId,
+              professionalId: selectedProf.id,
+              type: "appointment_split",
+              category: "Rendimento",
+              amount: netAmount,
+              grossAmount: priceNum,
+              feeCharged: feeAmount,
+              feeRatio: feeRate,
+              patientName: user.displayName || user.name || user.email || "Paciente",
+              title: `Recebimento - Consulta de ${user.displayName || user.name || "Paciente"}`,
+              description: `Rendimento líquido da consulta (${isTele ? "Telemedicina" : "Presencial"}) com taxa de intermediação ViTTA (${feeRate}%).`,
+              date: new Date().toISOString(),
+              status: "completed",
+              createdAt: new Date().toISOString(),
+            });
+          }
+        });
+      } else {
+        // Presencial Payment: No upfront debit from patient.
+        // Generates invoice for the professional to pay platform fee (can be debited from professional's online balance)
         const aptRef = doc(collection(db, "appointments"));
-        const isTele = bookingModality === "telemedicine";
-        transaction.set(aptRef, {
+        await addDoc(collection(db, "appointments"), {
           userId: user.uid,
           patientId: user.uid,
-          patientName: user.displayName || user.email || "Paciente",
+          patientName: user.displayName || user.name || user.email || "Paciente",
           patientEmail: user.email,
           professionalId: selectedProf.id,
           professionalUserId: selectedProf.userId || null,
@@ -161,21 +268,64 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
           status: "upcoming",
           price: priceNum,
-          paymentMethod: "vitta_coins",
+          originalPrice: origPrice,
+          discountAmount: savings,
+          paymentMethod: "in_person",
+          paymentType: "pay_at_clinic",
+          paymentStatus: "pending_in_person",
+          paid: false,
+          feeRate: feeRate,
+          feeCharged: feeAmount,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Register fee invoice transaction for the professional
+        const profTargetUid = selectedProf.userId || selectedProf.id;
+        await addDoc(collection(db, "transactions"), {
+          userId: profTargetUid,
+          professionalId: selectedProf.id,
+          professionalUserId: selectedProf.userId || null,
+          type: "clinic_fee_invoice",
+          category: "Taxa de Atendimento Presencial",
+          title: `Fatura de Intermediação - Consulta Presencial`,
+          description: `Taxa da plataforma ViTTA (${feeRate}%) sobre consulta presencial de ${user.displayName || user.name || "Paciente"} a ser recebida na clínica.`,
+          patientName: user.displayName || user.name || user.email || "Paciente",
+          patientId: user.uid,
+          consultationPrice: priceNum,
+          grossAmount: priceNum,
+          feeCharged: feeAmount,
+          feeRatio: feeRate,
+          amount: -feeAmount,
+          isCash: true,
+          invoicePaid: false,
+          status: "pending",
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          date: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         });
 
-        // Add transaction log
-        const txRef = doc(collection(db, "transactions"));
-        transaction.set(txRef, {
-          userId: user.uid,
-          type: "appointment_payment",
-          amount: -priceNum,
-          description: `Consulta com ${selectedProf.name} (${selectedProf.specialty})`,
+        // Also add to invoices collection
+        await addDoc(collection(db, "invoices"), {
+          userId: profTargetUid,
+          professionalUserId: selectedProf.userId || null,
+          professionalId: selectedProf.id,
+          professionalName: selectedProf.name,
+          patientId: user.uid,
+          patientName: user.displayName || user.name || user.email || "Paciente",
+          consultationPrice: priceNum,
+          feeRate: feeRate,
+          feeCharged: feeAmount,
+          amount: feeAmount,
+          description: `Taxa de intermediação - Consulta presencial de ${user.displayName || user.name || "Paciente"}`,
+          status: "pending",
+          invoicePaid: false,
+          paymentMethod: "in_person",
+          date: new Date().toISOString(),
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           createdAt: new Date().toISOString(),
-          status: "completed",
         });
-      });
+      }
 
       const bookingInfo = {
         profName: selectedProf.name,
@@ -183,10 +333,19 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
         date: bookingDate,
         time: bookingTime,
         modality: bookingModality,
+        paymentMethod: bookingPaymentMethod,
+        price: priceNum,
+        origPrice: origPrice,
+        savings: savings,
       };
 
       setSuccessBooking(bookingInfo);
-      addToast("Consulta agendada com sucesso com débito em ViTTA Coins!", "success");
+      addToast(
+        isOnlinePayment
+          ? "Consulta agendada com sucesso com pagamento online!"
+          : "Consulta agendada com sucesso! Pagamento será realizado presencialmente na clínica.",
+        "success"
+      );
     } catch (err: any) {
       console.error(err);
       addToast(err.message || "Erro ao realizar agendamento.", "error");
@@ -318,24 +477,45 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-vitta-surface-2 p-3 rounded-2xl border border-vitta-border space-y-1.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-vitta-text-muted text-[11px]">Valor Consulta:</span>
-                    <span className="font-bold text-vitta-text-primary">{prof.price || "R$ 150,00"}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-vitta-text-muted text-[11px]">Desconto ViTTA:</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                      {prof.vittaHealthDiscount || "20% OFF"}
-                    </span>
-                  </div>
-                  {prof.city && (
-                    <div className="flex items-center gap-1.5 text-vitta-text-secondary text-[11px] pt-1 border-t border-vitta-border">
-                      <MapPin size={13} className="text-vitta-text-muted shrink-0" />
-                      <span className="truncate">{prof.city}</span>
+                {(() => {
+                  const details = getPriceDetails(prof);
+                  return (
+                    <div className="bg-vitta-surface-2 p-3.5 rounded-2xl border border-vitta-border space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-vitta-text-muted">
+                        <span className="text-[11px]">Valor Normal (Particular):</span>
+                        <span className="line-through text-xs font-semibold text-vitta-text-muted">
+                          {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.origPrice)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles size={13} className="text-emerald-500 shrink-0" />
+                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                            Com Desconto ViTTA:
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.priceNum)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-emerald-600 dark:text-emerald-400 font-bold px-1">
+                        <span>Desconto ViTTA: {details.discountStr}</span>
+                        <span>Economia: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.savings)}</span>
+                      </div>
+
+                      {prof.city && (
+                        <div className="flex items-center gap-1.5 text-vitta-text-secondary text-[11px] pt-1.5 border-t border-vitta-border">
+                          <MapPin size={13} className="text-vitta-text-muted shrink-0" />
+                          <span className="truncate">{prof.city}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
 
               <div className="space-y-2 pt-2 border-t border-vitta-border">
@@ -355,12 +535,12 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
       {/* Booking Modal */}
       <AnimatePresence>
         {selectedProf && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vitta-surface w-full max-w-lg rounded-3xl shadow-2xl border border-vitta-border overflow-hidden"
+              className="bg-vitta-surface w-full max-w-lg rounded-3xl shadow-2xl border border-vitta-border overflow-hidden my-6"
             >
               {successBooking ? (
                 <div className="p-8 text-center space-y-4">
@@ -371,9 +551,35 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                   <p className="text-xs text-vitta-text-muted">
                     Seu agendamento com <strong className="text-vitta-text-primary">{successBooking.profName}</strong> foi registrado com sucesso.
                   </p>
-                  <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border text-xs text-left space-y-1.5">
-                    <div><strong>Data:</strong> {successBooking.date} às {successBooking.time}</div>
-                    <div><strong>Modalidade:</strong> {successBooking.modality === "telemedicine" ? "Telemedicina (Online)" : "Presencial"}</div>
+                  <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border text-xs text-left space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-vitta-text-muted">Especialista:</span>
+                      <strong>{successBooking.profName} ({successBooking.specialty})</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-vitta-text-muted">Data e Horário:</span>
+                      <strong>{successBooking.date} às {successBooking.time}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-vitta-text-muted">Modalidade:</span>
+                      <strong>{successBooking.modality === "telemedicine" ? "Telemedicina (Online)" : "Presencial (No Consultório)"}</strong>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-vitta-border">
+                      <span className="text-vitta-text-muted">Forma de Pagamento:</span>
+                      <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                        successBooking.paymentMethod === "online"
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                      }`}>
+                        {successBooking.paymentMethod === "online" ? "Pago Online (ViTTA Coins)" : "Presencial (Pagar na Clínica)"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-vitta-text-muted">Valor da Consulta:</span>
+                      <strong className="text-emerald-600 dark:text-emerald-400 font-black">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(successBooking.price)}
+                      </strong>
+                    </div>
                   </div>
                   <div className="flex gap-3 pt-2">
                     <button
@@ -403,9 +609,10 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                     </button>
                   </div>
 
-                  <div className="p-6 space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-vitta-text-secondary">Modalidade de Atendimento</label>
+                  <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                    {/* Modalidade */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-vitta-text-secondary">1. Modalidade de Atendimento</label>
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           type="button"
@@ -434,46 +641,135 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-vitta-text-secondary">Data da Consulta</label>
-                        <input
-                          type="date"
-                          value={bookingDate}
-                          onChange={(e) => setBookingDate(e.target.value)}
-                          className="w-full px-3.5 py-2 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs text-vitta-text-primary focus:outline-none focus:border-vitta-accent"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-vitta-text-secondary">Horário</label>
-                        <select
-                          value={bookingTime}
-                          onChange={(e) => setBookingTime(e.target.value)}
-                          className="w-full px-3.5 py-2 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs text-vitta-text-primary focus:outline-none focus:border-vitta-accent"
-                        >
-                          <option value="">Selecione...</option>
-                          <option value="08:00">08:00</option>
-                          <option value="09:00">09:00</option>
-                          <option value="10:00">10:00</option>
-                          <option value="11:00">11:00</option>
-                          <option value="14:00">14:00</option>
-                          <option value="15:00">15:00</option>
-                          <option value="16:00">16:00</option>
-                          <option value="17:00">17:00</option>
-                        </select>
+                    {/* Data e Horário */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-vitta-text-secondary">2. Data e Horário da Consulta</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-vitta-text-muted">Data</span>
+                          <input
+                            type="date"
+                            value={bookingDate}
+                            onChange={(e) => setBookingDate(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs text-vitta-text-primary focus:outline-none focus:border-vitta-accent"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-vitta-text-muted">Horário</span>
+                          <select
+                            value={bookingTime}
+                            onChange={(e) => setBookingTime(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs text-vitta-text-primary focus:outline-none focus:border-vitta-accent"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="08:00">08:00</option>
+                            <option value="09:00">09:00</option>
+                            <option value="10:00">10:00</option>
+                            <option value="11:00">11:00</option>
+                            <option value="14:00">14:00</option>
+                            <option value="15:00">15:00</option>
+                            <option value="16:00">16:00</option>
+                            <option value="17:00">17:00</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border space-y-2 text-xs">
-                      <div className="flex justify-between items-center text-vitta-text-muted">
-                        <span>Valor com desconto:</span>
-                        <span className="font-bold text-vitta-text-primary">{selectedProf.price || "R$ 150,00"}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-vitta-text-muted">
-                        <span>Seu saldo em ViTTA Coins:</span>
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">R$ {userWalletBalance.toFixed(2)}</span>
+                    {/* Forma de Pagamento */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-vitta-text-secondary">3. Escolha a Forma de Pagamento</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setBookingPaymentMethod("online")}
+                          className={`p-3.5 rounded-2xl border text-left transition-all ${
+                            bookingPaymentMethod === "online"
+                              ? "border-vitta-accent bg-vitta-accent/10 ring-2 ring-vitta-accent/20"
+                              : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <CreditCard size={16} className={bookingPaymentMethod === "online" ? "text-vitta-accent" : "text-vitta-text-muted"} />
+                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Online</span>
+                          </div>
+                          <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
+                            Débito com saldo ViTTA Coins na confirmação.
+                          </p>
+                          <div className="mt-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            Saldo: R$ {userWalletBalance.toFixed(2).replace(".", ",")}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBookingPaymentMethod("in_person")}
+                          className={`p-3.5 rounded-2xl border text-left transition-all ${
+                            bookingPaymentMethod === "in_person"
+                              ? "border-vitta-accent bg-vitta-accent/10 ring-2 ring-vitta-accent/20"
+                              : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Building size={16} className={bookingPaymentMethod === "in_person" ? "text-vitta-accent" : "text-vitta-text-muted"} />
+                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Presencial</span>
+                          </div>
+                          <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
+                            Pague no consultório/recepção (Dinheiro, Cartão ou Pix).
+                          </p>
+                          <div className="mt-2 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                            Sem débito prévio na carteira
+                          </div>
+                        </button>
                       </div>
                     </div>
+
+                    {/* Resumo de Valores e Descontos */}
+                    {(() => {
+                      const details = getPriceDetails(selectedProf);
+                      const isOnline = bookingPaymentMethod === "online";
+                      const hasEnoughBalance = userWalletBalance >= details.priceNum;
+
+                      return (
+                        <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border space-y-2 text-xs">
+                          <div className="flex justify-between items-center text-vitta-text-muted">
+                            <span>Valor Normal Particular:</span>
+                            <span className="line-through font-medium">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.origPrice)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20">
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles size={14} className="text-emerald-500" />
+                              <span className="font-bold text-emerald-800 dark:text-emerald-200">
+                                Valor com Desconto ViTTA:
+                              </span>
+                            </div>
+                            <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.priceNum)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-[11px] text-emerald-600 dark:text-emerald-400 font-bold px-1">
+                            <span>Desconto aplicado: {details.discountStr}</span>
+                            <span>Economia: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.savings)}</span>
+                          </div>
+
+                          <div className="pt-2 border-t border-vitta-border text-[11px] flex justify-between items-center">
+                            <span className="text-vitta-text-muted">Forma Selecionada:</span>
+                            <span className="font-bold text-vitta-text-primary">
+                              {isOnline ? "Online (Débito em ViTTA Coins)" : "Presencial (Pagar na Recepção)"}
+                            </span>
+                          </div>
+
+                          {isOnline && !hasEnoughBalance && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300">
+                              ⚠️ Seu saldo atual (R$ {userWalletBalance.toFixed(2).replace(".", ",")}) é inferior ao valor da consulta. Recarregue seu saldo ou selecione <strong>Pagamento Presencial</strong>.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="flex gap-3 pt-2">
                       <button
@@ -489,7 +785,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         onClick={handleConfirmBooking}
                         className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/20 transition-all flex items-center justify-center gap-2"
                       >
-                        {isProcessing ? "Confirmando..." : "Confirmar e Pagar"}
+                        {isProcessing ? "Confirmando..." : (bookingPaymentMethod === "online" ? "Confirmar e Pagar Online" : "Confirmar Agendamento Presencial")}
                       </button>
                     </div>
                   </div>

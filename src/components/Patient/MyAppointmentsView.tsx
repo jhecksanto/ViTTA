@@ -399,6 +399,18 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                         </>
                       )}
                     </div>
+
+                    <div className="flex items-center gap-2 text-xs col-span-2 pt-1 border-t border-vitta-border/40">
+                      {apt.paymentMethod === 'in_person' ? (
+                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                          🏥 Pagamento no Consultório (Presencial)
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          💳 Pagamento Online (ViTTA Coins / Cartão)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Cancel reason note if cancelled */}

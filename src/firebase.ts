@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfigJson from '../firebase-applet-config.json';
 
@@ -17,18 +21,18 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Enable offline persistence (skip if running in a sandboxed iframe to prevent lock errors)
-if (typeof window !== 'undefined' && window.self === window.top) {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Persistence failed-precondition: multiple tabs open?');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Persistence unimplemented in this browser');
-    }
-  });
-}
+// Initialize Firestore with robust connection settings (auto-detect long polling) & multi-tab cache
+export const db = initializeFirestore(
+  app,
+  {
+    experimentalAutoDetectLongPolling: true,
+    localCache: typeof window !== 'undefined'
+      ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      : undefined
+  },
+  firebaseConfig.firestoreDatabaseId
+);
 
 export const storage = getStorage(app);
 storage.maxUploadRetryTime = 3000;

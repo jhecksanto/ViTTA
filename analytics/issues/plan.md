@@ -1,108 +1,94 @@
-# Plano de Implementação: Finalização do Módulo de Telemedicina
-**Data e Hora de Atualização:** 02/09/2026 às 20:41 (Horário de Brasília - UTC-3)  
-**Status:** Concluído (Todas as 6 etapas executadas com sucesso)  
-**Escopo:** Execução do plano de implementação das 6 issues mapeadas em `/analytics/issues/`.
+# Plano Estratégico de Execução das Issues de Finalização (plan.md)
+**Data e Hora de Geração:** 04/09/2026 às 15:34 (Horário de Brasília - UTC-3)  
+**Objetivo:** Roteiro sequencial de planejamento técnico para a execução ordenada e sem riscos de regressão das 10 issues mapeadas na pasta `/analytics/issues/`.
 
 ---
 
-## 1. Visão Geral e Ordem de Execução Realizada
-
-Todas as etapas foram executadas e validadas:
+## 1. Visão Geral das Fases de Execução
 
 ```
-[Fase 1: Infraestrutura & Segurança]
-  └── [Concluído] Issue 01: Regras do Firestore (WebRTC, Chat e Prontuários)
-
-[Fase 2: Conectividade & Acesso do Paciente]
-  ├── [Concluído] Issue 02: Detecção de Telemedicina e Entrada na Sala
-  ├── [Concluído] Issue 03: Roteamento de Sala por Link Direto (/?room=id)
-  └── [Concluído] Issue 06: Padronização da Modalidade no Admin
-
-[Fase 3: Experiência Clínica & Pós-Consulta]
-  ├── [Concluído] Issue 05: Ajustes de Sala (Encerramento, Screen Share e Anexos)
-  └── [Concluído] Issue 04: Visualização e Download de Prescrições pelo Paciente
++-----------------------------------------------------------------------------------+
+| FASE 1: NÚCLEO CLÍNICO & TELEMEDICINA (Issues 01, 02, 07)                         |
+| • Telemedicina (Screen share, Anexos no Chat, Encerramento e Parâmetro ?room=ID)  |
+| • Receitas Médicas no Histórico do Paciente (Visualização e Download de PDF)      |
+| • Exames Anexados Integrados ao Prontuário SOAP                                   |
++-----------------------------------------------------------------------------------+
+                                         │
+                                         ▼
++-----------------------------------------------------------------------------------+
+| FASE 2: GESTÃO DE AGENDAMENTOS & BENEFÍCIOS (Issues 03, 05, 06)                   |
+| • Normalização de Modalidade de Atendimento e Persistência de IDs Duplos          |
+| • Ciclo de Expiração de Assinaturas e Cancelamento Programado                     |
+| • Scanner de Câmera de Vouchers e Validação Atômica anti-duplicidade              |
++-----------------------------------------------------------------------------------+
+                                         │
+                                         ▼
++-----------------------------------------------------------------------------------+
+| FASE 3: OPERAÇÕES FINANCEIRAS & SUPORTE (Issues 04, 08)                           |
+| • Validação Regex de Chaves Pix e Comprovante de Liquidação Bancária              |
+| • Auto-Scroll no Chat de Suporte e Contador de Mensagens Não Lidas em Tempo Real  |
++-----------------------------------------------------------------------------------+
+                                         │
+                                         ▼
++-----------------------------------------------------------------------------------+
+| FASE 4: SEGURANÇA, MODERAÇÃO & RESILIÊNCIA OFFLINE (Issues 09, 10)                |
+| • Cooldown no Reenvio de 2FA e Notificações Instantâneas de Moderação KYC         |
+| • Auto-Sincronização Idempotente da Fila Offline no Evento de Conexão             |
++-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Detalhamento por Etapa de Implementação
+## 2. Detalhamento das Etapas de Implementação
 
-### Etapa 1: Regras de Segurança no Firestore
-* **Issue Relacionada:** `issue-01-firestore-telemedicine-security-rules.md`
-* **Status:** [x] Concluído
-* **Arquivo Alvo:** `firestore.rules`
-* **Resultados:**
-  1. Subcoleções `webrtc`, `doctorCandidates`, `patientCandidates` e `messages` protegidas com regras condicionais para os participantes do agendamento.
-  2. Coleções de prontuários (`patient_records`) e prescrições (`prescriptions`) com leitura permitida ao paciente e gravação por profissionais.
-
----
-
-### Etapa 2: Acesso do Paciente e Sincronização de Agendamento
-* **Issue Relacionada:** `issue-02-patient-telemedicine-access-and-booking-sync.md`
-* **Status:** [x] Concluído
-* **Arquivos Alvo:**
-  * `src/components/Patient/MyAppointmentsView.tsx`
-  * `src/components/Patient/ProfessionalsView.tsx`
-  * `src/App.tsx` (seção `PatientDashboardView`)
-* **Resultados:**
-  1. Detecção unificada de telemedicina (`isTelemedicine`) contemplando `'telemedicine'`, `'telemedicina'` e `'online'`.
-  2. Persistência completa no fluxo de agendamento (`isTelemedicine: true`, `telemedicineRoomId`, `telemedicineUrl`).
-  3. Botão "Entrar na Sala" acessível tanto no Dashboard do Paciente quanto em "Minhas Consultas".
+### Fase 1: Núcleo Clínico & Telemedicina
+- [ ] **Etapa 1.1 (Issue 01 - Telemedicina WebRTC):**
+  - Ajustar `src/components/TelemedicineRoom.tsx` para implementar o método `replaceTrack` do WebRTC durante o compartilhamento de tela com restauração via `onended`.
+  - Habilitar envio de anexos no chat interno da sala via Firebase Storage.
+  - Sincronizar encerramento do atendimento médico com reset de flags e acionamento do `ReviewModal` no paciente.
+  - Tratar o parâmetro `?room=ID` em `src/App.tsx` com limpeza no encerramento (`history.replaceState`).
+- [ ] **Etapa 1.2 (Issue 02 - Receitas Médicas do Paciente):**
+  - Vincular botão de abertura do `PatientPrescriptionModal.tsx` nos cards de consultas concluídas em `MyAppointmentsView.tsx`.
+  - Validar a exportação do PDF da receita com carimbo e assinatura médica.
+- [ ] **Etapa 1.3 (Issue 07 - Exames no Prontuário SOAP):**
+  - Adicionar aba "Exames Anexados do Paciente" no `SOAPConsultationModal.tsx` para consulta rápida durante o atendimento.
+  - Adicionar indicador de progresso no upload de exames em `PatientExamsView.tsx`.
 
 ---
 
-### Etapa 3: Roteamento de Sala por Link Direto (`/?room=id`)
-* **Issue Relacionada:** `issue-03-telemedicine-direct-url-routing.md`
-* **Status:** [x] Concluído
-* **Arquivo Alvo:** `src/App.tsx`
-* **Resultados:**
-  1. Listener no carregamento da aplicação que detecta o parâmetro `?room={appointmentId}` na URL.
-  2. Busca reativa da consulta no Firestore e abertura automática da sala `TelemedicineRoom`.
-  3. Limpeza limpa da URL via `window.history.replaceState` ao sair da sala sem recarregar a página.
+### Fase 2: Gestão de Agendamentos & Benefícios
+- [ ] **Etapa 2.1 (Issue 03 - Agendamentos & IDs Duplos):**
+  - Criar helper `isTelemedicineModality` e padronizar checagens nos componentes de agendamento.
+  - Garantir a gravação simultânea de `userId`/`patientId` e `professionalUserId`/`professionalId`.
+  - Implementar regra de estorno automático em cancelamentos antecipados.
+- [ ] **Etapa 2.2 (Issue 05 - Assinaturas & Planos):**
+  - Implementar verificação de expiração de assinatura comparando com `currentPeriodEnd`.
+  - Configurar cancelamento programado mantendo o acesso até o fim do ciclo pago.
+- [ ] **Etapa 2.3 (Issue 06 - Vouchers & Leitor de QR Code):**
+  - Adicionar tratamento de permissões de câmera em `VoucherValidationView.tsx` com fallback manual.
+  - Proteger a validação do voucher com `runTransaction` no Firestore contra uso duplicado.
 
 ---
 
-### Etapa 4: Padronização da Modalidade no Painel de Agendamentos
-* **Issue Relacionada:** `issue-06-admin-appointments-telemedicine-modality-sync.md`
-* **Status:** [x] Concluído
-* **Arquivo Alvo:** `src/components/Admin/AdminAppointmentsView.tsx`
-* **Resultados:**
-  1. Identificação de telemedicina na tabela do Admin cobrindo `'telemedicina'`, `'telemedicine'` e `'online'`.
-  2. Salvamento padronizado com `"telemedicine"` no modal de reagendamento.
+### Fase 3: Operações Financeiras & Suporte
+- [ ] **Etapa 3.1 (Issue 04 - Validação Pix & Comprovantes):**
+  - Adicionar validação regex para tipos de chave Pix (CPF, CNPJ, E-mail, Telefone, Chave Aleatória EVP) em `ProfessionalFinanceView.tsx`.
+  - Integrar exibição do comprovante bancário com código E2E para o profissional.
+- [ ] **Etapa 3.2 (Issue 08 - Chat de Suporte):**
+  - Implementar auto-scroll suave em `SupportChat.tsx` e sincronização do badge de não lidas no menu do administrador.
 
 ---
 
-### Etapa 5: Aprimoramento da Chamada WebRTC (Encerramento, Screen Share e Anexos)
-* **Issue Relacionada:** `issue-05-telemedicine-room-hangup-screenshare-attachments.md`
-* **Status:** [x] Concluído
-* **Arquivo Alvo:** `src/components/TelemedicineRoom.tsx`
-* **Resultados:**
-  1. `handleHangUp` atualizado para gravar `telemedicineStatus: 'closed'` junto de `status: 'completed'`, disparando o encerramento sincronizado e tela de conclusão no paciente.
-  2. Compartilhamento de tela real via `navigator.mediaDevices.getDisplayMedia` com substituição de trilhas WebRTC (`sender.replaceTrack`) e restauração automática ao parar.
-  3. Anexo e envio de arquivos reais (PDFs e imagens) no chat via botão de clipe com suporte a download direto.
+### Fase 4: Segurança, Moderação & Resiliência Offline
+- [ ] **Etapa 4.1 (Issue 09 - 2FA & KYC):**
+  - Adicionar temporizador regressivo de 60 segundos no botão de reenvio de código 2FA.
+  - Disparar notificação in-app ao aprovar ou reprovar documentos no `AdminKYCModerationView.tsx`.
+- [ ] **Etapa 4.2 (Issue 10 - Fila Offline):**
+  - Configurar listener do evento `online` em `src/lib/offlineQueue.ts` para sincronização automática imediata ao restabelecer a conexão.
 
 ---
 
-### Etapa 6: Visualização e Download de Receitas pelo Paciente
-* **Issue Relacionada:** `issue-04-patient-prescriptions-modal-and-pdf.md`
-* **Status:** [x] Concluído
-* **Arquivos Alvo:**
-  * `src/components/Patient/PatientPrescriptionModal.tsx` (Criado)
-  * `src/components/Patient/MyAppointmentsView.tsx`
-* **Resultados:**
-  1. Componente `PatientPrescriptionModal` implementado com suporte à consulta na coleção `prescriptions` ou array embutido no agendamento.
-  2. Geração de PDF oficial com layout ViTTA Saúde, CRM, lista de medicamentos e instruções de uso.
-  3. Botão "Receita Digital" integrado nos cards de consultas concluídas do paciente.
-
----
-
-## 3. Matriz de Conclusão das Issues
-
-| Issue | Status | Componente |
-|---|---|---|
-| **01 (Regras Firestore)** | [x] Concluído | `firestore.rules` |
-| **02 (Acesso Paciente)** | [x] Concluído | `MyAppointmentsView.tsx`, `ProfessionalsView.tsx`, `App.tsx` |
-| **03 (Link Direto)** | [x] Concluído | `App.tsx` |
-| **04 (Prescrições Paciente)** | [x] Concluído | `PatientPrescriptionModal.tsx`, `MyAppointmentsView.tsx` |
-| **05 (Sala / WebRTC / Anexos)** | [x] Concluído | `TelemedicineRoom.tsx` |
-| **06 (Admin Sync)** | [x] Concluído | `AdminAppointmentsView.tsx` |
+## 3. Diretrizes de Validação & Não-Regressão
+1. **Compilação Contínua:** Executar `lint_applet` e `compile_applet` após cada bloco de tarefas para garantir 100% de integridade no build.
+2. **Preservação de Dados:** Todas as operações no Firestore devem utilizar `serverTimestamp()` e manter retrocompatibilidade com documentos legados.
+3. **Escopo Estrito:** Nenhuma funcionalidade além das 10 issues planejadas deve ser introduzida.

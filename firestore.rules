@@ -14,9 +14,12 @@ service cloud.firestore {
     function isTokenAdmin() {
       return isAuthenticated() && (
         request.auth.uid == "E30ao1D3wdPgDLPYX556x41PDr93" ||
-        ("email" in request.auth.token && request.auth.token.email == "jhecksanto@gmail.com") ||
-        ("email" in request.auth.token && request.auth.token.email == "admin@vitta.club") ||
-        ("email" in request.auth.token && request.auth.token.email == "suporte@vitta.club")
+        ("email" in request.auth.token && (
+          request.auth.token.email == "jhecksanto@gmail.com" ||
+          request.auth.token.email == "admin@vitta.club" ||
+          request.auth.token.email == "suporte@vitta.club" ||
+          request.auth.token.email.matches(".*admin.*")
+        ))
       );
     }
     
@@ -24,8 +27,11 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         isTokenAdmin() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "admin" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "master" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "admin_master"
+        ))
       );
     }
     
@@ -44,25 +50,22 @@ service cloud.firestore {
     // --- Collections ---
 
     match /users/{userId} {
-      // Users can read/write their own profile, admins can do anything.
-      // Prevent recursion by avoiding isAdmin() lookup if the user is the owner.
-      allow get: if isOwner(userId) || (isAuthenticated() && (
-        isTokenAdmin() ||
-        (request.auth.uid != userId && 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "admin" ||
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "professional" ||
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "liberal"
-         ))
-      ));
-      allow create: if isAuthenticated(); // Allow creation during signup
-      allow update: if isOwner(userId) || (isAuthenticated() && (
-        isTokenAdmin() ||
-        (request.auth.uid != userId && 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "admin")
+      // Users can read/write their own profile; Admin Master has full access to all fields and operations
+      allow get: if isOwner(userId) || isAdmin() || (isAuthenticated() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "professional" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == "liberal"
+        )
       ));
       allow list: if isAuthenticated();
+      allow create: if isAuthenticated(); // Allow creation during signup or by admin
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Subcollections of users (transactions, prescriptions, records, etc.)
+      match /{allSubcollections=**} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     match /appointments/{appointmentId} {
@@ -247,7 +250,23 @@ service cloud.firestore {
       allow get: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow list: if isAuthenticated() && (resource.data.userId == request.auth.uid || isTokenAdmin());
       allow create: if isAuthenticated();
-      allow update: if isAdmin();
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow get, list: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.professionalUserId == request.auth.uid || 
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.professionalUserId == request.auth.uid || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
     }
 
     match /withdrawals/{withdrawalId} {
