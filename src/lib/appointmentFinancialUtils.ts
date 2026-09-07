@@ -182,9 +182,42 @@ export async function finalizeAndInvoiceAppointment(
         }
       }
     } else {
-      // Presencial / Clínica: Gerar fatura de intermediação da taxa ViTTA para o profissional
+      // Presencial / Clínica: Registrar rendimento líquido em Histórico de Ganhos e gerar fatura da taxa
+      if (profUserId && priceNumeric > 0) {
+        // 2a. Registrar transação de rendimento líquido da consulta presencial (Valor da Consulta - Taxa)
+        const existingEarningQuery = query(
+          collection(db, 'transactions'),
+          where('appointmentId', '==', appointmentId),
+          where('type', '==', 'appointment_earning')
+        );
+        const existingEarningSnap = await getDocs(existingEarningQuery);
+
+        if (existingEarningSnap.empty) {
+          await addDoc(collection(db, 'transactions'), {
+            userId: profUserId,
+            professionalId: apt.professionalId || null,
+            appointmentId: appointmentId,
+            type: 'appointment_earning',
+            category: 'Rendimento',
+            amount: netAmount,
+            grossAmount: priceNumeric,
+            feeCharged: feeAmount,
+            feeRatio: profFeeRate,
+            patientName: apt.patientName || 'Paciente',
+            patientId: apt.userId || null,
+            title: `Recebimento - Consulta Presencial de ${apt.patientName || 'Paciente'}`,
+            description: `Rendimento líquido da consulta presencial (Valor total: R$ ${priceNumeric.toFixed(2)} - Taxa ViTTA de ${profFeeRate}%: R$ ${feeAmount.toFixed(2)}).`,
+            date: nowIso,
+            status: 'completed',
+            paymentMethod: 'in_person',
+            isCash: false,
+            createdAt: nowIso,
+          });
+        }
+      }
+
       if (feeAmount > 0) {
-        // Verificar se já não existe fatura para evitar duplicidade
+        // 2b. Verificar se já não existe fatura da taxa para evitar duplicidade
         const existingInvQuery = query(
           collection(db, 'invoices'),
           where('appointmentId', '==', appointmentId)
@@ -194,7 +227,7 @@ export async function finalizeAndInvoiceAppointment(
         if (existingInvSnap.empty) {
           const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-          // Registrar transação de fatura
+          // Registrar transação de fatura da taxa
           await addDoc(collection(db, 'transactions'), {
             userId: profUserId,
             professionalId: apt.professionalId || null,

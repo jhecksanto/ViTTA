@@ -4810,11 +4810,15 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
   const [walletBalance, setWalletBalance] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [cashTransactions, setCashTransactions] = useState<any[]>([]);
+  const [completedAppointments, setCompletedAppointments] = useState<any[]>([]);
+  const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [pixKey, setPixKey] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeFinanceTab, setActiveFinanceTab] = useState<"earnings" | "fees">("earnings");
+  const [earningsSearch, setEarningsSearch] = useState("");
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -4822,6 +4826,7 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
 
     setLoading(true);
 
+    // 1. User wallet
     const unsubscribeWallet = onSnapshot(
       doc(db, "users", user.uid),
       (docSnap) => {
@@ -4834,11 +4839,20 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
       },
     );
 
+    // 2. Professional Profile
+    const profQuery = query(collection(db, "professionals"), where("userId", "==", user.uid));
+    const unsubscribeProf = onSnapshot(profQuery, (snap) => {
+      if (!snap.empty) {
+        setProfessionalProfile({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      }
+    });
+
+    // 3. Transactions where userId == user.uid
     const q = query(
       collection(db, "transactions"),
       where("userId", "==", user.uid),
       orderBy("date", "desc"),
-      limit(20),
+      limit(100),
     );
     const unsubscribeTransactions = onSnapshot(
       q,
@@ -4853,6 +4867,7 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
       },
     );
 
+    // 4. All Cash/Fee transactions for invoices
     const qAll = query(
       collection(db, "transactions"),
       where("userId", "==", user.uid)
@@ -4871,10 +4886,182 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
 
     return () => {
       unsubscribeWallet();
+      unsubscribeProf();
       unsubscribeTransactions();
       unsubscribeAll();
     };
   }, [user?.uid]);
+
+  // Listen to all completed appointments related to this professional
+  useEffect(() => {
+    if (!user?.uid) return;
+    const profId = professionalProfile?.id;
+
+    const aptQuery = query(
+      collection(db, "appointments"),
+      where("status", "==", "completed")
+    );
+    const unsubApts = onSnapshot(aptQuery, (snapshot) => {
+      const docs = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((a: any) => {
+          return (
+            a.professionalUserId === user.uid ||
+            a.userId === user.uid ||
+            (profId && a.professionalId === profId) ||
+            (professionalProfile?.name && a.professionalName === professionalProfile.name)
+          );
+        });
+      setCompletedAppointments(docs);
+    });
+
+    return () => unsubApts();
+  }, [user?.uid, professionalProfile?.id, professionalProfile?.name]);
+
+  const earningsTransactions = useMemo(() => {
+    const defaultFeeRate = Number(professionalProfile?.feeRate || 10);
+
+    // Filter non-cash and non-invoice-fee transactions
+    const rawEarnings = transactions.filter(
+      (t) =>
+        t.isCash !== true &&
+        t.type !== "clinic_fee_invoice" &&
+        t.type !== "platform_fee"
+    );
+
+    // Track which appointmentIds already have dedicated transactions
+    const coveredAptIds = new Set(
+      rawEarnings
+        .filter((t) => t.appointmentId)
+        .map((t) => t.appointmentId)
+    );
+
+    // Ensure EVERY completed appointment has a listed earning item
+    const synthesizedFromApts = completedAppointments
+      .filter((apt) => !coveredAptIds.has(apt.id))
+      .map((apt) => {
+        const priceNumeric =
+          apt.priceNumeric !== undefined
+            ? Number(apt.priceNumeric)
+            : typeof apt.price === "number"
+            ? apt.price
+            : parseFloat(apt.price) || 0;
+
+        const aptFeeRate = apt.feeRate !== undefined ? Number(apt.feeRate) : defaultFeeRate;
+        const feeAmount = (priceNumeric * aptFeeRate) / 100;
+        const netAmount = priceNumeric - feeAmount;
+
+        const dateStr =
+          (apt.completedAt?.toDate && apt.completedAt.toDate().toISOString()) ||
+          (typeof apt.completedAt === "string" ? apt.completedAt : null) ||
+          apt.invoicedAt ||
+          apt.date ||
+          (apt.createdAt?.toDate && apt.createdAt.toDate().toISOString()) ||
+          new Date().toISOString();
+
+        return {
+          id: `apt-earning-${apt.id}`,
+          appointmentId: apt.id,
+          userId: user.uid,
+          type: "appointment_earning",
+          category: "Rendimento",
+          title: `Recebimento - Consulta de ${apt.patientName || "Paciente"}`,
+          description: `Rendimento líquido faturado (${apt.modality === "telemedicine" ? "Telemedicina" : "Presencial"}).`,
+          amount: netAmount,
+          grossAmount: priceNumeric,
+          feeCharged: feeAmount,
+          feeRatio: aptFeeRate,
+          patientName: apt.patientName || "Paciente",
+          patientId: apt.userId || null,
+          date: dateStr,
+          status: "completed",
+          paymentMethod: apt.paymentMethod || (apt.modality === "telemedicine" ? "online" : "in_person"),
+          modality: apt.modality,
+          isCash: false,
+          isSynthesized: true,
+        };
+      });
+
+    const combined = [...rawEarnings, ...synthesizedFromApts];
+    return combined.sort(
+      (a, b) =>
+        new Date(b.date || b.createdAt || 0).getTime() -
+        new Date(a.date || a.createdAt || 0).getTime()
+    );
+  }, [transactions, completedAppointments, professionalProfile, user?.uid]);
+
+  const totalNetEarnings = useMemo(() => {
+    return earningsTransactions
+      .filter(
+        (t) =>
+          t.type === "credit" ||
+          t.type === "appointment_split" ||
+          t.type === "appointment_earning" ||
+          (t.type === "admin_adjustment" && t.amount > 0)
+      )
+      .reduce((acc, t) => acc + (t.amount || 0), 0);
+  }, [earningsTransactions]);
+
+  const totalGrossEarnings = useMemo(() => {
+    return earningsTransactions
+      .filter(
+        (t) =>
+          t.type === "appointment_split" ||
+          t.type === "appointment_earning" ||
+          (t.type === "credit" && t.grossAmount !== undefined)
+      )
+      .reduce((acc, t) => acc + (t.grossAmount !== undefined ? t.grossAmount : t.amount || 0), 0);
+  }, [earningsTransactions]);
+
+  const totalFeesDeducted = useMemo(() => {
+    return earningsTransactions
+      .filter(
+        (t) =>
+          t.type === "appointment_split" ||
+          t.type === "appointment_earning" ||
+          t.feeCharged !== undefined
+      )
+      .reduce((acc, t) => acc + (t.feeCharged || 0), 0);
+  }, [earningsTransactions]);
+
+  const totalCompletedCount = useMemo(() => {
+    return earningsTransactions.filter(
+      (t) =>
+        t.type === "appointment_split" ||
+        t.type === "appointment_earning" ||
+        t.appointmentId
+    ).length;
+  }, [earningsTransactions]);
+
+  const filteredEarningsTransactions = useMemo(() => {
+    if (!earningsSearch.trim()) return earningsTransactions;
+    const q = earningsSearch.toLowerCase();
+    return earningsTransactions.filter(
+      (t) =>
+        (t.title && t.title.toLowerCase().includes(q)) ||
+        (t.description && t.description.toLowerCase().includes(q)) ||
+        (t.patientName && t.patientName.toLowerCase().includes(q))
+    );
+  }, [earningsTransactions, earningsSearch]);
+
+  const feeTransactions = useMemo(() => {
+    const combined = [
+      ...transactions.filter(
+        (t) =>
+          t.isCash === true ||
+          t.type === "clinic_fee_invoice" ||
+          t.type === "platform_fee"
+      ),
+      ...cashTransactions.filter(
+        (ct) => !transactions.some((t) => t.id === ct.id)
+      )
+    ];
+    return combined.sort(
+      (a, b) =>
+        new Date(b.date || b.createdAt || 0).getTime() -
+        new Date(a.date || a.createdAt || 0).getTime()
+    );
+  }, [transactions, cashTransactions]);
 
   const handleRequestPayout = async () => {
     const numAmount = parseFloat(payoutAmount.replace(",", "."));
@@ -5085,109 +5272,373 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
               </div>
             </div>
 
-            <div className="md:col-span-2 bg-vitta-surface border border-vitta-border rounded-3xl shadow-sm p-6">
-          <h3 className="text-lg font-bold text-vitta-text-primary mb-6 flex items-center gap-2">
-            <ArrowRightLeft className="text-vitta-text-muted" size={20} />
-            Histórico Financeiro
-          </h3>
+            <div className="md:col-span-2 bg-vitta-surface border border-vitta-border rounded-3xl shadow-sm p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-vitta-border pb-4">
+                  <h3 className="text-lg font-bold text-vitta-text-primary flex items-center gap-2">
+                    <ArrowRightLeft className="text-vitta-accent" size={20} />
+                    Histórico Financeiro
+                  </h3>
 
-          <div className="space-y-3">
-            {loading ? (
-              <p className="text-sm text-vitta-text-secondary">Carregando...</p>
-            ) : transactions.length > 0 ? (
-              transactions.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border hover:shadow-md transition-shadow gap-3"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                        t.type === "credit" ||
-                        t.type === "refund" ||
-                        (t.type === "admin_adjustment" && t.amount > 0)
-                          ? "bg-vitta-green/10 text-vitta-green"
-                          : t.type === "withdraw_request" &&
-                              t.status === "completed"
-                            ? "bg-vitta-green/10 text-vitta-green"
-                            : t.type === "withdraw_request" &&
-                                t.status === "pending"
-                              ? "bg-vitta-amber/10 text-vitta-amber"
-                              : "bg-vitta-danger/10 text-vitta-danger"
+                  {/* Tabs Switcher */}
+                  <div className="flex bg-vitta-surface-2 p-1 rounded-xl shadow-inner gap-1 border border-vitta-border">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFinanceTab("earnings")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeFinanceTab === "earnings"
+                          ? "bg-vitta-surface text-vitta-accent shadow-sm border border-vitta-border/40"
+                          : "text-vitta-text-secondary hover:text-vitta-text-primary"
                       }`}
                     >
-                      {t.type === "credit" ? (
-                        <ArrowDownRight size={18} />
-                      ) : t.type === "withdraw_request" &&
-                        t.status === "completed" ? (
-                        <CheckCircle2 size={18} />
-                      ) : t.type === "withdraw_request" &&
-                        t.status === "pending" ? (
-                        <Clock size={18} />
-                      ) : (
-                        <ArrowUpRight size={18} />
+                      <TrendingUp size={14} className={activeFinanceTab === "earnings" ? "text-vitta-accent" : "text-vitta-text-muted"} />
+                      Histórico de Ganhos
+                      {earningsTransactions.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-extrabold bg-vitta-accent/10 text-vitta-accent ml-0.5">
+                          {earningsTransactions.length}
+                        </span>
                       )}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-vitta-text-primary">
-                        {t.description}
-                      </h4>
-                      <div className="flex items-center gap-2 text-xs text-vitta-text-secondary mt-0.5">
-                        <Calendar size={12} />
-                        {new Date(t.date).toLocaleString([], {
-                          dateStyle: "short",
-                          timeStyle: "short",
-                        })}
-
-                        {t.status === "pending" && (
-                          <span className="text-vitta-amber bg-vitta-amber/10 px-2 py-0.5 rounded-full font-medium">
-                            Em análise
-                          </span>
-                        )}
-                        {t.status === "rejected" && (
-                          <span className="text-vitta-danger bg-vitta-danger/10 px-2 py-0.5 rounded-full font-medium">
-                            Recusado
-                          </span>
-                        )}
-                        {t.status === "completed" && (
-                          <span className="text-vitta-green bg-vitta-green/10 px-2 py-0.5 rounded-full font-medium">
-                            Finalizado
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right whitespace-nowrap">
-                    <p
-                      className={`font-bold ${
-                        t.type === "credit" ||
-                        t.type === "refund" ||
-                        (t.type === "admin_adjustment" && t.amount > 0)
-                          ? "text-vitta-green"
-                          : "text-vitta-danger"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFinanceTab("fees")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        activeFinanceTab === "fees"
+                          ? "bg-vitta-surface text-vitta-accent shadow-sm border border-vitta-border/40"
+                          : "text-vitta-text-secondary hover:text-vitta-text-primary"
                       }`}
                     >
-                      {t.type === "credit" ||
-                      t.type === "refund" ||
-                      (t.type === "admin_adjustment" && t.amount > 0)
-                        ? "+"
-                        : "-"}{" "}
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(Math.abs(t.amount))}
-                    </p>
+                      <Receipt size={14} className={activeFinanceTab === "fees" ? "text-vitta-accent" : "text-vitta-text-muted"} />
+                      Histórico de Taxas
+                      {feeTransactions.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-extrabold bg-vitta-amber/10 text-vitta-amber ml-0.5">
+                          {feeTransactions.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-vitta-text-muted bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
-                <Receipt className="mx-auto mb-2 opacity-50" size={32} />
-                <p className="text-sm">Nenhuma transação encontrada.</p>
+
+                {/* Tab 1 Content: Histórico de Ganhos (Aba Padrão) */}
+                {activeFinanceTab === "earnings" && (
+                  <div className="space-y-4 animate-in fade-in-50 duration-200">
+                    {/* Multi-metric Summary Card for Ganhos */}
+                    <div className="p-5 bg-gradient-to-br from-vitta-accent/10 via-vitta-surface-2 to-vitta-surface rounded-3xl border border-vitta-accent/20 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-vitta-accent/15 text-vitta-accent flex items-center justify-center shrink-0">
+                            <TrendingUp size={22} />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-vitta-accent uppercase tracking-wider">
+                              Rendimento Líquido Acumulado
+                            </p>
+                            <p className="text-[11px] text-vitta-text-muted">
+                              Saldo líquido de ganhos (Valor das consultas menos taxas ViTTA)
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-left sm:text-right">
+                          <span className="text-2xl font-black text-vitta-accent">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(totalNetEarnings)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3 pt-3 border-t border-vitta-border/60">
+                        <div className="bg-vitta-surface/80 p-3 rounded-xl border border-vitta-border/40">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-vitta-text-muted block">
+                            Consultas Concluídas
+                          </span>
+                          <span className="text-sm font-bold text-vitta-text-primary">
+                            {totalCompletedCount} {totalCompletedCount === 1 ? "atendimento" : "atendimentos"}
+                          </span>
+                        </div>
+                        <div className="bg-vitta-surface/80 p-3 rounded-xl border border-vitta-border/40">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-vitta-text-muted block">
+                            Faturamento Bruto
+                          </span>
+                          <span className="text-sm font-bold text-vitta-text-primary">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(totalGrossEarnings)}
+                          </span>
+                        </div>
+                        <div className="bg-vitta-surface/80 p-3 rounded-xl border border-vitta-border/40">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-vitta-text-muted block">
+                            Taxas Plataforma
+                          </span>
+                          <span className="text-sm font-bold text-vitta-amber">
+                            - {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(totalFeesDeducted)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Search filter if there are several earnings */}
+                    {earningsTransactions.length > 3 && (
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-vitta-text-muted" size={14} />
+                        <input
+                          type="text"
+                          placeholder="Buscar por paciente ou descrição..."
+                          value={earningsSearch}
+                          onChange={(e) => setEarningsSearch(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 bg-vitta-surface-2 border border-vitta-border rounded-xl text-xs text-vitta-text-primary placeholder:text-vitta-text-muted focus:ring-1 focus:ring-vitta-accent transition-all"
+                        />
+                      </div>
+                    )}
+
+                    {loading ? (
+                      <p className="text-sm text-vitta-text-secondary py-4">Carregando histórico de ganhos...</p>
+                    ) : filteredEarningsTransactions.length > 0 ? (
+                      filteredEarningsTransactions.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-vitta-surface-2 rounded-2xl border border-vitta-border hover:shadow-md transition-shadow gap-3"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div
+                              className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                                t.type === "credit" ||
+                                t.type === "appointment_split" ||
+                                t.type === "appointment_earning" ||
+                                t.type === "refund" ||
+                                (t.type === "admin_adjustment" && t.amount > 0)
+                                  ? "bg-vitta-green/10 text-vitta-green"
+                                  : t.type === "withdraw_request" &&
+                                      t.status === "completed"
+                                    ? "bg-vitta-green/10 text-vitta-green"
+                                    : t.type === "withdraw_request" &&
+                                        t.status === "pending"
+                                      ? "bg-vitta-amber/10 text-vitta-amber"
+                                      : "bg-vitta-danger/10 text-vitta-danger"
+                              }`}
+                            >
+                              {t.type === "credit" ||
+                              t.type === "appointment_split" ||
+                              t.type === "appointment_earning" ? (
+                                <ArrowDownRight size={20} />
+                              ) : t.type === "withdraw_request" &&
+                                t.status === "completed" ? (
+                                <CheckCircle2 size={20} />
+                              ) : t.type === "withdraw_request" &&
+                                t.status === "pending" ? (
+                                <Clock size={20} />
+                              ) : (
+                                <ArrowUpRight size={20} />
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-bold text-vitta-text-primary">
+                                  {t.title || t.description}
+                                </h4>
+                                {t.modality && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-vitta-surface border border-vitta-border text-vitta-text-secondary">
+                                    {t.modality === "telemedicine" ? "💻 Telemedicina" : "🏥 Presencial"}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-vitta-text-secondary mt-1">
+                                <span className="flex items-center gap-1">
+                                  <Calendar size={12} />
+                                  {new Date(t.date || t.createdAt || Date.now()).toLocaleString([], {
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                  })}
+                                </span>
+
+                                {t.patientName && (
+                                  <span className="text-vitta-text-muted">
+                                    • Paciente: <strong className="text-vitta-text-primary">{t.patientName}</strong>
+                                  </span>
+                                )}
+
+                                {t.status === "pending" && (
+                                  <span className="text-vitta-amber bg-vitta-amber/10 px-2 py-0.5 rounded-full font-medium text-[10px]">
+                                    Em análise
+                                  </span>
+                                )}
+                                {t.status === "rejected" && (
+                                  <span className="text-vitta-danger bg-vitta-danger/10 px-2 py-0.5 rounded-full font-medium text-[10px]">
+                                    Recusado
+                                  </span>
+                                )}
+                                {t.status === "completed" && (
+                                  <span className="text-vitta-green bg-vitta-green/10 px-2 py-0.5 rounded-full font-medium text-[10px] border border-vitta-green/20">
+                                    ✓ Consulta Concluída e Faturada
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right whitespace-nowrap">
+                            <p
+                              className={`font-bold text-base ${
+                                t.type === "credit" ||
+                                t.type === "appointment_split" ||
+                                t.type === "appointment_earning" ||
+                                t.type === "refund" ||
+                                (t.type === "admin_adjustment" && t.amount > 0)
+                                  ? "text-vitta-green"
+                                  : "text-vitta-danger"
+                              }`}
+                            >
+                              {t.type === "credit" ||
+                              t.type === "appointment_split" ||
+                              t.type === "appointment_earning" ||
+                              t.type === "refund" ||
+                              (t.type === "admin_adjustment" && t.amount > 0)
+                                ? "+"
+                                : "-"}{" "}
+                              {new Intl.NumberFormat("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              }).format(Math.abs(t.amount || 0))}
+                            </p>
+                            {t.grossAmount !== undefined && t.feeCharged !== undefined && (
+                              <p className="text-[10px] text-vitta-text-muted mt-0.5">
+                                Consulta: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(t.grossAmount)} - Taxa ViTTA ({t.feeRatio || 10}%): {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(t.feeCharged)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-10 text-vitta-text-muted bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
+                        <TrendingUp className="mx-auto mb-2 opacity-50 text-vitta-accent" size={32} />
+                        <p className="text-sm font-bold text-vitta-text-secondary">Nenhum ganho registrado</p>
+                        <p className="text-xs text-vitta-text-muted mt-1">
+                          {earningsSearch ? "Nenhum resultado encontrado para esta busca." : "Os rendimentos líquidos (valor da consulta menos taxa cobrada) de todas as consultas concluídas serão listados aqui automaticamente."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab 2 Content: Histórico de Taxas */}
+                {activeFinanceTab === "fees" && (
+                  <div className="space-y-3 animate-in fade-in-50 duration-200">
+                    {loading ? (
+                      <p className="text-sm text-vitta-text-secondary">Carregando taxas...</p>
+                    ) : feeTransactions.length > 0 ? (
+                      feeTransactions.map((t) => {
+                        const feeVal = t.feeCharged !== undefined ? t.feeCharged : Math.abs(t.amount || 0);
+                        const isCancelled = t.status === "cancelled" || t.cancelled === true;
+                        const isPaid = t.invoicePaid === true || t.status === "paid" || t.paid === true;
+
+                        return (
+                          <div
+                            key={t.id}
+                            className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-vitta-surface-2 rounded-2xl border transition-shadow gap-3 ${
+                              isCancelled
+                                ? "border-vitta-border/60 opacity-70"
+                                : isPaid
+                                ? "border-vitta-green/20"
+                                : "border-vitta-amber/30"
+                            }`}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div
+                                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                                  isCancelled
+                                    ? "bg-vitta-surface-3 text-vitta-text-muted"
+                                    : isPaid
+                                    ? "bg-vitta-green/10 text-vitta-green"
+                                    : "bg-vitta-amber/10 text-vitta-amber"
+                                }`}
+                              >
+                                <Receipt size={18} />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-bold text-vitta-text-primary">
+                                  {t.title || t.description || "Taxa de Intermediação ViTTA"}
+                                </h4>
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-vitta-text-secondary mt-0.5">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar size={12} />
+                                    {new Date(t.date || t.createdAt || Date.now()).toLocaleString([], {
+                                      dateStyle: "short",
+                                      timeStyle: "short",
+                                    })}
+                                  </span>
+
+                                  {t.patientName && (
+                                    <span className="text-vitta-text-muted">
+                                      • Paciente: <strong className="text-vitta-text-primary">{t.patientName}</strong>
+                                    </span>
+                                  )}
+
+                                  {isCancelled ? (
+                                    <span className="text-vitta-text-muted bg-vitta-surface-3 px-2 py-0.5 rounded-full font-bold text-[10px] border border-vitta-border">
+                                      Cancelada (Isenta)
+                                    </span>
+                                  ) : isPaid ? (
+                                    <span className="text-vitta-green bg-vitta-green/10 px-2 py-0.5 rounded-full font-bold text-[10px] border border-vitta-green/20">
+                                      Taxa Paga
+                                    </span>
+                                  ) : (
+                                    <span className="text-vitta-amber bg-vitta-amber/10 px-2 py-0.5 rounded-full font-bold text-[10px] border border-vitta-amber/20">
+                                      Fatura Aberta
+                                    </span>
+                                  )}
+
+                                  {t.dueDate && !isPaid && !isCancelled && (
+                                    <span className="text-[10px] text-vitta-text-muted">
+                                      • Vence em: {formatDateForDisplay(t.dueDate)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right whitespace-nowrap">
+                              <p
+                                className={`font-bold text-base ${
+                                  isCancelled
+                                    ? "text-vitta-text-muted line-through"
+                                    : isPaid
+                                    ? "text-vitta-text-secondary"
+                                    : "text-vitta-amber"
+                                }`}
+                              >
+                                {isCancelled ? "" : "- "}{" "}
+                                {new Intl.NumberFormat("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                }).format(feeVal)}
+                              </p>
+                              {t.grossAmount && (
+                                <p className="text-[10px] text-vitta-text-muted">
+                                  Consulta: {new Intl.NumberFormat("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  }).format(t.grossAmount)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-10 text-vitta-text-muted bg-vitta-surface-2 rounded-2xl border border-dashed border-vitta-border">
+                        <Receipt className="mx-auto mb-2 opacity-50 text-vitta-amber" size={32} />
+                        <p className="text-sm font-bold text-vitta-text-secondary">Nenhuma taxa registrada</p>
+                        <p className="text-xs text-vitta-text-muted mt-1">As taxas de intermediação de consultas presenciais aparecerão aqui.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
       </div>
     </div>
   );
