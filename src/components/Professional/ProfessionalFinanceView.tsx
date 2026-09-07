@@ -219,11 +219,11 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
   };
 
   const totalUnpaidFees = cashTransactions
-    .filter((t) => t.invoicePaid !== true)
+    .filter((t) => t.invoicePaid !== true && t.status !== 'cancelled' && !t.cancelled)
     .reduce((sum, t) => sum + (t.feeCharged || 0), 0);
 
   const totalPaidFees = cashTransactions
-    .filter((t) => t.invoicePaid === true)
+    .filter((t) => t.invoicePaid === true && t.status !== 'cancelled' && !t.cancelled)
     .reduce((sum, t) => sum + (t.feeCharged || 0), 0);
 
   const handlePayInvoiceWithOnlineBalance = async (tx: any) => {
@@ -285,7 +285,7 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
   };
 
   const handlePayAllInvoicesWithOnlineBalance = async () => {
-    const unpaidList = cashTransactions.filter((t) => t.invoicePaid !== true);
+    const unpaidList = cashTransactions.filter((t) => t.invoicePaid !== true && t.status !== 'cancelled' && !t.cancelled && (t.feeCharged || 0) > 0);
     if (unpaidList.length === 0 || totalUnpaidFees <= 0) {
       addToast('Não há faturas pendentes de pagamento.', 'info');
       return;
@@ -792,9 +792,10 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
                     </tr>
                   ) : (
                     cashTransactions.map((item) => {
+                      const isCancelled = item.status === 'cancelled' || item.cancelled === true;
                       const isPaid = item.invoicePaid === true;
-                      const fee = item.feeCharged || Math.abs(item.amount) || 0;
-                      const gross = item.grossAmount || (fee / ((item.feeRatio || 10) / 100));
+                      const fee = isCancelled ? 0 : (item.feeCharged || Math.abs(item.amount) || 0);
+                      const gross = item.grossAmount || (fee > 0 ? (fee / ((item.feeRatio || 10) / 100)) : (item.consultationPrice || 0));
                       const feeRatio = item.feeRatio || 10;
                       const isPayingThis = payingInvoiceId === item.id;
 
@@ -809,11 +810,15 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
                           <td className="py-3.5 px-4 text-right font-medium text-vitta-text-secondary">
                             R$ {gross.toFixed(2).replace('.', ',')}
                           </td>
-                          <td className="py-3.5 px-4 text-right font-bold text-rose-400">
-                            R$ {fee.toFixed(2).replace('.', ',')} ({feeRatio}%)
+                          <td className={`py-3.5 px-4 text-right font-bold ${isCancelled ? 'text-vitta-text-muted line-through' : 'text-rose-400'}`}>
+                            R$ {(item.feeCharged || fee).toFixed(2).replace('.', ',')} ({feeRatio}%)
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            {isPaid ? (
+                            {isCancelled ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                                Cancelada (Isenta)
+                              </span>
+                            ) : isPaid ? (
                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                                 Liquidada
                               </span>
@@ -824,7 +829,11 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
                             )}
                           </td>
                           <td className="py-3.5 px-4 text-right">
-                            {isPaid ? (
+                            {isCancelled ? (
+                              <span className="text-[11px] text-vitta-text-muted font-semibold flex items-center justify-end gap-1">
+                                Isenta
+                              </span>
+                            ) : isPaid ? (
                               <span className="text-[11px] text-emerald-500 font-semibold flex items-center justify-end gap-1">
                                 <CheckCircle2 size={13} /> Paga via Saldo
                               </span>

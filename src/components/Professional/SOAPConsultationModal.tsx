@@ -16,12 +16,13 @@ import {
   Scale,
   Heart
 } from 'lucide-react';
-import { Timestamp, collection, doc, increment } from 'firebase/firestore';
+import { Timestamp, collection, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { updateDoc, addDoc } from '../../lib/firestore-wrappers';
+import { addDoc } from '../../lib/firestore-wrappers';
 import { useToast } from '../../contexts/ToastContext';
 import { BiometricHistoryPanel } from './BiometricHistoryPanel';
 import { formatDateForDisplay } from '../../lib/utils';
+import { finalizeAndInvoiceAppointment } from '../../lib/appointmentFinancialUtils';
 
 interface SOAPConsultationModalProps {
   isOpen: boolean;
@@ -105,11 +106,6 @@ export const SOAPConsultationModal: React.FC<SOAPConsultationModalProps> = ({
 
     try {
       const now = Timestamp.now();
-      const profFeeRate = professional?.feeRate !== undefined ? professional.feeRate : 10;
-      const priceNumeric = appointment.priceNumeric || parseFloat(appointment.price) || 150;
-      const feeAmount = (priceNumeric * profFeeRate) / 100;
-      const netAmount = priceNumeric - feeAmount;
-      const profUserId = professional?.userId || professional?.id;
 
       // 1. Save clinical evolution to patient_records
       await addDoc(collection(db, 'patient_records'), {
@@ -153,64 +149,24 @@ export const SOAPConsultationModal: React.FC<SOAPConsultationModalProps> = ({
         });
       }
 
-      // 3. Update appointment status to completed and release split
-      await updateDoc(doc(db, 'appointments', appointment.id), {
-        status: 'completed',
-        telemedicineStatus: 'closed',
-        endedAt: now,
-        splitStatus: 'released',
-        completedAt: now,
+      // 3. Finalize and invoice appointment (handles split or invoice platform fee)
+      const res = await finalizeAndInvoiceAppointment(appointment.id, professional, {
         soapNotes: {
           subjective,
           assessment,
           plan,
           cid: cidCode
         },
-        prescriptions: prescriptions,
-        updatedAt: now
+        prescriptions
       });
 
-      // 4. Perform Financial Split Credit for Professional
-      if (profUserId) {
-        // Increment wallet balance
-        await updateDoc(doc(db, 'users', profUserId), {
-          walletBalance: increment(netAmount)
-        });
-
-        // Log transaction appointment_split
-        await addDoc(collection(db, 'transactions'), {
-          userId: profUserId,
-          type: 'appointment_split',
-          amount: netAmount,
-          title: `Repasse - Consulta ${appointment.patientName}`,
-          description: `Split automático liberado. Bruto: R$ ${priceNumeric.toFixed(2)} (Taxa ViTTA: ${profFeeRate}%)`,
-          category: 'Rendimento',
-          date: new Date().toISOString(),
-          feeRatio: profFeeRate,
-          feeCharged: feeAmount,
-          grossAmount: priceNumeric,
-          appointmentId: appointment.id,
-          patientName: appointment.patientName,
-          status: 'completed'
-        });
+      if (res.success) {
+        addToast(res.message || 'Consulta finalizada e faturada com sucesso!', 'success');
+        onCompleted?.();
+        onClose();
+      } else {
+        addToast(res.message || 'Erro ao finalizar e faturar atendimento.', 'error');
       }
-
-      // 5. Notify patient
-      if (appointment.userId) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: appointment.userId,
-          title: 'Consulta Concluída com Sucesso',
-          message: `Sua consulta com ${professional?.name || appointment.professionalName} foi concluída. Prontuário, atestados e prescrições já estão disponíveis em seu perfil.`,
-          type: 'appointment',
-          appointmentId: appointment.id,
-          read: false,
-          createdAt: now
-        });
-      }
-
-      addToast('Consulta finalizada! Prontuário registrado e repasse creditado na carteira.', 'success');
-      onCompleted?.();
-      onClose();
     } catch (err) {
       console.error('Erro ao finalizar consulta:', err);
       addToast('Erro ao salvar prontuário e finalizar atendimento.', 'error');

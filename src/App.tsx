@@ -172,6 +172,7 @@ import {
   deleteGoogleCalendarEvent,
 } from "./utils/googleCalendar";
 import { validateCPF, validateEmail, fetchAddressByCep } from "./lib/utils";
+import { cancelAppointmentFeeInvoices, finalizeAndInvoiceAppointment } from "./lib/appointmentFinancialUtils";
 import ConfirmationModal from "./components/ConfirmationModal";
 import OfflineIndicatorBanner from "./components/OfflineIndicatorBanner";
 import {
@@ -5993,6 +5994,9 @@ const ProfessionalDashboardView = ({
         updatedAt: Timestamp.now(),
       });
 
+      // Cancel consultation fee on invoices/transactions
+      await cancelAppointmentFeeInvoices(apt.id);
+
       // Refund patient's wallet if it was paid with wallet and NOT yet finalized
       if (apt.paymentMethod === "wallet" && apt.paymentStatus === "paid" && apt.userId) {
         const refundAmt = apt.priceNumeric || 0;
@@ -6032,6 +6036,20 @@ const ProfessionalDashboardView = ({
     }
   };
 
+  const handleConcludeConsultation = async (apt: any) => {
+    try {
+      const res = await finalizeAndInvoiceAppointment(apt.id, professionalProfile);
+      if (res.success) {
+        addToast("Consulta concluída e faturada com sucesso!", "success");
+      } else {
+        addToast(res.message || "Erro ao concluir e faturar a consulta.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao concluir consulta.", "error");
+    }
+  };
+
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     try {
       const apt = appointments.find((a) => a.id === id);
@@ -6040,8 +6058,12 @@ const ProfessionalDashboardView = ({
         return;
       }
 
-      if (newStatus === "completed" && apt.status === "completed") {
-        addToast("Esta consulta já foi finalizada.", "info");
+      if (newStatus === "completed") {
+        if (apt.status === "completed") {
+          addToast("Esta consulta já foi finalizada.", "info");
+          return;
+        }
+        await handleConcludeConsultation(apt);
         return;
       }
 
@@ -6050,8 +6072,12 @@ const ProfessionalDashboardView = ({
         updatedAt: Timestamp.now(),
       });
 
+      if (newStatus === "cancelled") {
+        await cancelAppointmentFeeInvoices(id);
+      }
+
       addToast(
-        `Agendamento atualizado para: ${newStatus === "in_progress" ? "Em Atendimento" : "Finalizado"}`,
+        `Agendamento atualizado para: ${newStatus === "in_progress" ? "Em Atendimento" : newStatus === "upcoming" ? "Confirmado" : newStatus}`,
         "success",
       );
 
@@ -6059,90 +6085,11 @@ const ProfessionalDashboardView = ({
         await addDoc(collection(db, "notifications"), {
           userId: apt.userId,
           title: "Atualização de Consulta",
-          message: `Sua consulta com ${professionalProfile?.name || apt.professionalName} está ${newStatus === "in_progress" ? "EM ATENDIMENTO" : "FINALIZADA"}.`,
+          message: `Sua consulta com ${professionalProfile?.name || apt.professionalName} está ${newStatus === "in_progress" ? "EM ATENDIMENTO" : newStatus === "upcoming" ? "CONFIRMADA" : newStatus.toUpperCase()}.`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now(),
         });
-      }
-
-      // If status is completed, process the transaction (only now it will appear in the financial history)
-      if (newStatus === "completed") {
-        const profUserId = professionalProfile?.userId || apt.professionalUserId;
-        const profFeeRate = professionalProfile?.feeRate !== undefined ? professionalProfile.feeRate : 0;
-        const priceNumeric = apt.priceNumeric || 0;
-        const feeAmount = (priceNumeric * profFeeRate) / 100;
-        const netAmount = priceNumeric - feeAmount;
-
-        if (apt.paymentMethod === "wallet") {
-          // 1. Credit the professional's wallet balance
-          if (profUserId) {
-            await updateDoc(doc(db, "users", profUserId), {
-              walletBalance: increment(netAmount),
-            });
-
-            // 2. Log credit transaction for the professional
-            await addDoc(collection(db, "transactions"), {
-              userId: profUserId,
-              type: "credit",
-              amount: netAmount,
-              title: `Recebimento - Consulta de ${apt.patientName}`,
-              description: `Pago via Carteira Digital (Desconto de Taxa Fee de ${profFeeRate}%)`,
-              category: "Rendimento",
-              date: new Date().toISOString(),
-              feeRatio: profFeeRate,
-              feeCharged: feeAmount,
-              appointmentId: id,
-            });
-          }
-
-          // 3. Log debit transaction for the patient
-          if (apt.userId) {
-            await addDoc(collection(db, "transactions"), {
-              userId: apt.userId,
-              type: "debit",
-              amount: priceNumeric,
-              title: `Pagamento Consulta - ${professionalProfile?.name || apt.professionalName}`,
-              description: `Consulta realizada em ${formatDateForDisplay(apt.date)} às ${apt.time}`,
-              category: "Consulta",
-              date: new Date().toISOString(),
-              appointmentId: id,
-            });
-          }
-        } else {
-          // Cash/Presencial payment
-          if (profUserId) {
-            // 1. Log credit transaction for the professional (marked as isCash)
-            await addDoc(collection(db, "transactions"), {
-              userId: profUserId,
-              type: "credit",
-              amount: netAmount,
-              title: `Recebimento Presencial (Pagamento Presencial) - Consulta de ${apt.patientName}`,
-              description: `Pago presencialmente (Desconto de Taxa Fee de ${profFeeRate}%)`,
-              category: "Rendimento",
-              date: new Date().toISOString(),
-              isCash: true,
-              feeRatio: profFeeRate,
-              feeCharged: feeAmount,
-              appointmentId: id,
-            });
-          }
-
-          // 2. Log debit transaction for the patient (marked as isCash)
-          if (apt.userId) {
-            await addDoc(collection(db, "transactions"), {
-              userId: apt.userId,
-              type: "debit",
-              amount: priceNumeric,
-              title: `Consulta em Pagamento Presencial - ${professionalProfile?.name || apt.professionalName}`,
-              description: `Pago presencialmente no consultório`,
-              category: "Consulta",
-              date: new Date().toISOString(),
-              isCash: true,
-              appointmentId: id,
-            });
-          }
-        }
       }
     } catch (err) {
       console.error(err);
@@ -6969,10 +6916,10 @@ const ProfessionalDashboardView = ({
                             }
                           }}
                           className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
-                          title="Confirmar Agendamento"
+                          title="Confirmar+Agendar"
                         >
                           <Check size={14} />
-                          Confirmar
+                          Confirmar+Agendar
                         </button>
                         <button
                           onClick={() => setEditingApt(apt)}
@@ -7106,6 +7053,18 @@ const ProfessionalDashboardView = ({
                           </span>
 
                           {(apt.status === "upcoming" ||
+                            apt.status === "in_progress") && (
+                            <button
+                              onClick={() => handleConcludeConsultation(apt)}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                              title="Concluir e Faturar Consulta"
+                            >
+                              <CheckCircle2 size={14} />
+                              Concluir Consulta
+                            </button>
+                          )}
+
+                          {(apt.status === "upcoming" ||
                             apt.status === "in_progress") &&
                             (apt.modality === "telemedicine" ||
                               apt.modality === "online" ||
@@ -7121,7 +7080,7 @@ const ProfessionalDashboardView = ({
                                     }
                                     setActiveTelemedicineApt(apt);
                                   }}
-                                  className="px-4 py-2 bg-vitta-green text-white hover:bg-vitta-green/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-green/10"
+                                  className="px-4 py-2 bg-vitta-accent text-white hover:bg-vitta-accent/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-vitta-accent/10"
                                   title="Atendimento por Vídeo"
                                 >
                                   <Video size={14} />
@@ -7148,7 +7107,7 @@ const ProfessionalDashboardView = ({
                                 onClick={() =>
                                   handleUpdateStatus(apt.id, "in_progress")
                                 }
-                                className="px-4 py-2 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-2"
+                                className="px-4 py-2 bg-vitta-surface-3 border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold hover:bg-vitta-surface transition-all flex items-center gap-2"
                               >
                                 <SkipForward size={14} />
                                 Iniciar
@@ -7184,18 +7143,6 @@ const ProfessionalDashboardView = ({
                             >
                               <Stethoscope size={14} />
                               Registro Clínico
-                            </button>
-                          )}
-
-                          {apt.status === "in_progress" && (
-                            <button
-                              onClick={() =>
-                                handleUpdateStatus(apt.id, "completed")
-                              }
-                              className="px-4 py-2 bg-vitta-green text-white rounded-xl text-xs font-bold hover:bg-vitta-green/90 transition-all flex items-center gap-2"
-                            >
-                              <Check size={14} />
-                              Finalizar
                             </button>
                           )}
 
@@ -7279,6 +7226,15 @@ const ProfessionalDashboardView = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-4 md:mt-0">
+                        <button
+                          onClick={() => handleConcludeConsultation(apt)}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                          title="Concluir e Faturar Consulta"
+                        >
+                          <CheckCircle2 size={14} />
+                          Concluir Consulta
+                        </button>
+
                         <button
                           onClick={() =>
                             setSelectedPatient({

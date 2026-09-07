@@ -33,6 +33,7 @@ import { updateDoc, addDoc } from '../../lib/firestore-wrappers';
 import { db } from '../../firebase';
 import { useToast } from '../../contexts/ToastContext';
 import { formatDateForDisplay } from '../../utils/date';
+import { cancelAppointmentFeeInvoices } from '../../lib/appointmentFinancialUtils';
 import { ReviewModal } from '../ReviewModal';
 import { PatientPrescriptionModal } from './PatientPrescriptionModal';
 
@@ -146,6 +147,9 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
         telemedicineStatus: 'closed',
         updatedAt: now
       });
+
+      // 1.1 Cancelar taxas da fatura vinculadas à consulta
+      await cancelAppointmentFeeInvoices(aptId);
 
       // 2. Estorno financeiro automático para a carteira digital do paciente
       if (priceNumeric > 0 && isPaid) {

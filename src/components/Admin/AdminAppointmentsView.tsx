@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { logAdminAction, recordAuditLog } from "../../lib/audit";
+import { cancelAppointmentFeeInvoices, finalizeAndInvoiceAppointment } from "../../lib/appointmentFinancialUtils";
 import { motion, AnimatePresence } from "motion/react";
 import { handleFirestoreError, OperationType } from "../../App";
 
@@ -150,10 +151,30 @@ export const AdminAppointmentsView = () => {
   const handleUpdateStatus = async (id: string, newStatus: Appointment["status"]) => {
     try {
       const apt = appointments.find((a) => a.id === id);
+
+      if (newStatus === "completed") {
+        const res = await finalizeAndInvoiceAppointment(id);
+        if (res.success) {
+          await logAdminAction(
+            "COMPLETE_AND_INVOICE_APPOINTMENT",
+            `Concluiu e faturou a consulta ${id}`,
+            { appointmentId: id }
+          );
+          addToast("Consulta concluída e faturada com sucesso!", "success");
+        } else {
+          addToast(res.message || "Erro ao concluir e faturar a consulta.", "error");
+        }
+        return;
+      }
+
       await updateDoc(doc(db, "appointments", id), {
         status: newStatus,
         updatedAt: Timestamp.now()
       });
+
+      if (newStatus === "cancelled") {
+        await cancelAppointmentFeeInvoices(id);
+      }
 
       await logAdminAction(
         "UPDATE_APPOINTMENT_STATUS",
@@ -163,10 +184,11 @@ export const AdminAppointmentsView = () => {
 
       // Notify patient
       if (apt?.userId) {
+        const label = newStatus === 'upcoming' ? 'Agendada' : newStatus === 'cancelled' ? 'Cancelada' : newStatus;
         await addDoc(collection(db, "notifications"), {
           userId: apt.userId,
           title: "Status de Consulta Atualizado",
-          message: `Sua consulta com ${apt.professionalName} foi atualizada para "${newStatus === 'upcoming' ? 'Agendada' : newStatus === 'completed' ? 'Concluída' : newStatus}".`,
+          message: `Sua consulta com ${apt.professionalName} foi atualizada para "${label}".`,
           type: "appointment",
           read: false,
           createdAt: Timestamp.now()
@@ -272,6 +294,9 @@ export const AdminAppointmentsView = () => {
         refundProcessed: shouldRefund,
         updatedAt: Timestamp.now()
       });
+
+      // 1.1 Cancel consultation fee on invoice
+      await cancelAppointmentFeeInvoices(apt.id);
 
       // 2. Process refund in patient's wallet if applicable
       if (shouldRefund && apt.userId) {

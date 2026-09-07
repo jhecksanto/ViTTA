@@ -27,6 +27,7 @@ import {
   query,
   where,
   addDoc,
+  setDoc,
   updateDoc,
   increment,
   runTransaction,
@@ -227,47 +228,23 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           const txRef = doc(collection(db, "transactions"));
           transaction.set(txRef, {
             userId: user.uid,
+            appointmentId: aptRef.id,
             type: "appointment_payment",
             amount: -priceNum,
             grossAmount: priceNum,
             title: `Consulta com ${selectedProf.name}`,
-            description: `Pagamento de Consulta Online (${selectedProf.specialty})`,
+            description: `Pagamento de Consulta Online (${selectedProf.specialty}) - Aguardando realização`,
             createdAt: new Date().toISOString(),
             date: new Date().toISOString(),
             status: "completed",
           });
-
-          // Credit professional online wallet with split if professional has userId
-          if (selectedProf.userId) {
-            const profUserRef = doc(db, "users", selectedProf.userId);
-            transaction.update(profUserRef, {
-              walletBalance: increment(netAmount),
-            });
-
-            const profTxRef = doc(collection(db, "transactions"));
-            transaction.set(profTxRef, {
-              userId: selectedProf.userId,
-              professionalId: selectedProf.id,
-              type: "appointment_split",
-              category: "Rendimento",
-              amount: netAmount,
-              grossAmount: priceNum,
-              feeCharged: feeAmount,
-              feeRatio: feeRate,
-              patientName: user.displayName || user.name || user.email || "Paciente",
-              title: `Recebimento - Consulta de ${user.displayName || user.name || "Paciente"}`,
-              description: `Rendimento líquido da consulta (${isTele ? "Telemedicina" : "Presencial"}) com taxa de intermediação ViTTA (${feeRate}%).`,
-              date: new Date().toISOString(),
-              status: "completed",
-              createdAt: new Date().toISOString(),
-            });
-          }
         });
       } else {
         // Presencial Payment: No upfront debit from patient.
-        // Generates invoice for the professional to pay platform fee (can be debited from professional's online balance)
+        // Consultation will only be invoiced when completed by professional.
         const aptRef = doc(collection(db, "appointments"));
-        await addDoc(collection(db, "appointments"), {
+        await setDoc(aptRef, {
+          id: aptRef.id,
           userId: user.uid,
           patientId: user.uid,
           patientName: user.displayName || user.name || user.email || "Paciente",
@@ -285,12 +262,14 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
           status: "pending",
           price: priceNum,
+          priceNumeric: priceNum,
           originalPrice: origPrice,
           discountAmount: savings,
           paymentMethod: "in_person",
           paymentType: "pay_at_clinic",
           paymentStatus: "pending_in_person",
           paid: false,
+          invoiced: false,
           feeRate: feeRate,
           feeCharged: feeAmount,
           createdAt: new Date().toISOString(),
@@ -310,51 +289,6 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             createdAt: new Date().toISOString(),
           });
         }
-
-        // Register fee invoice transaction for the professional
-        await addDoc(collection(db, "transactions"), {
-          userId: profTargetUid,
-          professionalId: selectedProf.id,
-          professionalUserId: selectedProf.userId || null,
-          type: "clinic_fee_invoice",
-          category: "Taxa de Atendimento Presencial",
-          title: `Fatura de Intermediação - Consulta Presencial`,
-          description: `Taxa da plataforma ViTTA (${feeRate}%) sobre consulta presencial de ${user.displayName || user.name || "Paciente"} a ser recebida na clínica.`,
-          patientName: user.displayName || user.name || user.email || "Paciente",
-          patientId: user.uid,
-          consultationPrice: priceNum,
-          grossAmount: priceNum,
-          feeCharged: feeAmount,
-          feeRatio: feeRate,
-          amount: -feeAmount,
-          isCash: true,
-          invoicePaid: false,
-          status: "pending",
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          date: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        });
-
-        // Also add to invoices collection
-        await addDoc(collection(db, "invoices"), {
-          userId: profTargetUid,
-          professionalUserId: selectedProf.userId || null,
-          professionalId: selectedProf.id,
-          professionalName: selectedProf.name,
-          patientId: user.uid,
-          patientName: user.displayName || user.name || user.email || "Paciente",
-          consultationPrice: priceNum,
-          feeRate: feeRate,
-          feeCharged: feeAmount,
-          amount: feeAmount,
-          description: `Taxa de intermediação - Consulta presencial de ${user.displayName || user.name || "Paciente"}`,
-          status: "pending",
-          invoicePaid: false,
-          paymentMethod: "in_person",
-          date: new Date().toISOString(),
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-        });
       }
 
       const bookingInfo = {
