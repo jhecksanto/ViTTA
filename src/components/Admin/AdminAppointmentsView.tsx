@@ -500,7 +500,7 @@ export const AdminAppointmentsView = () => {
 
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                        apt.status === "pending"
+                        apt.status === "pending" || (apt.status as any) === "awaiting_confirmation"
                           ? "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
                           : apt.status === "upcoming"
                             ? "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
@@ -508,7 +508,7 @@ export const AdminAppointmentsView = () => {
                               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
                               : "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
                       }`}>
-                        {apt.status === "pending" ? "Pendente" : apt.status === "upcoming" ? "Agendada" : apt.status === "completed" ? "Concluída" : "Cancelada"}
+                        {apt.status === "pending" || (apt.status as any) === "awaiting_confirmation" ? "Aguardando Confirmação" : apt.status === "upcoming" ? "Agendada" : apt.status === "completed" ? "Concluída" : "Cancelada"}
                       </span>
                     </td>
 

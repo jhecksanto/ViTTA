@@ -32,8 +32,8 @@ export interface Appointment {
   specialty: string;
   date: string;
   time: string;
-  imageUrl: string;
-  status: 'upcoming' | 'completed' | 'cancelled';
+  imageUrl?: string;
+  status: 'pending' | 'awaiting_confirmation' | 'upcoming' | 'completed' | 'cancelled' | 'in_progress' | 'scheduled';
 }
 
 export interface HealthStat {

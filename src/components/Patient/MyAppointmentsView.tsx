@@ -52,7 +52,7 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
   const { addToast } = useToast();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'upcoming' | 'completed' | 'cancelled'>('upcoming');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming' | 'completed' | 'cancelled'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Cancel appointment modal state
@@ -102,11 +102,17 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
   }, [user?.uid]);
 
   const filteredAppointments = appointments.filter((apt) => {
+    const isPending = apt.status === 'pending' || apt.status === 'awaiting_confirmation';
+    const isUpcoming = apt.status === 'upcoming' || apt.status === 'in_progress' || apt.status === 'scheduled';
+    const isCompleted = apt.status === 'completed';
+    const isCancelled = apt.status === 'cancelled';
+
     const statusMatch = 
       filter === 'all' ? true :
-      filter === 'upcoming' ? (apt.status === 'upcoming' || apt.status === 'in_progress' || apt.status === 'scheduled') :
-      filter === 'completed' ? apt.status === 'completed' :
-      filter === 'cancelled' ? apt.status === 'cancelled' : true;
+      filter === 'pending' ? isPending :
+      filter === 'upcoming' ? isUpcoming :
+      filter === 'completed' ? isCompleted :
+      filter === 'cancelled' ? isCancelled : true;
 
     const searchMatch = !searchQuery || 
       (apt.professionalName && apt.professionalName.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -116,6 +122,7 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
     return statusMatch && searchMatch;
   });
 
+  const countPending = appointments.filter(a => a.status === 'pending' || a.status === 'awaiting_confirmation').length;
   const countUpcoming = appointments.filter(a => a.status === 'upcoming' || a.status === 'in_progress' || a.status === 'scheduled').length;
   const countCompleted = appointments.filter(a => a.status === 'completed').length;
   const countCancelled = appointments.filter(a => a.status === 'cancelled').length;
@@ -222,6 +229,39 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
       <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
         <div className="flex flex-wrap gap-2">
           <button
+            onClick={() => setFilter('all')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              filter === 'all'
+                ? 'bg-vitta-accent text-white shadow-sm shadow-vitta-accent/20'
+                : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'
+            }`}
+          >
+            Todas
+            <span className={`ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-black ${
+              filter === 'all' ? 'bg-white/20 text-white' : 'bg-vitta-surface-2 text-vitta-text-muted'
+            }`}>
+              {appointments.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setFilter('pending')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              filter === 'pending'
+                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                : 'bg-vitta-surface text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10'
+            }`}
+          >
+            <Clock size={14} className={countPending > 0 ? "animate-pulse" : ""} />
+            Aguardando Confirmação
+            <span className={`ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-black ${
+              filter === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+            }`}>
+              {countPending}
+            </span>
+          </button>
+
+          <button
             onClick={() => setFilter('upcoming')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               filter === 'upcoming'
@@ -229,8 +269,8 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                 : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'
             }`}
           >
-            <Clock size={14} />
-            Próximas & Agendadas
+            <CheckCircle2 size={14} />
+            Confirmadas / Agendadas
             <span className={`ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-black ${
               filter === 'upcoming' ? 'bg-white/20 text-white' : 'bg-vitta-surface-2 text-vitta-text-muted'
             }`}>
@@ -271,22 +311,6 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
               {countCancelled}
             </span>
           </button>
-
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              filter === 'all'
-                ? 'bg-vitta-accent text-white shadow-sm shadow-vitta-accent/20'
-                : 'bg-vitta-surface text-vitta-text-secondary border border-vitta-border hover:bg-vitta-surface-2'
-            }`}
-          >
-            Todas
-            <span className={`ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-black ${
-              filter === 'all' ? 'bg-white/20 text-white' : 'bg-vitta-surface-2 text-vitta-text-muted'
-            }`}>
-              {appointments.length}
-            </span>
-          </button>
         </div>
 
         {/* Search */}
@@ -313,8 +337,10 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
           <Calendar className="mx-auto text-vitta-text-muted/60" size={40} />
           <h3 className="text-sm font-bold text-vitta-text-primary">Nenhuma consulta encontrada</h3>
           <p className="text-xs text-vitta-text-muted max-w-sm mx-auto">
-            {filter === 'upcoming' 
-              ? 'Você não possui consultas agendadas no momento. Que tal encontrar um especialista?'
+            {filter === 'pending'
+              ? 'Você não possui solicitações aguardando confirmação no momento.'
+              : filter === 'upcoming' 
+              ? 'Você não possui consultas agendadas e confirmadas no momento.'
               : 'Nenhum agendamento corresponde ao filtro selecionado.'}
           </p>
           {setActiveTab && (
@@ -329,6 +355,7 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAppointments.map((apt) => {
+            const isPending = apt.status === 'pending' || apt.status === 'awaiting_confirmation';
             const isUpcoming = apt.status === 'upcoming' || apt.status === 'in_progress' || apt.status === 'scheduled';
             const isCompleted = apt.status === 'completed';
             const isCancelled = apt.status === 'cancelled';
@@ -346,7 +373,9 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                 key={apt.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-vitta-surface border border-vitta-border rounded-2xl p-5 space-y-4 hover:border-vitta-accent/40 transition-all shadow-sm flex flex-col justify-between"
+                className={`bg-vitta-surface border rounded-2xl p-5 space-y-4 hover:border-vitta-accent/40 transition-all shadow-sm flex flex-col justify-between ${
+                  isPending ? 'border-amber-500/30' : 'border-vitta-border'
+                }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
@@ -369,13 +398,26 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                     </div>
 
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
+                      isPending ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1' :
                       isUpcoming ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' :
                       isCompleted ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20' :
                       'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
                     }`}>
-                      {isUpcoming ? 'Agendada' : isCompleted ? 'Concluída' : 'Cancelada'}
+                      {isPending ? (
+                        <>
+                          <Clock size={11} className="animate-pulse" />
+                          Aguardando Confirmação
+                        </>
+                      ) : isUpcoming ? 'Confirmada' : isCompleted ? 'Concluída' : 'Cancelada'}
                     </span>
                   </div>
+
+                  {isPending && (
+                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                      <Clock size={15} className="text-amber-500 shrink-0 animate-pulse" />
+                      <span>O profissional foi notificado e você será avisado assim que a consulta for confirmada.</span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2 text-xs bg-vitta-surface-2/60 p-3 rounded-xl border border-vitta-border/60">
                     <div className="flex items-center gap-2 text-vitta-text-secondary">
@@ -434,7 +476,7 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Action: Telemedicine Room Button */}
+                    {/* Action: Telemedicine Room Button (Only when confirmed/upcoming) */}
                     {isUpcoming && isTelemedicine && setActiveTelemedicineApt && (
                       <button
                         onClick={() => setActiveTelemedicineApt(apt)}
@@ -445,14 +487,14 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                       </button>
                     )}
 
-                    {/* Action: Cancel Button */}
-                    {isUpcoming && (
+                    {/* Action: Cancel Button (For upcoming or pending appointments) */}
+                    {(isUpcoming || isPending) && (
                       <button
                         onClick={() => setCancellingApt(apt)}
                         className="px-3 py-2 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-xs font-bold transition-all border border-rose-500/20 cursor-pointer"
-                        title="Cancelar consulta e estornar valor pago"
+                        title={isPending ? "Cancelar solicitação de agendamento" : "Cancelar consulta e estornar valor pago"}
                       >
-                        Cancelar
+                        {isPending ? "Cancelar Solicitação" : "Cancelar"}
                       </button>
                     )}
 

@@ -57,8 +57,8 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
   const [selectedProf, setSelectedProf] = useState<any | null>(null);
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
-  const [bookingModality, setBookingModality] = useState<"telemedicine" | "in_person">("telemedicine");
-  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"online" | "in_person">("online");
+  const [bookingModality, setBookingModality] = useState<"telemedicine" | "in_person">("in_person");
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"online" | "in_person">("in_person");
   const [isProcessing, setIsProcessing] = useState(false);
   const [userWalletBalance, setUserWalletBalance] = useState(0);
   const [successBooking, setSuccessBooking] = useState<any | null>(null);
@@ -130,8 +130,10 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
 
   const handleOpenBooking = (prof: any) => {
     setSelectedProf(prof);
-    setBookingModality(prof.telemedicineEnabled !== false ? "telemedicine" : "in_person");
-    setBookingPaymentMethod("online");
+    // Modalidade Presencial como padrão (a menos que o profissional só atenda Telemedicina)
+    setBookingModality(prof.inPersonEnabled !== false ? "in_person" : "telemedicine");
+    // Forma de Pagamento Presencial como padrão
+    setBookingPaymentMethod("in_person");
     setBookingDate("");
     setBookingTime("");
     setSuccessBooking(null);
@@ -190,7 +192,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             type: isTele ? "telemedicine" : "presencial",
             telemedicineRoomId: isTele ? aptRef.id : null,
             telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
-            status: "upcoming",
+            status: "pending",
             price: priceNum,
             originalPrice: origPrice,
             discountAmount: savings,
@@ -205,6 +207,21 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
+
+          // Notify professional about the pending appointment
+          const profTargetUid = selectedProf.userId || selectedProf.id;
+          if (profTargetUid) {
+            const profNotifRef = doc(collection(db, "notifications"));
+            transaction.set(profNotifRef, {
+              userId: profTargetUid,
+              title: "Nova Solicitação de Agendamento",
+              message: `O paciente ${user.displayName || user.name || user.email || "Paciente"} solicitou uma consulta (${isTele ? "Telemedicina" : "Presencial"}) para ${bookingDate} às ${bookingTime}. Aguardando sua confirmação.`,
+              type: "appointment",
+              appointmentId: aptRef.id,
+              read: false,
+              createdAt: new Date().toISOString(),
+            });
+          }
 
           // Add patient transaction log
           const txRef = doc(collection(db, "transactions"));
@@ -266,7 +283,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           type: isTele ? "telemedicine" : "presencial",
           telemedicineRoomId: isTele ? aptRef.id : null,
           telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
-          status: "upcoming",
+          status: "pending",
           price: priceNum,
           originalPrice: origPrice,
           discountAmount: savings,
@@ -280,8 +297,21 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           updatedAt: new Date().toISOString(),
         });
 
-        // Register fee invoice transaction for the professional
+        // Notify professional about the pending in-person appointment
         const profTargetUid = selectedProf.userId || selectedProf.id;
+        if (profTargetUid) {
+          await addDoc(collection(db, "notifications"), {
+            userId: profTargetUid,
+            title: "Nova Solicitação de Agendamento",
+            message: `O paciente ${user.displayName || user.name || user.email || "Paciente"} solicitou uma consulta presencial para ${bookingDate} às ${bookingTime}. Aguardando sua confirmação.`,
+            type: "appointment",
+            appointmentId: aptRef.id,
+            read: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        // Register fee invoice transaction for the professional
         await addDoc(collection(db, "transactions"), {
           userId: profTargetUid,
           professionalId: selectedProf.id,
@@ -342,8 +372,8 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
       setSuccessBooking(bookingInfo);
       addToast(
         isOnlinePayment
-          ? "Consulta agendada com sucesso com pagamento online!"
-          : "Consulta agendada com sucesso! Pagamento será realizado presencialmente na clínica.",
+          ? "Solicitação de agendamento enviada! O status permanecerá como 'Aguardando Confirmação' até o médico confirmar."
+          : "Solicitação de agendamento enviada! Aguardando confirmação do profissional de saúde.",
         "success"
       );
     } catch (err: any) {
@@ -544,14 +574,20 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             >
               {successBooking ? (
                 <div className="p-8 text-center space-y-4">
-                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle size={36} />
+                  <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto">
+                    <Clock size={36} className="animate-pulse" />
                   </div>
-                  <h3 className="text-lg font-bold text-vitta-text-primary">Consulta Confirmada!</h3>
+                  <h3 className="text-lg font-bold text-vitta-text-primary">Agendamento Solicitado!</h3>
                   <p className="text-xs text-vitta-text-muted">
-                    Seu agendamento com <strong className="text-vitta-text-primary">{successBooking.profName}</strong> foi registrado com sucesso.
+                    Sua solicitação com <strong className="text-vitta-text-primary">{successBooking.profName}</strong> foi enviada e está <span className="font-bold text-amber-600 dark:text-amber-400">aguardando confirmação do profissional</span>.
                   </p>
                   <div className="bg-vitta-surface-2 p-4 rounded-2xl border border-vitta-border text-xs text-left space-y-2">
+                    <div className="flex justify-between items-center pb-2 border-b border-vitta-border">
+                      <span className="text-vitta-text-muted">Status Atual:</span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                        <Clock size={11} /> Aguardando Confirmação
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-vitta-text-muted">Especialista:</span>
                       <strong>{successBooking.profName} ({successBooking.specialty})</strong>
@@ -588,7 +624,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         setSuccessBooking(null);
                         if (setActiveTab) setActiveTab("patient-dashboard");
                       }}
-                      className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold"
+                      className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all cursor-pointer shadow-md shadow-vitta-accent/20"
                     >
                       Ver Meus Agendamentos
                     </button>
@@ -681,8 +717,30 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button
                           type="button"
+                          onClick={() => setBookingPaymentMethod("in_person")}
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            bookingPaymentMethod === "in_person"
+                              ? "border-vitta-accent bg-vitta-accent/10 ring-2 ring-vitta-accent/20"
+                              : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Building size={16} className={bookingPaymentMethod === "in_person" ? "text-vitta-accent" : "text-vitta-text-muted"} />
+                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Presencial</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-vitta-accent/20 text-vitta-accent font-bold uppercase ml-auto">Padrão</span>
+                          </div>
+                          <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
+                            Pague no consultório/recepção (Dinheiro, Cartão ou Pix).
+                          </p>
+                          <div className="mt-2 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                            Sem débito prévio na carteira
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setBookingPaymentMethod("online")}
-                          className={`p-3.5 rounded-2xl border text-left transition-all ${
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
                             bookingPaymentMethod === "online"
                               ? "border-vitta-accent bg-vitta-accent/10 ring-2 ring-vitta-accent/20"
                               : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
@@ -693,33 +751,23 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                             <span className="font-bold text-xs text-vitta-text-primary">Pagamento Online</span>
                           </div>
                           <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
-                            Débito com saldo ViTTA Coins na confirmação.
+                            Débito com saldo ViTTA Coins.
                           </p>
                           <div className="mt-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
                             Saldo: R$ {userWalletBalance.toFixed(2).replace(".", ",")}
                           </div>
                         </button>
+                      </div>
+                    </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setBookingPaymentMethod("in_person")}
-                          className={`p-3.5 rounded-2xl border text-left transition-all ${
-                            bookingPaymentMethod === "in_person"
-                              ? "border-vitta-accent bg-vitta-accent/10 ring-2 ring-vitta-accent/20"
-                              : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Building size={16} className={bookingPaymentMethod === "in_person" ? "text-vitta-accent" : "text-vitta-text-muted"} />
-                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Presencial</span>
-                          </div>
-                          <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
-                            Pague no consultório/recepção (Dinheiro, Cartão ou Pix).
-                          </p>
-                          <div className="mt-2 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                            Sem débito prévio na carteira
-                          </div>
-                        </button>
+                    {/* Aviso de Confirmação Obrigatória do Profissional */}
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                      <Clock size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+                      <div>
+                        <strong className="block font-bold">Confirmação do Profissional Necessária</strong>
+                        <span className="text-[11px] text-amber-700/90 dark:text-amber-300/90">
+                          Todo agendamento (online ou presencial) é enviado para aprovação do médico e ficará com o status <strong className="underline">Aguardando Confirmação</strong> até ser aceito.
+                        </span>
                       </div>
                     </div>
 
@@ -775,7 +823,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setSelectedProf(null)}
-                        className="flex-1 py-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all"
+                        className="flex-1 py-2.5 bg-vitta-surface-2 text-vitta-text-secondary rounded-xl text-xs font-bold hover:bg-vitta-border transition-all cursor-pointer"
                       >
                         Cancelar
                       </button>
@@ -783,9 +831,13 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         type="button"
                         disabled={isProcessing}
                         onClick={handleConfirmBooking}
-                        className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/20 transition-all flex items-center justify-center gap-2"
+                        className="flex-1 py-2.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 shadow-md shadow-vitta-accent/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        {isProcessing ? "Confirmando..." : (bookingPaymentMethod === "online" ? "Confirmar e Pagar Online" : "Confirmar Agendamento Presencial")}
+                        {isProcessing
+                          ? "Enviando Solicitação..."
+                          : (bookingPaymentMethod === "online"
+                              ? "Solicitar e Pagar Online"
+                              : "Solicitar Agendamento Presencial")}
                       </button>
                     </div>
                   </div>
