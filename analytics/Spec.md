@@ -1,111 +1,186 @@
-# Especificação Técnica de Finalização do Sistema ViTTA Health (Spec.md)
-**Data e Hora de Geração:** 04/09/2026 às 15:32 (Horário de Brasília - UTC-3)  
-**Escopo:** Especificação técnica detalhada das páginas, comportamentos e componentes que necessitam estritamente de finalização e consolidação no sistema ViTTA Health, derivados do relatório de diagnóstico (`analytics/report.md`).
+# Especificação Técnica de Finalização (Spec) - ViTTA Health
+**Data e Hora de Geração:** 11/09/2026 às 19:35 (Horário de Brasília - UTC-3)  
+**Base do Documento:** `analytics/report.md`  
+**Objetivo:** Especificar tecnicamente (Page, Behavior, Component) **somente o que falta finalizar e amarrar** nos módulos já existentes no sistema.
 
 ---
 
-## 1. Módulo de Telemedicina, Prontuário SOAP e Receitas Digitais
+## 1. Módulo de Telemedicina & Sala Virtual
 
-### 1.1. Página / Componente: `TelemedicineRoom.tsx`
-* **Localização:** `src/components/TelemedicineRoom.tsx`
-* **Comportamento Esperado:**
-  1. **Substituição Dinâmica de Tracks no Compartilhamento de Tela:**
-     - Ao clicar no botão de compartilhamento de tela, invocar `navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })`.
-     - Localizar o track de vídeo na conexão `RTCPeerConnection` (`peerConnection.getSenders()`) e chamar `sender.replaceTrack(screenTrack)`.
-     - Registrar o evento `screenTrack.onended` para restaurar automaticamente o track de vídeo original da câmera do usuário sem interromper a chamada.
-  2. **Upload e Envio de Documentos no Chat da Sala:**
-     - Inserir botão com ícone de anexo no formulário do chat lateral da sala.
-     - Permitir seleção de arquivos (PDF, PNG, JPG até 10MB), realizar upload para o Firebase Storage (`telemedicine-attachments/{roomId}/{file}`) e enviar como mensagem contendo link de download direto e preview.
-  3. **Encerramento Sincronizado do Atendimento:**
-     - Ao acionar "Encerrar Atendimento" pelo profissional, atualizar o documento da sala no Firestore com `{ status: 'closed', completedAt: serverTimestamp(), doctorJoined: false, patientJoined: false }`.
-     - O listener do paciente deve detectar a alteração de status e redirecionar imediatamente para a tela de avaliação da consulta (`ReviewModal`), encerrando as faixas locais de mídia (áudio e vídeo).
-  4. **Entrada Direta via Parâmetro de URL:**
-     - No componente raiz `App.tsx`, interceptar o parâmetro `?room=ID` na montagem inicial (`useEffect`), validar a existência da sala e abrir o modal da sala correspondente.
-     - Ao fechar a sala, executar `window.history.replaceState({}, '', window.location.pathname)` para limpar a URL de forma transparente.
+### 1.1. Compartilhamento de Tela na Teleconsulta
+* **Page / View:** Sala de Telemedicina (`TelemedicineRoom`).
+* **Component:** `src/components/TelemedicineRoom.tsx`.
+* **Behavior:**
+  - Ao clicar no botão de compartilhamento de tela (`toggleScreenShare`), chamar `navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })`.
+  - Percorrer os senders de `RTCPeerConnection` (`peerConnection.getSenders()`) e aplicar `replaceTrack(screenTrack)` no sender de vídeo.
+  - No evento `screenTrack.onended` ou ao desativar no botão, obter novamente a câmera com `navigator.mediaDevices.getUserMedia` e restaurar o track original via `replaceTrack`.
+  - Manter indicador visual no grid do vídeo mostrando que a tela está sendo transmitida.
 
-### 1.2. Página / Componente: `MyAppointmentsView.tsx` & `PatientPrescriptionModal.tsx`
-* **Localização:** `src/components/Patient/MyAppointmentsView.tsx`, `src/components/Patient/PatientPrescriptionModal.tsx`
-* **Comportamento Esperado:**
-  - Para consultas com status `'completed'` que possuam `prescriptionId` ou `prescriptionData`, renderizar o botão com ícone "Visualizar Receita Médica".
-  - Ao clicar, abrir o modal `PatientPrescriptionModal` exibindo os medicamentos prescritos, posologia, orientações gerais, identificação do médico (com CRM/UF) e botão para baixar o PDF assinado digitalmente.
+### 1.2. Envio de Arquivos e Anexos no Chat da Teleconsulta
+* **Page / View:** Chat da Sala de Telemedicina (`TelemedicineRoom`).
+* **Component:** `src/components/TelemedicineRoom.tsx`.
+* **Behavior:**
+  - Adicionar botão de anexo (ícone `Paperclip`) no rodapé do chat.
+  - Ao selecionar imagem ou PDF, fazer upload para o Firebase Storage em `telemedicine_chats/{appointmentId}/{fileName}` com barra de progresso.
+  - Gravar a mensagem na subcoleção `telemedicine_rooms/{appointmentId}/messages` com `{ fileUrl, fileName, fileType, text }`.
+  - Renderizar thumbnail para imagem ou preview com link para download para PDFs no balão da mensagem.
 
----
+### 1.3. Encerramento Sincronizado e Redirecionamento para Avaliação
+* **Page / View:** Sala de Telemedicina (`TelemedicineRoom`) & Histórico de Consultas (`MyAppointmentsView`).
+* **Component:** `src/components/TelemedicineRoom.tsx`, `src/components/ReviewModal.tsx`, `src/App.tsx`.
+* **Behavior:**
+  - Quando o profissional clica em "Encerrar Atendimento", atualizar o documento `appointments/{appointmentId}` para `{ status: 'completed', telemedicineStatus: 'closed', completedAt: serverTimestamp() }`.
+  - No lado do paciente, o listener `onSnapshot` detecta `telemedicineStatus === 'closed'` e abre automaticamente o modal de avaliação (`ReviewModal`) com opções de 1 a 5 estrelas e comentário.
+  - Encerrar todos os tracks locais (`stream.getTracks().forEach(t => t.stop())`) e fechar o `RTCPeerConnection`.
 
-## 2. Módulo de Agendamentos & Agenda Profissional
-
-### 2.1. Página / Componente: `ProfessionalsView.tsx`, `MyAppointmentsView.tsx`, `AdminAppointmentsView.tsx`
-* **Localização:** `src/components/Patient/ProfessionalsView.tsx`, `src/components/Patient/MyAppointmentsView.tsx`, `src/components/Admin/AdminAppointmentsView.tsx`
-* **Comportamento Esperado:**
-  1. **Padronização e Normalização de Modalidade:**
-     - Criar função utilitária `isTelemedicineModality(modality: string): boolean` que reconheça uniformemente `"telemedicine"`, `"telemedicina"`, `"online"` e `"remoto"`.
-     - Assegurar que a sinalização de "Entrar na Consulta" apareça de maneira consistente em todas as visões (paciente, profissional e admin).
-  2. **Persistência de Identificadores Duplos:**
-     - No ato da criação do agendamento, persistir simultaneamente no documento da coleção `appointments`:
-       - `userId` e `patientId` (ambos apontando para o UID do paciente).
-       - `professionalUserId` e `professionalId` (ambos apontando para o UID do profissional).
-     - Atualizar as queries de consulta para buscar tanto por `userId` / `patientId` quanto por `professionalUserId` / `professionalId`.
-  3. **Cancelamento com Estorno de Carteira:**
-     - No cancelamento de consulta com mais de 2 horas de antecedência pelo paciente, verificar se a consulta foi paga via carteira/saldo e executar estorno automático (`increment(appointment.price)`) no documento `users/{userId}`.
-     - Gravar transação do tipo `refund` no histórico financeiro com a descrição `Estorno de cancelamento da consulta #ID`.
+### 1.4. Visualização de Receita Médica no Histórico do Paciente
+* **Page / View:** Minhas Consultas (`MyAppointmentsView`).
+* **Component:** `src/components/Patient/MyAppointmentsView.tsx`, `src/components/Patient/PatientPrescriptionModal.tsx`.
+* **Behavior:**
+  - Nos cards com `status === 'completed'` que possuem `prescriptionId` ou `prescriptionData`, exibir botão "Ver Receita Médica" com ícone de documento.
+  - Ao clicar, abrir `PatientPrescriptionModal` carregando os dados da receita (medicamentos, posologia, orientações, assinatura digital e QR Code para validação).
+  - Permitir download do PDF assinado pelo paciente.
 
 ---
 
-## 3. Módulo de Validação de Vouchers por QR Code
+## 2. Módulo de Agendamentos & Agenda Médica
 
-### 3.1. Página / Componente: `VoucherValidationView.tsx`
-* **Localização:** `src/components/Conveniado/VoucherValidationView.tsx`
-* **Comportamento Esperado:**
-  1. **Tratamento de Permissão e Resiliência do Leitor de Câmera:**
-     - Ao iniciar o scanner de QR Code, capturar exceções do tipo `NotAllowedError` ou `NotFoundError` e exibir banner instrutivo claro, orientando o usuário a liberar o acesso ou alternar para validação manual.
-  2. **Resgate Atômico via `runTransaction`:**
-     - A validação do código do voucher deve ser realizada dentro de `runTransaction(db, async (transaction) => ...)`:
-       - Ler o documento do voucher;
-       - Verificar se `status === 'active'` e se não está expirado;
-       - Atualizar para `status: 'used'`, `usedAt: serverTimestamp()`, `validatedBy: conveniadoId`;
-       - Caso já esteja utilizado, abortar com mensagem explicativa contendo a data do resgate anterior.
-  3. **Comprovante de Validação:**
-     - Exibir modal de sucesso com dados do paciente, percentual de desconto concedido e botão para impressão ou nova validação.
+### 2.1. Normalização de Modalidades de Atendimento
+* **Page / View:** Agendamentos (`ProfessionalsView`, `MyAppointmentsView`, `AdminAppointmentsView`).
+* **Component:** `src/components/Patient/ProfessionalsView.tsx`, `src/components/Patient/MyAppointmentsView.tsx`, `src/types.ts`.
+* **Behavior:**
+  - Padronizar o valor salvo de modalidade para `"telemedicine"` ou `"presential"`.
+  - Adicionar função helper utilitária `isTelemedicineModality(modality: string): boolean` que reconhece com segurança `"telemedicine"`, `"telemedicina"`, `"online"` e `"virtual"`.
+  - Exibir o badge correto e habilitar o botão "Acessar Sala Virtual" 15 minutos antes do horário agendado.
 
----
+### 2.2. Consistência de Identificadores Duplos
+* **Page / View:** Criação e Listagem de Agendamentos.
+* **Component:** `src/components/Patient/ProfessionalsView.tsx`, `src/components/Patient/MyAppointmentsView.tsx`.
+* **Behavior:**
+  - Na gravação de novo agendamento, persistir sempre:
+    - Paciente: `userId: user.uid` e `patientId: user.uid`.
+    - Profissional: `professionalUserId: prof.userId || prof.id` e `professionalId: prof.id`.
+  - Nas queries do Firestore, utilizar queries com filtro OR ou recuperar de forma transparente para suportar legados sem falha de renderização.
 
-## 4. Módulo Financeiro & Solicitações de Saque Pix
-
-### 4.1. Página / Componente: `ProfessionalFinanceView.tsx` & `PayoutReceiptModal.tsx`
-* **Localização:** `src/components/Professional/ProfessionalFinanceView.tsx`, `src/components/Professional/PayoutReceiptModal.tsx`
-* **Comportamento Esperado:**
-  1. **Validação de Chaves Pix:**
-     - Implementar validação regex de chaves Pix antes de habilitar o botão de saque:
-       - CPF (11 dígitos), CNPJ (14 dígitos), E-mail, Telefone (+55...) e Chave Aleatória EVP (formato UUID).
-  2. **Visualização de Comprovante de Liquidação:**
-     - Na tabela de histórico de saques do profissional, para solicitações com status `'approved'` / `'completed'`, exibir botão "Ver Comprovante".
-     - O modal `PayoutReceiptModal` deve exibir o código bancário de liquidação E2E fornecido pelo administrador, data da liquidação e valor líquido creditado.
-
----
-
-## 5. Módulo de Assinaturas & Ciclo de Cobrança
-
-### 5.1. Página / Componente: `SubscriptionsView.tsx` & `SubscriptionPlansView.tsx`
-* **Localização:** `src/components/Patient/SubscriptionsView.tsx`, `src/components/Patient/SubscriptionPlansView.tsx`
-* **Comportamento Esperado:**
-  1. **Verificação Automática de Vencimento:**
-     - Ao carregar a tela do paciente, comparar a data atual com `subscription.currentPeriodEnd`.
-     - Caso vencido e não renovado, atualizar o status da assinatura do usuário para `'expired'` e notificar o paciente sobre a necessidade de renovação.
-  2. **Cancelamento Programado:**
-     - Ao solicitar cancelamento, manter o status como ativo com a flag `cancelAtPeriodEnd: true`, permitindo usufruir dos descontos e clube de vouchers até a data final do ciclo atual.
+### 2.3. Estorno Automático no Cancelamento de Agendamento
+* **Page / View:** Cancelamento de Consulta em `MyAppointmentsView`.
+* **Component:** `src/components/Patient/MyAppointmentsView.tsx`, `src/components/Admin/AdminAppointmentsView.tsx`.
+* **Behavior:**
+  - Ao solicitar cancelamento com antecedência válida, executar transação atômica (`runTransaction`):
+    1. Atualizar agendamento para `{ status: 'cancelled', cancelledAt: serverTimestamp(), refundIssued: true }`.
+    2. Incrementar o saldo da carteira do paciente (`wallets/{userId}`) com o valor pago (`balance += appointment.price`).
+    3. Criar registro no extrato em `transactions` com `{ type: 'refund', category: 'appointment_refund', amount: appointment.price, status: 'completed' }`.
+  - Exibir toast e feedback visual com o comprovante do estorno.
 
 ---
 
-## 6. Módulo de Suporte, Exames e Resiliência Offline
+## 3. Módulo Financeiro & Conciliação Pix
 
-### 6.1. Página / Componente: `SupportChat.tsx` & `AdminSupportView.tsx`
-* **Comportamento Esperado:**
-  - Auto-scroll automático e suave (`scrollIntoView({ behavior: 'smooth' })`) ao receber novas mensagens no chat de suporte.
-  - Sincronização em tempo real de contagem de mensagens não lidas no badge do menu administrativo.
+### 3.1. Validação Estrutural de Chaves Pix
+* **Page / View:** Painel Financeiro do Profissional (`ProfessionalFinanceView`).
+* **Component:** `src/components/Professional/ProfessionalFinanceView.tsx`.
+* **Behavior:**
+  - Ao solicitar saque, selecionar o tipo de chave: `CPF`, `CNPJ`, `EMAIL`, `PHONE`, `RANDOM` (EVP).
+  - Aplicar máscara e validação em tempo real:
+    - CPF: 11 dígitos com cálculo de dígitos verificadores.
+    - CNPJ: 14 dígitos com cálculo de validação.
+    - E-mail: Regex RFC 5322.
+    - Telefone: Formato brasileiro `+55 (XX) 9XXXX-XXXX`.
+    - Aleatória: UUID v4 (formato `8-4-4-4-12`).
+  - Desabilitar botão "Confirmar Solicitação de Saque" enquanto o campo estiver inválido.
 
-### 6.2. Página / Componente: `PatientExamsView.tsx` & `SOAPConsultationModal.tsx`
-* **Comportamento Esperado:**
-  - Barra de progresso de upload no envio de exames pelo paciente e visualização dos laudos anexados na aba "Exames do Paciente" dentro do modal de prontuário SOAP do médico.
+### 3.2. Comprovante de Liquidação Bancária (Recibo de Payout)
+* **Page / View:** Painel Financeiro do Profissional (`ProfessionalFinanceView`).
+* **Component:** `src/components/Professional/PayoutReceiptModal.tsx`, `src/components/Professional/ProfessionalFinanceView.tsx`.
+* **Behavior:**
+  - Nos itens de saque com `status === 'completed'` ou `'paid'`, adicionar botão "Ver Comprovante".
+  - Ao clicar, abrir `PayoutReceiptModal` exibindo: código de liquidação E2E bancário, data/hora da transferência, chave Pix de destino, valor bruto, taxa de serviço e valor líquido.
+  - Opção de exportar/imprimir o recibo em formato PDF/impressão.
 
-### 6.3. Página / Componente: `offlineQueue.ts`
-* **Comportamento Esperado:**
-  - Listener global do evento `window.addEventListener('online', ...)` para disparar a sincronização imediata de ações pendentes da fila local.
+---
+
+## 4. Módulo de Assinaturas & Planos ViTTA
+
+### 4.1. Verificação Automática de Vencimento de Assinatura
+* **Page / View:** Inicialização do Usuário & Painel de Assinaturas (`SubscriptionsView`).
+* **Component:** `src/components/Patient/SubscriptionsView.tsx`, `src/App.tsx`.
+* **Behavior:**
+  - Ao carregar a sessão do usuário, checar se `subscription.currentPeriodEnd` é anterior a `new Date()`.
+  - Se vencido e não renovado, atualizar no Firestore `subscription.status = 'expired'` e `userData.plan = 'free'`.
+  - Exibir banner amigável informando sobre o vencimento com botão de renovação em 1 clique.
+
+### 4.2. Bloqueio de Vouchers e Descontos Médicos para Assinaturas Inativas
+* **Page / View:** `OffersView`, `ProfessionalsView`.
+* **Component:** `src/components/Patient/OffersView.tsx`, `src/components/Patient/ProfessionalsView.tsx`.
+* **Behavior:**
+  - Na tela de ofertas/vouchers, se o plano do usuário não for ativo (`status !== 'active'`), bloquear o botão de emissão de voucher e exibir modal convidando para ativar um plano ViTTA.
+  - Na tela de agendamentos, aplicar o valor regular sem desconto ViTTA caso a assinatura não esteja ativa.
+
+---
+
+## 5. Módulo de Vouchers & Validação por QR Code
+
+### 5.1. Validação Atômica Anti-Duplicidade
+* **Page / View:** Validação de Voucher pelo Parceiro (`VoucherValidationView`).
+* **Component:** `src/components/Admin/VoucherValidationView.tsx`.
+* **Behavior:**
+  - Ao submeter o código lido ou digitado, executar `runTransaction(db, async (transaction) => ...)`:
+    1. Ler o documento `vouchers/{voucherCode}`.
+    2. Verificar se `voucher.status === 'active'`. Se for `'used'`, lançar erro: `"Voucher já foi utilizado em DD/MM/AAAA às HH:mm"`.
+    3. Atualizar para `{ status: 'used', usedAt: serverTimestamp(), validatedBy: currentUserId, partnerId: partner.id }`.
+  - Exibir modal de sucesso com dados do cliente e resumo do desconto concedido.
+
+### 5.2. Tratamento de Permissão de Câmera no Leitor de QR Code
+* **Page / View:** Validação de Voucher (`VoucherValidationView`).
+* **Component:** `src/components/Admin/VoucherValidationView.tsx`.
+* **Behavior:**
+  - Caso `navigator.mediaDevices.getUserMedia` retorne `NotAllowedError` ou `NotFoundError` (ou bloqueio em iframe), não travar a tela.
+  - Exibir alerta explicativo: *"Acesso à câmera bloqueado. Utilize o campo abaixo para validar digitando o código do voucher."* e focar automaticamente no campo de texto.
+
+---
+
+## 6. Módulo de Exames & Laudos Laboratoriais
+
+### 6.1. Visualização de Exames no Atendimento SOAP
+* **Page / View:** Modal de Atendimento SOAP (`SOAPConsultationModal`).
+* **Component:** `src/components/Professional/SOAPConsultationModal.tsx`.
+* **Behavior:**
+  - Incluir aba/seção "Exames do Paciente" no drawer lateral do prontuário SOAP.
+  - Fazer query na coleção `patient_exams` filtrando por `patientId == appointment.patientId`.
+  - Permitir que o médico visualize laudos em PDF e imagens de exames sem precisar sair da sala ou fechar o prontuário.
+
+### 6.2. Indicador Visual de Upload e Validação de Arquivos
+* **Page / View:** Meus Exames (`ExamsView`).
+* **Component:** `src/components/Patient/ExamsView.tsx`.
+* **Behavior:**
+  - Validação pré-upload: tipos permitidos (`application/pdf`, `image/png`, `image/jpeg`), tamanho máximo 15MB.
+  - Exibir barra de progresso linear animada durante o upload para o Firebase Storage.
+
+---
+
+## 7. Módulo de Suporte & Atendimento ao Cliente
+
+### 7.1. Rolagem Automática e Contadores em Tempo Real
+* **Page / View:** Chat de Suporte (`SupportChat`, `AdminSupportChatView`).
+* **Component:** `src/components/SupportChat.tsx`, `src/components/Admin/AdminSupportChatView.tsx`.
+* **Behavior:**
+  - Utilizar `useRef` atrelado a um `messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })` disparado a cada nova mensagem recebida no `onSnapshot`.
+  - Atualizar badge de mensagens não lidas no menu do Administrador Master quando houver novas mensagens com o chat minimizado.
+
+---
+
+## 8. Módulo de Segurança, KYC & Resiliência Offline
+
+### 8.1. Cooldown de 60s no Reenvio de 2FA
+* **Page / View:** Modal de Autenticação em Duas Etapas (`TwoFactorModal`).
+* **Component:** `src/components/TwoFactorModal.tsx`.
+* **Behavior:**
+  - Ao disparar o código 2FA, iniciar contagem regressiva de 60 segundos com botão de reenvio desabilitado e texto *"Reenviar código em XXs"*.
+  - Habilitar o botão somente após zerar o temporizador.
+
+### 8.2. Disparo Automático da Fila de Sincronização Offline
+* **Page / View:** Global / Applet Core (`offlineQueue`).
+* **Component:** `src/lib/offlineQueue.ts`, `src/components/OfflineIndicatorBanner.tsx`.
+* **Behavior:**
+  - Escutar o evento `window.addEventListener('online', () => offlineQueue.processQueue())`.
+  - Processar as mutações pendentes salvas no `IndexedDB`/`localStorage` com deduplicação e feedback visual através do `OfflineIndicatorBanner`.

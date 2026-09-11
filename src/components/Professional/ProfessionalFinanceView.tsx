@@ -35,6 +35,7 @@ import { updateDoc, addDoc } from '../../lib/firestore-wrappers';
 import { useToast } from '../../contexts/ToastContext';
 import { validatePixKey, formatDateForDisplay } from '../../lib/utils';
 import { PayoutReceiptModal } from './PayoutReceiptModal';
+import { PayInvoiceModal } from './PayInvoiceModal';
 
 interface ProfessionalFinanceViewProps {
   user: any;
@@ -61,6 +62,7 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
 
   // Payout Modal states
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+  const [isPayInvoiceModalOpen, setIsPayInvoiceModalOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState('');
   const [pixKey, setPixKey] = useState('');
   const [pixKeyType, setPixKeyType] = useState<string | null>(null);
@@ -552,15 +554,19 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
           </div>
 
           <div className="space-y-2">
-            {totalUnpaidFees > 0 && (
+            {totalUnpaidFees > 0 ? (
               <button
-                onClick={handlePayAllInvoicesWithOnlineBalance}
-                disabled={isPayingAll || walletBalance < totalUnpaidFees}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => setIsPayInvoiceModalOpen(true)}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <CheckCircle size={14} />
-                {isPayingAll ? 'Debitando do Saldo...' : 'Quitar com Saldo Online'}
+                <DollarSign size={14} />
+                <span>Pagar Fatura ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUnpaidFees)})</span>
               </button>
+            ) : (
+              <div className="w-full py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                <CheckCircle2 size={13} />
+                <span>Fatura em Dia</span>
+              </div>
             )}
 
             <button
@@ -973,6 +979,16 @@ export const ProfessionalFinanceView: React.FC<ProfessionalFinanceViewProps> = (
         )}
 
       </div>
+
+      {/* Modal de Pagamento de Fatura com Saldo em Conta ou PIX da Plataforma */}
+      <PayInvoiceModal
+        isOpen={isPayInvoiceModalOpen}
+        onClose={() => setIsPayInvoiceModalOpen(false)}
+        user={user}
+        walletBalance={walletBalance}
+        totalUnpaidFees={totalUnpaidFees}
+        unpaidItemsCount={cashTransactions.filter((t) => t.invoicePaid !== true).length}
+      />
 
     </div>
   );

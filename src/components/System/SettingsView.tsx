@@ -21,6 +21,7 @@ import { updatePassword, updateProfile } from "firebase/auth";
 import { db, auth } from "../../firebase";
 import { useToast } from "../../contexts/ToastContext";
 import { fetchAddressByCep } from "../../lib/utils";
+import { TwoFactorModal } from "../TwoFactorModal";
 
 interface SettingsViewProps {
   user: any;
@@ -57,6 +58,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Password Modal / State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [updatingPassword, setUpdatingPassword] = useState(false);
@@ -66,6 +69,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     getDoc(doc(db, "users", user.uid)).then((snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        setTwoFactorEnabled(!!data.twoFactorEnabled);
         setProfileData((prev) => ({
           ...prev,
           displayName: data.name || data.displayName || user.displayName || "",
@@ -371,9 +375,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h4 className="font-bold text-xs text-vitta-text-primary">Autenticação em 2 Etapas (2FA)</h4>
               <p className="text-[11px] text-vitta-text-muted">Proteja sua conta com verificação por e-mail e SMS.</p>
             </div>
-            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-full">
-              Ativo
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-1 font-bold text-[11px] rounded-full ${
+                twoFactorEnabled
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+              }`}>
+                {twoFactorEnabled ? "Ativo" : "Inativo"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowTwoFactorModal(true)}
+                className="px-3 py-1.5 bg-vitta-surface hover:bg-vitta-border border border-vitta-border text-vitta-text-primary rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                {twoFactorEnabled ? "Gerenciar" : "Ativar 2FA"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -480,6 +497,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      <TwoFactorModal
+        isOpen={showTwoFactorModal}
+        onClose={() => setShowTwoFactorModal(false)}
+        user={user}
+        currentEnabled={twoFactorEnabled}
+        onSuccess={() => setTwoFactorEnabled(!twoFactorEnabled)}
+      />
     </div>
   );
 };

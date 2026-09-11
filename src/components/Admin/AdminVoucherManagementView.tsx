@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Lock,
   Unlock,
-  Building
+  Building,
+  QrCode
 } from "lucide-react";
 import { db } from "../../firebase";
 import { setDoc, updateDoc, deleteDoc } from "../../lib/firestore-wrappers";
@@ -25,6 +26,7 @@ import {
   orderBy
 } from "firebase/firestore";
 import { useToast } from "../../contexts/ToastContext";
+import { VoucherValidationView } from "./VoucherValidationView";
 
 export const AdminVoucherManagementView = () => {
   const { addToast } = useToast();
@@ -40,6 +42,7 @@ export const AdminVoucherManagementView = () => {
   // Statistics
   const [totalSalesVolume, setTotalSalesVolume] = useState<number>(0);
   const [totalPlatformFeesEarned, setTotalPlatformFeesEarned] = useState<number>(0);
+  const [activeTab, setActiveTab] = useState<"catalog" | "validate">("catalog");
 
   useEffect(() => {
     // 1. Sync system configs document
@@ -168,12 +171,44 @@ export const AdminVoucherManagementView = () => {
             Configurações e Gestão de Vouchers
           </h2>
           <p className="text-sm text-vitta-text-secondary">
-            Gerencie taxas, controle acessos e audite as ofertas oferecidas pelos profissionais conveniados.
+            Gerencie taxas, controle acessos, audite ofertas e valide cupons com verificação atômica.
           </p>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="flex items-center bg-vitta-surface border border-vitta-border rounded-2xl p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("catalog")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === "catalog"
+                ? "bg-vitta-accent text-white shadow-sm shadow-vitta-accent/20"
+                : "text-vitta-text-muted hover:text-vitta-text-primary"
+            }`}
+          >
+            <Ticket size={14} />
+            Catálogo & Regras
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("validate")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === "validate"
+                ? "bg-vitta-accent text-white shadow-sm shadow-vitta-accent/20"
+                : "text-vitta-text-muted hover:text-vitta-text-primary"
+            }`}
+          >
+            <QrCode size={14} />
+            Validador de Cupons
+          </button>
         </div>
       </div>
 
-      {/* KPI Overviews */}
+      {activeTab === "validate" ? (
+        <VoucherValidationView />
+      ) : (
+        <>
+          {/* KPI Overviews */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-vitta-surface border border-vitta-border p-5 rounded-2xl flex items-center gap-4 shadow-sm">
           <div className="w-12 h-12 rounded-xl bg-vitta-accent-bg text-vitta-accent flex items-center justify-center">
@@ -364,6 +399,8 @@ export const AdminVoucherManagementView = () => {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

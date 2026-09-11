@@ -1,94 +1,89 @@
-# Plano Estratégico de Execução das Issues de Finalização (plan.md)
-**Data e Hora de Geração:** 04/09/2026 às 15:34 (Horário de Brasília - UTC-3)  
-**Objetivo:** Roteiro sequencial de planejamento técnico para a execução ordenada e sem riscos de regressão das 10 issues mapeadas na pasta `/analytics/issues/`.
+# Plano Estratégico de Execução das Issues - ViTTA Health
+**Data e Hora de Geração:** 11/09/2026 às 19:35 (Horário de Brasília - UTC-3)  
+**Data e Hora de Conclusão da Execução:** 11/09/2026 às 20:00 (Horário de Brasília - UTC-3)  
+**Status:** [CONCLUÍDO] 100% das 11 Issues Executadas e Validadas  
+**Diretriz Fundamental:** Execução sequencial e cirúrgica com foco exclusivo na amarração de ponta a ponta e finalização de fluxos já existentes, sem criação de escopos ou arquivos desnecessários.
 
 ---
 
-## 1. Visão Geral das Fases de Execução
+## 1. Mapeamento de Dependências e Status de Execução
+
+As 11 issues foram agrupadas em 4 fases, executadas e validadas:
 
 ```
-+-----------------------------------------------------------------------------------+
-| FASE 1: NÚCLEO CLÍNICO & TELEMEDICINA (Issues 01, 02, 07)                         |
-| • Telemedicina (Screen share, Anexos no Chat, Encerramento e Parâmetro ?room=ID)  |
-| • Receitas Médicas no Histórico do Paciente (Visualização e Download de PDF)      |
-| • Exames Anexados Integrados ao Prontuário SOAP                                   |
-+-----------------------------------------------------------------------------------+
-                                         │
-                                         ▼
-+-----------------------------------------------------------------------------------+
-| FASE 2: GESTÃO DE AGENDAMENTOS & BENEFÍCIOS (Issues 03, 05, 06)                   |
-| • Normalização de Modalidade de Atendimento e Persistência de IDs Duplos          |
-| • Ciclo de Expiração de Assinaturas e Cancelamento Programado                     |
-| • Scanner de Câmera de Vouchers e Validação Atômica anti-duplicidade              |
-+-----------------------------------------------------------------------------------+
-                                         │
-                                         ▼
-+-----------------------------------------------------------------------------------+
-| FASE 3: OPERAÇÕES FINANCEIRAS & SUPORTE (Issues 04, 08)                           |
-| • Validação Regex de Chaves Pix e Comprovante de Liquidação Bancária              |
-| • Auto-Scroll no Chat de Suporte e Contador de Mensagens Não Lidas em Tempo Real  |
-+-----------------------------------------------------------------------------------+
-                                         │
-                                         ▼
-+-----------------------------------------------------------------------------------+
-| FASE 4: SEGURANÇA, MODERAÇÃO & RESILIÊNCIA OFFLINE (Issues 09, 10)                |
-| • Cooldown no Reenvio de 2FA e Notificações Instantâneas de Moderação KYC         |
-| • Auto-Sincronização Idempotente da Fila Offline no Evento de Conexão             |
-+-----------------------------------------------------------------------------------+
+[FASE 1: Núcleo Clínico & Telemedicina] - [CONCLUÍDO]
+  ├─ [x] Issue 04: Normalização de Modality & IDs Duplos
+  ├─ [x] Issue 01: Compartilhamento de Tela & Encerramento Sincronizado
+  ├─ [x] Issue 02: Anexos no Chat da Sala & Link Direto por URL
+  └─ [x] Issue 03: Histórico de Prescrições & Download pelo Paciente
+
+[FASE 2: Financeiro, Agendamentos & Estorno] - [CONCLUÍDO]
+  ├─ [x] Issue 05: Cancelamento de Agendamento com Estorno na Carteira
+  └─ [x] Issue 06: Validação de Chaves Pix & Recibo de Liquidação
+
+[FASE 3: Planos, Assinaturas & Validação de Vouchers] - [CONCLUÍDO]
+  ├─ [x] Issue 07: Sincronização de Vencimento de Assinatura & Bloqueio de Descontos
+  └─ [x] Issue 08: Validação Atômica de Vouchers & Fallback de Câmera
+
+[FASE 4: Exames, Suporte & Resiliência/Segurança] - [CONCLUÍDO]
+  ├─ [x] Issue 09: Barra de Progresso de Exames & Aba no Prontuário SOAP
+  ├─ [x] Issue 10: Auto-Scroll do Suporte & Badges de Mensagens Não Lidas
+  └─ [x] Issue 11: Cooldown de 2FA & Auto-Sync da Fila Offline
 ```
 
 ---
 
-## 2. Detalhamento das Etapas de Implementação
+## 2. Detalhamento Técnico das Etapas Concluídas
 
-### Fase 1: Núcleo Clínico & Telemedicina
-- [ ] **Etapa 1.1 (Issue 01 - Telemedicina WebRTC):**
-  - Ajustar `src/components/TelemedicineRoom.tsx` para implementar o método `replaceTrack` do WebRTC durante o compartilhamento de tela com restauração via `onended`.
-  - Habilitar envio de anexos no chat interno da sala via Firebase Storage.
-  - Sincronizar encerramento do atendimento médico com reset de flags e acionamento do `ReviewModal` no paciente.
-  - Tratar o parâmetro `?room=ID` em `src/App.tsx` com limpeza no encerramento (`history.replaceState`).
-- [ ] **Etapa 1.2 (Issue 02 - Receitas Médicas do Paciente):**
-  - Vincular botão de abertura do `PatientPrescriptionModal.tsx` nos cards de consultas concluídas em `MyAppointmentsView.tsx`.
-  - Validar a exportação do PDF da receita com carimbo e assinatura médica.
-- [ ] **Etapa 1.3 (Issue 07 - Exames no Prontuário SOAP):**
-  - Adicionar aba "Exames Anexados do Paciente" no `SOAPConsultationModal.tsx` para consulta rápida durante o atendimento.
-  - Adicionar indicador de progresso no upload de exames em `PatientExamsView.tsx`.
-
----
-
-### Fase 2: Gestão de Agendamentos & Benefícios
-- [ ] **Etapa 2.1 (Issue 03 - Agendamentos & IDs Duplos):**
-  - Criar helper `isTelemedicineModality` e padronizar checagens nos componentes de agendamento.
-  - Garantir a gravação simultânea de `userId`/`patientId` e `professionalUserId`/`professionalId`.
-  - Implementar regra de estorno automático em cancelamentos antecipados.
-- [ ] **Etapa 2.2 (Issue 05 - Assinaturas & Planos):**
-  - Implementar verificação de expiração de assinatura comparando com `currentPeriodEnd`.
-  - Configurar cancelamento programado mantendo o acesso até o fim do ciclo pago.
-- [ ] **Etapa 2.3 (Issue 06 - Vouchers & Leitor de QR Code):**
-  - Adicionar tratamento de permissões de câmera em `VoucherValidationView.tsx` com fallback manual.
-  - Proteger a validação do voucher com `runTransaction` no Firestore contra uso duplicado.
+### Fase 1: Núcleo Clínico, Agendamentos & Telemedicina [CONCLUÍDO]
+1. **Padronização de Dados de Agendamento (Issue 04):**
+   - [x] Helper unificado `isTelemedicineModality` em `src/lib/utils.ts`.
+   - [x] Criação normalizada com `userId`/`patientId` e `professionalId`/`professionalUserId` em `ProfessionalsView.tsx` e `App.tsx`.
+   - [x] Consulta resiliente por snapshot duplo em `MyAppointmentsView.tsx` e `ProfessionalDashboardView.tsx`.
+2. **Sala de Telemedicina (Issue 01 & 02):**
+   - [x] Compartilhamento de tela com `sender.replaceTrack()` e fallback de webcam em `TelemedicineRoom.tsx`.
+   - [x] Anexo de arquivos/documentos no chat da consulta com suporte a upload real e armazenamento.
+   - [x] Roteamento direto por link `?room=ID` na inicialização do `App.tsx`.
+   - [x] Encerramento sincronizado com disparador do `ReviewModal` após a finalização da consulta.
+3. **Receitas Médicas (Issue 03):**
+   - [x] Acesso direto a receitas nas consultas concluídas em `MyAppointmentsView.tsx`.
+   - [x] Modal `PatientPrescriptionModal.tsx` com visualização clínica e geração de PDF via `jspdf`.
 
 ---
 
-### Fase 3: Operações Financeiras & Suporte
-- [ ] **Etapa 3.1 (Issue 04 - Validação Pix & Comprovantes):**
-  - Adicionar validação regex para tipos de chave Pix (CPF, CNPJ, E-mail, Telefone, Chave Aleatória EVP) em `ProfessionalFinanceView.tsx`.
-  - Integrar exibição do comprovante bancário com código E2E para o profissional.
-- [ ] **Etapa 3.2 (Issue 08 - Chat de Suporte):**
-  - Implementar auto-scroll suave em `SupportChat.tsx` e sincronização do badge de não lidas no menu do administrador.
+### Fase 2: Financeiro, Carteira Digital & Estorno [CONCLUÍDO]
+1. **Estorno de Cancelamento (Issue 05):**
+   - [x] Cancelamento de consultas em `MyAppointmentsView.tsx` com estorno atômico na carteira do paciente, cancelamento das faturas de taxa médica e registro na tabela `transactions`.
+2. **Validação Pix & Recibos (Issue 06):**
+   - [x] Validador sintático `validatePixKey` cobrindo CPF, CNPJ, E-mail, Celular e chaves EVP em `src/lib/utils.ts`.
+   - [x] Emissão e visualização de comprovante de saque com código de liquidação bancária E2E em `ProfessionalFinanceView.tsx`.
 
 ---
 
-### Fase 4: Segurança, Moderação & Resiliência Offline
-- [ ] **Etapa 4.1 (Issue 09 - 2FA & KYC):**
-  - Adicionar temporizador regressivo de 60 segundos no botão de reenvio de código 2FA.
-  - Disparar notificação in-app ao aprovar ou reprovar documentos no `AdminKYCModerationView.tsx`.
-- [ ] **Etapa 4.2 (Issue 10 - Fila Offline):**
-  - Configurar listener do evento `online` em `src/lib/offlineQueue.ts` para sincronização automática imediata ao restabelecer a conexão.
+### Fase 3: Assinaturas & Clube de Vouchers [CONCLUÍDO]
+1. **Ciclo de Vida de Assinatura (Issue 07):**
+   - [x] Checagem de expiração do plano (`currentPeriodEnd`) no login/sessão.
+   - [x] Bloqueio e gate de descontos do clube para usuários inativos em `OffersView.tsx` e contratações.
+2. **Validação Atômica de Vouchers (Issue 08):**
+   - [x] Resgate seguro com `runTransaction` em `VoucherValidationView.tsx` prevenindo duplo resgate.
+   - [x] Tratamento de fallback de câmera com foco automático na digitação do código alfanumérico.
 
 ---
 
-## 3. Diretrizes de Validação & Não-Regressão
-1. **Compilação Contínua:** Executar `lint_applet` e `compile_applet` após cada bloco de tarefas para garantir 100% de integridade no build.
-2. **Preservação de Dados:** Todas as operações no Firestore devem utilizar `serverTimestamp()` e manter retrocompatibilidade com documentos legados.
-3. **Escopo Estrito:** Nenhuma funcionalidade além das 10 issues planejadas deve ser introduzida.
+### Fase 4: Exames, Atendimento & Segurança [CONCLUÍDO]
+1. **Exames Laboratoriais (Issue 09):**
+   - [x] Indicador de progresso no upload de laudos em `ExamsView.tsx`.
+   - [x] Aba de histórico de exames integrada ao prontuário clínico `SOAPConsultationModal.tsx`.
+2. **Suporte & Chat (Issue 10):**
+   - [x] Rolagem suave automática ao enviar/receber mensagens em `SupportChat.tsx` e `AdminSupportChatView.tsx`.
+   - [x] Sincronização em tempo real de contadores e badges de mensagens pendentes.
+3. **Segurança & Resiliência (Issue 11):**
+   - [x] Timer de cooldown de 60s para reenvio de código no `TwoFactorModal.tsx`.
+   - [x] Listener global de reconexão de rede (`window.addEventListener('online')`) para drenagem automática da fila em `src/lib/offlineQueue.ts`.
+
+---
+
+## 3. Registro de Validação de Compilação & Tipagem
+- `tsc --noEmit` & `lint_applet`: Validados sem erros.
+- `compile_applet`: Build de produção executado com sucesso.
+- Todos os fluxos operam com amarração de ponta a ponta.

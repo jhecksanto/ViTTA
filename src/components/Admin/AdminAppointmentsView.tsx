@@ -41,10 +41,12 @@ import { handleFirestoreError, OperationType } from "../../App";
 interface Appointment {
   id: string;
   userId: string;
+  patientId?: string;
   patientName?: string;
   patientEmail?: string;
   patientPhone?: string;
   professionalId: string;
+  professionalUserId?: string;
   professionalName: string;
   specialty?: string;
   crm?: string;
@@ -130,8 +132,9 @@ export const AdminAppointmentsView = () => {
       const q = searchQuery.toLowerCase();
 
       const patient = (apt.patientName || "").toLowerCase();
-      const patientId = (apt.userId || "").toLowerCase();
+      const patientId = (apt.userId || apt.patientId || "").toLowerCase();
       const doctor = (apt.professionalName || "").toLowerCase();
+      const doctorId = (apt.professionalUserId || apt.professionalId || "").toLowerCase();
       const crm = (apt.crm || "").toLowerCase();
       const id = apt.id.toLowerCase();
       const specialty = (apt.specialty || "").toLowerCase();
@@ -140,6 +143,7 @@ export const AdminAppointmentsView = () => {
         patient.includes(q) ||
         patientId.includes(q) ||
         doctor.includes(q) ||
+        doctorId.includes(q) ||
         crm.includes(q) ||
         id.includes(q) ||
         specialty.includes(q)

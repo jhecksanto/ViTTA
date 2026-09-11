@@ -16,8 +16,10 @@ import {
   ShieldCheck,
   Stethoscope,
   Sparkles,
+  QrCode,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { PixCheckoutModal } from "./PixCheckoutModal";
 import {
   collection,
   onSnapshot,
@@ -38,15 +40,18 @@ import { createGoogleCalendarEvent } from "../../utils/googleCalendar";
 
 interface ProfessionalsViewProps {
   user: any;
+  userData?: any;
   onBookAppointment?: (prof: any) => void;
   setActiveTab?: (tab: string) => void;
 }
 
 export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
   user,
+  userData,
   setActiveTab,
 }) => {
   const { addToast } = useToast();
+  const [currentUserData, setCurrentUserData] = useState<any>(userData || null);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -59,10 +64,21 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const [bookingModality, setBookingModality] = useState<"telemedicine" | "in_person">("in_person");
-  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"online" | "in_person">("in_person");
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"online" | "in_person" | "pix">("in_person");
+  const [pixCheckoutData, setPixCheckoutData] = useState<{ amount: number; appointmentId?: string; purpose: 'appointment' | 'wallet_recharge' } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [userWalletBalance, setUserWalletBalance] = useState(0);
   const [successBooking, setSuccessBooking] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, "users", user.uid), (snap) => {
+      if (snap.exists()) {
+        setCurrentUserData(snap.data());
+      }
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   const getPriceDetails = (prof: any) => {
     // Valor Particular (Normal) cadastrado em 'Valor Particular da Consulta *' no Admin
@@ -70,8 +86,15 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
       String(prof?.price || "150").replace(/[^0-9.,]/g, "").replace(",", ".")
     ) || 150;
 
-    const discountStr = prof?.vittaHealthDiscount || "20% OFF";
-    const discountDigits = parseInt(discountStr.replace(/\D/g, "")) || 20;
+    // Issue 05: Desativar cálculo de desconto ViTTA caso a assinatura esteja expirada
+    const currentPeriodEnd = currentUserData?.currentPeriodEnd 
+      ? (currentUserData.currentPeriodEnd.toDate ? currentUserData.currentPeriodEnd.toDate() : new Date(currentUserData.currentPeriodEnd))
+      : null;
+    const isExpiredByDate = currentPeriodEnd && currentPeriodEnd.getTime() < Date.now();
+    const isExpired = currentUserData?.subscriptionStatus === 'expired' || (isExpiredByDate && !currentUserData?.cancelAtPeriodEnd);
+
+    const discountStr = isExpired ? "0% (Plano Expirado)" : (prof?.vittaHealthDiscount || "20% OFF");
+    const discountDigits = isExpired ? 0 : (parseInt(discountStr.replace(/\D/g, "")) || 20);
 
     // Desconto sobre o valor particular oferecido pelo convênio ViTTA
     const savings = (origPrice * discountDigits) / 100;
@@ -83,6 +106,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
       discountDigits,
       discountStr,
       savings,
+      isExpired
     };
   };
 
@@ -183,7 +207,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             patientName: user.displayName || user.name || user.email || "Paciente",
             patientEmail: user.email,
             professionalId: selectedProf.id,
-            professionalUserId: selectedProf.userId || null,
+            professionalUserId: selectedProf.userId || selectedProf.id || null,
             professionalName: selectedProf.name,
             professionalSpecialty: selectedProf.specialty,
             date: bookingDate,
@@ -239,7 +263,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             status: "completed",
           });
         });
-      } else {
+      } else if (bookingPaymentMethod === "in_person") {
         // Presencial Payment: No upfront debit from patient.
         // Consultation will only be invoiced when completed by professional.
         const aptRef = doc(collection(db, "appointments"));
@@ -250,7 +274,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           patientName: user.displayName || user.name || user.email || "Paciente",
           patientEmail: user.email,
           professionalId: selectedProf.id,
-          professionalUserId: selectedProf.userId || null,
+          professionalUserId: selectedProf.userId || selectedProf.id || null,
           professionalName: selectedProf.name,
           professionalSpecialty: selectedProf.specialty,
           date: bookingDate,
@@ -289,6 +313,48 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
             createdAt: new Date().toISOString(),
           });
         }
+      } else if (bookingPaymentMethod === "pix") {
+        // PIX Instant Payment: Create appointment and launch PixCheckoutModal
+        const aptRef = doc(collection(db, "appointments"));
+        await setDoc(aptRef, {
+          id: aptRef.id,
+          userId: user.uid,
+          patientId: user.uid,
+          patientName: user.displayName || user.name || user.email || "Paciente",
+          patientEmail: user.email,
+          professionalId: selectedProf.id,
+          professionalUserId: selectedProf.userId || selectedProf.id || null,
+          professionalName: selectedProf.name,
+          professionalSpecialty: selectedProf.specialty,
+          date: bookingDate,
+          time: bookingTime,
+          modality: bookingModality,
+          isTelemedicine: isTele,
+          type: isTele ? "telemedicine" : "presencial",
+          telemedicineRoomId: isTele ? aptRef.id : null,
+          telemedicineUrl: isTele ? `${window.location.origin}/?room=${aptRef.id}` : null,
+          status: "pending",
+          price: priceNum,
+          priceNumeric: priceNum,
+          originalPrice: origPrice,
+          discountAmount: savings,
+          paymentMethod: "pix",
+          paymentType: "pix_copia_cola",
+          paymentStatus: "pending_pix",
+          paid: false,
+          invoiced: false,
+          feeRate: feeRate,
+          feeCharged: feeAmount,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Open PIX Checkout Modal
+        setPixCheckoutData({
+          amount: priceNum,
+          appointmentId: aptRef.id,
+          purpose: 'appointment',
+        });
       }
 
       const bookingInfo = {
@@ -452,24 +518,51 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex justify-between items-center bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                        <div className="flex items-center gap-1.5">
-                          <Sparkles size={13} className="text-emerald-500 shrink-0" />
-                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                            Com Desconto ViTTA:
-                          </span>
+                      {details.isExpired ? (
+                        <div className="bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-xs">
+                          <div className="flex items-center justify-between font-bold text-amber-700 dark:text-amber-300">
+                            <span>Valor Particular:</span>
+                            <span className="font-black text-sm">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.priceNum)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                            <span>Assinatura expirada</span>
+                            {setActiveTab && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveTab("plans");
+                                }}
+                                className="underline font-bold cursor-pointer hover:text-amber-800"
+                              >
+                                Reativar plano
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.priceNum)}
-                          </span>
-                        </div>
-                      </div>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-center bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles size={13} className="text-emerald-500 shrink-0" />
+                              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                                Com Desconto ViTTA:
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.priceNum)}
+                              </span>
+                            </div>
+                          </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-emerald-600 dark:text-emerald-400 font-bold px-1">
-                        <span>Desconto ViTTA: {details.discountStr}</span>
-                        <span>Economia: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.savings)}</span>
-                      </div>
+                          <div className="flex items-center justify-between text-[10px] text-emerald-600 dark:text-emerald-400 font-bold px-1">
+                            <span>Desconto ViTTA: {details.discountStr}</span>
+                            <span>Economia: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(details.savings)}</span>
+                          </div>
+                        </>
+                      )}
 
                       {prof.city && (
                         <div className="flex items-center gap-1.5 text-vitta-text-secondary text-[11px] pt-1.5 border-t border-vitta-border">
@@ -648,7 +741,7 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                     {/* Forma de Pagamento */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-vitta-text-secondary">3. Escolha a Forma de Pagamento</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <button
                           type="button"
                           onClick={() => setBookingPaymentMethod("in_person")}
@@ -660,14 +753,14 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         >
                           <div className="flex items-center gap-2">
                             <Building size={16} className={bookingPaymentMethod === "in_person" ? "text-vitta-accent" : "text-vitta-text-muted"} />
-                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Presencial</span>
+                            <span className="font-bold text-xs text-vitta-text-primary">Presencial</span>
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-vitta-accent/20 text-vitta-accent font-bold uppercase ml-auto">Padrão</span>
                           </div>
                           <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
-                            Pague no consultório/recepção (Dinheiro, Cartão ou Pix).
+                            Pague no consultório ou recepção.
                           </p>
                           <div className="mt-2 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                            Sem débito prévio na carteira
+                            Sem débito prévio
                           </div>
                         </button>
 
@@ -682,13 +775,34 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                         >
                           <div className="flex items-center gap-2">
                             <CreditCard size={16} className={bookingPaymentMethod === "online" ? "text-vitta-accent" : "text-vitta-text-muted"} />
-                            <span className="font-bold text-xs text-vitta-text-primary">Pagamento Online</span>
+                            <span className="font-bold text-xs text-vitta-text-primary">ViTTA Coins</span>
                           </div>
                           <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
-                            Débito com saldo ViTTA Coins.
+                            Débito do saldo da carteira.
                           </p>
                           <div className="mt-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
                             Saldo: R$ {userWalletBalance.toFixed(2).replace(".", ",")}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBookingPaymentMethod("pix")}
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            bookingPaymentMethod === "pix"
+                              ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/20"
+                              : "border-vitta-border bg-vitta-surface-2 hover:bg-vitta-border/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <QrCode size={16} className={bookingPaymentMethod === "pix" ? "text-emerald-600" : "text-vitta-text-muted"} />
+                            <span className="font-bold text-xs text-vitta-text-primary">PIX Instantâneo</span>
+                          </div>
+                          <p className="text-[11px] text-vitta-text-muted mt-1 leading-tight">
+                            QR Code e Copia e Cola imediato.
+                          </p>
+                          <div className="mt-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            Liberação rápida
                           </div>
                         </button>
                       </div>
@@ -740,13 +854,31 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
                           <div className="pt-2 border-t border-vitta-border text-[11px] flex justify-between items-center">
                             <span className="text-vitta-text-muted">Forma Selecionada:</span>
                             <span className="font-bold text-vitta-text-primary">
-                              {isOnline ? "Online (Débito em ViTTA Coins)" : "Presencial (Pagar na Recepção)"}
+                              {bookingPaymentMethod === "online"
+                                ? "Online (Débito em ViTTA Coins)"
+                                : bookingPaymentMethod === "pix"
+                                ? "PIX Instantâneo (QR Code / Copia e Cola)"
+                                : "Presencial (Pagar na Recepção)"}
                             </span>
                           </div>
 
                           {isOnline && !hasEnoughBalance && (
-                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300">
-                              ⚠️ Seu saldo atual (R$ {userWalletBalance.toFixed(2).replace(".", ",")}) é inferior ao valor da consulta. Recarregue seu saldo ou selecione <strong>Pagamento Presencial</strong>.
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <span>⚠️ Seu saldo atual (R$ {userWalletBalance.toFixed(2).replace(".", ",")}) é inferior ao valor da consulta.</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPixCheckoutData({
+                                    amount: Math.ceil(details.priceNum - userWalletBalance),
+                                    purpose: "wallet_recharge",
+                                  });
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-all shrink-0"
+                              >
+                                <QrCode size={12} />
+                                <span>Recarregar via PIX</span>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -781,6 +913,35 @@ export const ProfessionalsView: React.FC<ProfessionalsViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal de Checkout PIX com QR Code Dinâmico e Verificação Instantânea */}
+      {pixCheckoutData && (
+        <PixCheckoutModal
+          isOpen={true}
+          onClose={() => setPixCheckoutData(null)}
+          amount={pixCheckoutData.amount}
+          purpose={pixCheckoutData.purpose}
+          appointmentId={pixCheckoutData.appointmentId}
+          user={user}
+          onSuccess={() => {
+            if (pixCheckoutData.purpose === 'appointment') {
+              setPixCheckoutData(null);
+              setSelectedProf(null);
+              setSuccessBooking({
+                profName: selectedProf?.name || "Profissional",
+                specialty: selectedProf?.specialty || "Especialidade",
+                date: bookingDate,
+                time: bookingTime,
+                modality: bookingModality,
+                paymentMethod: "pix",
+                price: pixCheckoutData.amount,
+                origPrice: pixCheckoutData.amount,
+                savings: 0,
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

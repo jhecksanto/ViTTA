@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle, 
   X, 
@@ -14,9 +14,12 @@ import {
   Plus,
   Trash2,
   Scale,
-  Heart
+  Heart,
+  Eye,
+  Download,
+  FileCheck2
 } from 'lucide-react';
-import { Timestamp, collection, doc } from 'firebase/firestore';
+import { Timestamp, collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { addDoc } from '../../lib/firestore-wrappers';
 import { useToast } from '../../contexts/ToastContext';
@@ -40,7 +43,39 @@ export const SOAPConsultationModal: React.FC<SOAPConsultationModalProps> = ({
   onCompleted
 }) => {
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'soap' | 'biometrics' | 'prescriptions'>('soap');
+  const [activeTab, setActiveTab] = useState<'soap' | 'biometrics' | 'prescriptions' | 'exams'>('soap');
+  const [patientExams, setPatientExams] = useState<any[]>([]);
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [previewExam, setPreviewExam] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !appointment?.userId) return;
+    setLoadingExams(true);
+    const q = query(
+      collection(db, 'user_exams'),
+      where('userId', '==', appointment.userId)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        docs.sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.date ? new Date(a.date).getTime() : 0);
+          const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.date ? new Date(b.date).getTime() : 0);
+          return timeB - timeA;
+        });
+        setPatientExams(docs);
+        setLoadingExams(false);
+      },
+      (err) => {
+        console.error('Erro ao buscar exames do paciente no prontuário:', err);
+        setLoadingExams(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isOpen, appointment?.userId]);
 
   // S - Subjetivo
   const [subjective, setSubjective] = useState(
@@ -244,7 +279,18 @@ export const SOAPConsultationModal: React.FC<SOAPConsultationModalProps> = ({
                 : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            <Activity size={14} /> Histórico Biométrico & Exames
+            <Activity size={14} /> Histórico Biométrico
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('exams')}
+            className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-1.5 border-b-2 ${
+              activeTab === 'exams'
+                ? 'border-vitta-accent text-vitta-accent bg-slate-900'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <FileCheck2 size={14} /> Exames Anexados do Paciente ({patientExams.length})
           </button>
         </div>
 
@@ -455,7 +501,167 @@ export const SOAPConsultationModal: React.FC<SOAPConsultationModalProps> = ({
               <BiometricHistoryPanel patientId={appointment.userId} patientName={appointment.patientName} />
             </div>
           )}
+
+          {activeTab === 'exams' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <FileCheck2 size={16} className="text-vitta-accent" />
+                    Exames & Laudos Anexados pelo Paciente
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Consulte exames anteriores, laudos laboratoriais e imagens para embasar sua conduta clínica.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-vitta-accent/10 text-vitta-accent border border-vitta-accent/20">
+                  {patientExams.length} {patientExams.length === 1 ? 'exame disponível' : 'exames disponíveis'}
+                </span>
+              </div>
+
+              {loadingExams ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <Activity size={24} className="animate-spin mx-auto text-vitta-accent" />
+                  <p className="text-xs">Carregando histórico de exames...</p>
+                </div>
+              ) : patientExams.length === 0 ? (
+                <div className="py-16 text-center border border-dashed border-slate-800 rounded-2xl p-6 space-y-2 bg-slate-950/40">
+                  <FileText size={32} className="mx-auto text-slate-600" />
+                  <p className="text-xs font-bold text-slate-300">Nenhum exame anexado pelo paciente</p>
+                  <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                    O paciente ainda não possui exames ou laudos cadastrados na Central de Exames.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {patientExams.map((exam) => (
+                    <div
+                      key={exam.id}
+                      className="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 transition-colors shadow-sm"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-vitta-accent/10 border border-vitta-accent/20 flex items-center justify-center text-vitta-accent shrink-0">
+                              <FileText size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <h5 className="text-xs font-bold text-white truncate" title={exam.name}>
+                                {exam.name || 'Exame Complementar'}
+                              </h5>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {exam.lab || 'Laboratório'} {exam.category ? `• ${exam.category}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            {exam.status === 'ready' ? 'Laudo Pronto' : 'Em Análise'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-[10px] text-slate-400 pt-1">
+                          <span className="flex items-center gap-1">
+                            <Calendar size={11} className="text-vitta-accent" />
+                            {exam.date ? formatDateForDisplay(exam.date) : 'Data não informada'}
+                          </span>
+                        </div>
+
+                        {exam.resultNote && (
+                          <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 text-[11px] text-slate-300">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                              Parecer / Nota:
+                            </span>
+                            <p className="line-clamp-2">{exam.resultNote}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-end gap-2">
+                        {exam.resultUrl && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewExam(exam)}
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Eye size={13} /> Visualizar
+                            </button>
+                            <a
+                              href={exam.resultUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={exam.name || 'exame.pdf'}
+                              className="px-3 py-1.5 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shadow-vitta-accent/20 cursor-pointer"
+                            >
+                              <Download size={13} /> Baixar
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Exam Preview Modal inside SOAP */}
+        {previewExam && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+              <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-vitta-accent/10 text-vitta-accent">
+                    <FileCheck2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{previewExam.name}</h3>
+                    <p className="text-[11px] text-slate-400">{previewExam.lab || 'Laboratório do Paciente'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewExam.resultUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={previewExam.name || 'laudo.pdf'}
+                    className="px-3 py-1.5 bg-vitta-accent text-white rounded-xl text-xs font-bold hover:bg-vitta-accent/90 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Download size={13} /> Baixar
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewExam(null)}
+                    className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 bg-slate-950/60 p-4 flex items-center justify-center overflow-auto">
+                {previewExam.resultUrl ? (
+                  previewExam.resultUrl.startsWith('data:image') || previewExam.resultUrl.match(/\.(jpg|jpeg|png|webp|gif)/i) ? (
+                    <img
+                      src={previewExam.resultUrl}
+                      alt={previewExam.name}
+                      className="max-h-full max-w-full object-contain rounded-xl shadow-md"
+                    />
+                  ) : (
+                    <iframe
+                      src={previewExam.resultUrl}
+                      title={previewExam.name}
+                      className="w-full h-full rounded-2xl border border-slate-800 bg-white"
+                    />
+                  )
+                ) : (
+                  <p className="text-xs text-slate-500">Visualização indisponível.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer Summary & Action */}
         <div className="p-5 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">

@@ -34,6 +34,7 @@ import { db } from '../../firebase';
 import { useToast } from '../../contexts/ToastContext';
 import { formatDateForDisplay } from '../../utils/date';
 import { cancelAppointmentFeeInvoices } from '../../lib/appointmentFinancialUtils';
+import { isTelemedicineModality } from '../../lib/utils';
 import { ReviewModal } from '../ReviewModal';
 import { PatientPrescriptionModal } from './PatientPrescriptionModal';
 
@@ -70,36 +71,61 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
   useEffect(() => {
     if (!user?.uid) return;
 
-    const q = query(
+    // Issue 03: Support dual ID queries (userId or patientId) to ensure no appointments are lost
+    const aptsMap = new Map<string, any>();
+
+    const updateAndSortAppointments = () => {
+      const apts = Array.from(aptsMap.values());
+      apts.sort((a: any, b: any) => {
+        const dateA = a.date ? new Date(`${a.date}T${a.time || '00:00'}`).getTime() : 0;
+        const dateB = b.date ? new Date(`${b.date}T${b.time || '00:00'}`).getTime() : 0;
+        return dateB - dateA;
+      });
+      setAppointments(apts);
+      setLoading(false);
+    };
+
+    const qUser = query(
       collection(db, 'appointments'),
       where('userId', '==', user.uid)
     );
 
-    const unsubscribe = onSnapshot(
-      q,
+    const qPatient = query(
+      collection(db, 'appointments'),
+      where('patientId', '==', user.uid)
+    );
+
+    const unsubUser = onSnapshot(
+      qUser,
       (snapshot) => {
-        const apts = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data()
-        }));
-
-        // Sort by date desc or createdAt desc safely client-side
-        apts.sort((a: any, b: any) => {
-          const dateA = a.date ? new Date(`${a.date}T${a.time || '00:00'}`).getTime() : 0;
-          const dateB = b.date ? new Date(`${b.date}T${b.time || '00:00'}`).getTime() : 0;
-          return dateB - dateA;
+        snapshot.docs.forEach((docSnap) => {
+          aptsMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
         });
-
-        setAppointments(apts);
-        setLoading(false);
+        updateAndSortAppointments();
       },
       (error) => {
-        console.error('Erro ao carregar consultas:', error);
+        console.error('Erro ao carregar consultas por userId:', error);
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
+    const unsubPatient = onSnapshot(
+      qPatient,
+      (snapshot) => {
+        snapshot.docs.forEach((docSnap) => {
+          aptsMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+        });
+        updateAndSortAppointments();
+      },
+      (error) => {
+        console.error('Erro ao carregar consultas por patientId:', error);
+      }
+    );
+
+    return () => {
+      unsubUser();
+      unsubPatient();
+    };
   }, [user?.uid]);
 
   const filteredAppointments = appointments.filter((apt) => {
@@ -363,13 +389,7 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
             const isUpcoming = apt.status === 'upcoming' || apt.status === 'in_progress' || apt.status === 'scheduled';
             const isCompleted = apt.status === 'completed';
             const isCancelled = apt.status === 'cancelled';
-            const isTelemedicine = 
-              apt.type === 'telemedicine' || 
-              apt.isTelemedicine === true || 
-              apt.roomType === 'telemedicine' || 
-              apt.modality === 'telemedicine' || 
-              apt.modality === 'telemedicina' || 
-              apt.modality === 'online';
+            const isTelemedicine = isTelemedicineModality(apt);
             const price = apt.priceNumeric || (apt.price ? parseFloat(apt.price) : 0);
 
             return (
@@ -502,15 +522,15 @@ export const MyAppointmentsView: React.FC<MyAppointmentsViewProps> = ({
                       </button>
                     )}
 
-                    {/* Action: Prescription Button for Completed Telemedicine (Issue 04) */}
-                    {(isCompleted || (apt.prescriptions && apt.prescriptions.length > 0)) && (
+                    {/* Action: Prescription Button for Completed Telemedicine (Issue 02) */}
+                    {(isCompleted || (apt.prescriptions && apt.prescriptions.length > 0) || apt.prescriptionId || apt.prescriptionData) && (
                       <button
                         onClick={() => setSelectedAptForPrescription(apt)}
                         className="px-3.5 py-2 bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-500 hover:text-white rounded-xl text-xs font-bold transition-all border border-sky-500/20 flex items-center gap-1.5 cursor-pointer"
                         title="Visualizar receitas e documentos digitais"
                       >
                         <FileText size={14} />
-                        Receita Digital
+                        Visualizar Receita Médica
                       </button>
                     )}
 

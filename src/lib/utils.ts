@@ -205,3 +205,30 @@ export const fetchAddressByCep = async (cep: string) => {
     return null;
   }
 };
+
+/**
+ * Normaliza e identifica se uma modalidade ou agendamento corresponde à Telemedicina
+ * @param modality Valor ou objeto do agendamento
+ * @returns boolean
+ */
+export const isTelemedicineModality = (modality?: any): boolean => {
+  if (!modality) return false;
+  if (typeof modality === 'object') {
+    if (modality.isTelemedicine === true) return true;
+    if (modality.type === 'telemedicine') return true;
+    if (modality.roomType === 'telemedicine') return true;
+    if (isTelemedicineModality(modality.modality)) return true;
+    if (isTelemedicineModality(modality.type)) return true;
+    return false;
+  }
+  const clean = String(modality).toLowerCase().trim();
+  return (
+    clean === 'telemedicine' ||
+    clean === 'telemedicina' ||
+    clean === 'online' ||
+    clean === 'virtual' ||
+    clean === 'remoto' ||
+    clean === 'video' ||
+    clean === 'vídeo'
+  );
+};

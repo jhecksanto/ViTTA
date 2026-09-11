@@ -36,7 +36,8 @@ import {
   limit 
 } from 'firebase/firestore';
 import { addDoc, setDoc, updateDoc, deleteDoc } from '../lib/firestore-wrappers';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '../contexts/ToastContext';
 import { SOAPConsultationModal } from './Professional/SOAPConsultationModal';
 import { PrescriptionModal } from './Professional/PrescriptionModal';
@@ -1042,32 +1043,49 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 3 * 1024 * 1024) {
-      addToast('O arquivo selecionado deve ter no máximo 3MB.', 'warning');
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('O arquivo selecionado deve ter no máximo 10MB.', 'warning');
       return;
     }
 
     try {
       setIsSendingMessage(true);
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const fileData = reader.result as string;
-        await addDoc(collection(db, 'appointments', appointment.id, 'messages'), {
-          senderId: user.uid,
-          senderName: isProfessional ? `Dr(a). ${userData?.name || appointment.professionalName}` : (userData?.name || appointment.patientName),
-          senderRole: userData?.role || 'user',
-          text: `📁 Anexo: ${file.name}`,
-          isFile: true,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          fileUrl: fileData,
-          createdAt: Timestamp.now()
+      let fileUrl = '';
+
+      // Try uploading to Firebase Storage first
+      try {
+        const fileRef = ref(storage, `telemedicine/${appointment.id}/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(fileRef, file);
+        fileUrl = await getDownloadURL(snapshot.ref);
+      } catch (storageErr) {
+        console.warn('Storage upload fallback to base64 dataUrl:', storageErr);
+      }
+
+      // If storage didn't provide a URL, fallback to DataURL
+      if (!fileUrl) {
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
         });
-        addToast(`Arquivo "${file.name}" enviado com sucesso!`, 'success');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      };
-      reader.readAsDataURL(file);
+      }
+
+      await addDoc(collection(db, 'appointments', appointment.id, 'messages'), {
+        senderId: user.uid,
+        senderName: isProfessional ? `Dr(a). ${userData?.name || appointment.professionalName}` : (userData?.name || appointment.patientName),
+        senderRole: userData?.role || 'user',
+        text: `📁 Anexo: ${file.name}`,
+        isFile: true,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        fileUrl: fileUrl,
+        createdAt: Timestamp.now()
+      });
+
+      addToast(`Arquivo "${file.name}" enviado com sucesso!`, 'success');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error('Erro ao anexar arquivo:', err);
       addToast('Erro ao anexar arquivo.', 'error');
@@ -1635,20 +1653,40 @@ export default function TelemedicineRoom({ user, userData, appointment, onLeave 
                                   : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none'
                               }`}>
                                 {msg.isFile ? (
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white shrink-0">
-                                      <FileText size={18} />
-                                    </div>
-                                    <div className="min-w-0 space-y-1 text-left">
-                                      <p className="font-bold text-xs truncate max-w-[140px]">{msg.fileName}</p>
-                                      <a 
-                                        href={msg.fileUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer" 
-                                        className="text-[10px] text-sky-200 font-bold hover:underline flex items-center gap-1"
-                                      >
-                                        <Download size={10} /> Baixar PDF
-                                      </a>
+                                  <div className="space-y-2">
+                                    {(msg.fileType?.startsWith('image/') || msg.fileUrl?.startsWith('data:image')) ? (
+                                      <div className="rounded-xl overflow-hidden max-w-[200px] max-h-[150px] bg-black/30 border border-white/10">
+                                        <img 
+                                          src={msg.fileUrl} 
+                                          alt={msg.fileName} 
+                                          className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity" 
+                                          onClick={() => window.open(msg.fileUrl, '_blank')}
+                                        />
+                                      </div>
+                                    ) : null}
+                                    <div className="flex items-center gap-2.5 bg-black/20 p-2.5 rounded-xl">
+                                      <div className="w-8 h-8 rounded-lg bg-black/30 flex items-center justify-center text-white shrink-0">
+                                        <FileText size={16} />
+                                      </div>
+                                      <div className="min-w-0 space-y-0.5 text-left flex-1">
+                                        <p className="font-bold text-xs truncate max-w-[150px]">{msg.fileName}</p>
+                                        <div className="flex items-center gap-2">
+                                          <a 
+                                            href={msg.fileUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            download={msg.fileName}
+                                            className="text-[10px] text-sky-200 font-bold hover:underline flex items-center gap-1"
+                                          >
+                                            <Download size={10} /> Baixar
+                                          </a>
+                                          {msg.fileSize ? (
+                                            <span className="text-[9px] text-slate-300">
+                                              ({(msg.fileSize / 1024).toFixed(0)} KB)
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 ) : (

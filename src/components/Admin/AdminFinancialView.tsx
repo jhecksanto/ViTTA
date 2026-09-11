@@ -39,11 +39,14 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-  Wallet
+  Wallet,
+  QrCode,
+  Key
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { logAdminAction } from "../../lib/audit";
 import { motion, AnimatePresence } from "motion/react";
+import { AdminPlatformPixConfig } from "./AdminPlatformPixConfig";
 
 interface PayoutItem {
   id: string;
@@ -77,7 +80,7 @@ export const AdminFinancialView = ({ adminUser }: { adminUser: any }) => {
   const [withdrawalsList, setWithdrawalsList] = useState<any[]>([]);
   const [users, setUsers] = useState<{ [key: string]: { name: string; email: string; role?: string } }>({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"pending_payouts" | "processed_payouts" | "all_transactions">("pending_payouts");
+  const [activeTab, setActiveTab] = useState<"pending_payouts" | "processed_payouts" | "all_transactions" | "platform_pix">("pending_payouts");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "rejected">("all");
   const [dateFilter, setDateFilter] = useState<"all" | "today" | "7days" | "30days">("all");
@@ -738,6 +741,18 @@ export const AdminFinancialView = ({ adminUser }: { adminUser: any }) => {
               <Receipt size={14} />
               <span>📊 Extrato Geral</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab("platform_pix")}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === "platform_pix"
+                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                  : "text-vitta-text-secondary hover:text-vitta-text-primary"
+              }`}
+            >
+              <QrCode size={14} />
+              <span>⚙️ Chave PIX da Plataforma</span>
+            </button>
           </div>
 
           {/* Filtros e Busca */}
@@ -1142,6 +1157,13 @@ export const AdminFinancialView = ({ adminUser }: { adminUser: any }) => {
               </table>
             )}
           </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* ABA 4: CONFIGURAÇÃO DA CHAVE PIX DA PLATAFORMA           */}
+        {/* ========================================================= */}
+        {activeTab === "platform_pix" && (
+          <AdminPlatformPixConfig />
         )}
       </div>
 

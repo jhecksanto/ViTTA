@@ -32,6 +32,7 @@ export const PayoutReceiptModal: React.FC<PayoutReceiptModalProps> = ({
   if (!isOpen || !payout) return null;
 
   const authCode = payout.authCode || `VITTA-TX-${(payout.id || '98765').substring(0, 8).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const e2eCode = payout.e2eId || payout.e2eCode || payout.liquidationCode || `E${Date.now()}0000VITTA${(payout.id || '12345').substring(0, 8).toUpperCase()}`;
   const dateFormatted = payout.date ? formatDateForDisplay(payout.date) : formatDateForDisplay(new Date().toISOString());
   const amount = parseFloat(payout.amount) || 0;
   const pixKey = payout.pixKey || payout.description || 'Chave cadastrada';
@@ -80,6 +81,7 @@ export const PayoutReceiptModal: React.FC<PayoutReceiptModalProps> = ({
       };
 
       drawRow('Código de Autenticação:', authCode);
+      drawRow('Identificador Pix (E2E):', e2eCode);
       drawRow('Favorecido / Profissional:', professionalName || payout.beneficiaryName || 'Profissional ViTTA');
       drawRow('Chave PIX de Destino:', pixKey);
       drawRow('Valor do Repasse:', `R$ ${amount.toFixed(2).replace('.', ',')}`);
@@ -163,8 +165,25 @@ export const PayoutReceiptModal: React.FC<PayoutReceiptModalProps> = ({
                     navigator.clipboard.writeText(authCode);
                     addToast('Código de autenticação copiado!', 'info');
                   }}
-                  className="p-1 hover:text-vitta-text-primary transition-colors"
+                  className="p-1 hover:text-vitta-text-primary transition-colors cursor-pointer"
                   title="Copiar Código"
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-vitta-text-muted">Identificador E2E (PIX):</span>
+              <div className="flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                <span className="truncate max-w-[180px]">{e2eCode}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(e2eCode);
+                    addToast('Identificador E2E copiado!', 'info');
+                  }}
+                  className="p-1 hover:text-vitta-text-primary transition-colors cursor-pointer"
+                  title="Copiar E2E"
                 >
                   <Copy size={12} />
                 </button>

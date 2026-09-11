@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, 
   Search, 
@@ -12,11 +12,15 @@ import {
   Calendar,
   Building2,
   FileCheck2,
-  AlertCircle
+  AlertCircle,
+  UploadCloud,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { collection, query, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase';
+import { addDoc } from '../../lib/firestore-wrappers';
 import { useToast } from '../../contexts/ToastContext';
 import { Skeleton } from '../ui/skeleton';
 
@@ -33,6 +37,18 @@ export const ExamsView: React.FC<ExamsViewProps> = ({ user }) => {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [selectedExam, setSelectedExam] = useState<any | null>(null);
   const [previewExam, setPreviewExam] = useState<any | null>(null);
+
+  // Upload modal state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [uploadLab, setUploadLab] = useState('');
+  const [uploadCategory, setUploadCategory] = useState('Exame Laboratorial');
+  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
+  const [uploadNotes, setUploadNotes] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -163,6 +179,121 @@ export const ExamsView: React.FC<ExamsViewProps> = ({ user }) => {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      addToast('O arquivo selecionado excede o limite máximo permitido de 15MB.', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploadFile(null);
+      return;
+    }
+
+    setUploadFile(file);
+    if (!uploadName) {
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      setUploadName(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+    }
+  };
+
+  const handleUploadExam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      addToast('Por favor, selecione um arquivo de laudo ou exame.', 'warning');
+      return;
+    }
+    if (uploadFile.size > 15 * 1024 * 1024) {
+      addToast('O arquivo selecionado excede o limite máximo permitido de 15MB.', 'error');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(10);
+      let downloadUrl = '';
+
+      // Try uploading to Firebase Storage with uploadBytesResumable to track real percentage
+      try {
+        const fileRef = ref(storage, `user_exams/${user.uid}/${Date.now()}_${uploadFile.name}`);
+        const uploadTask = uploadBytesResumable(fileRef, uploadFile);
+
+        await new Promise<void>((resolve) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 85);
+              setUploadProgress(Math.max(10, progress));
+            },
+            (error) => {
+              console.warn('Storage upload error, fallback to dataUrl:', error);
+              resolve();
+            },
+            async () => {
+              try {
+                downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve();
+              } catch (e) {
+                resolve();
+              }
+            }
+          );
+        });
+      } catch (stErr) {
+        console.warn('Storage upload catch, will fallback to dataUrl:', stErr);
+      }
+
+      // If storage didn't yield a URL, read as dataURL
+      if (!downloadUrl) {
+        setUploadProgress(60);
+        downloadUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              setUploadProgress(Math.round(60 + (ev.loaded / ev.total) * 35));
+            }
+          };
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(uploadFile);
+        });
+      }
+
+      setUploadProgress(95);
+
+      await addDoc(collection(db, 'user_exams'), {
+        userId: user.uid,
+        name: uploadName.trim() || 'Exame Complementar',
+        category: uploadCategory,
+        lab: uploadLab.trim() || 'Laboratório Informado pelo Paciente',
+        date: uploadDate || new Date().toISOString().split('T')[0],
+        status: 'ready',
+        resultNote: uploadNotes.trim() || 'Anexado pelo paciente via Central de Exames',
+        resultUrl: downloadUrl,
+        fileName: uploadFile.name,
+        fileSize: uploadFile.size,
+        createdAt: serverTimestamp()
+      });
+
+      setUploadProgress(100);
+      addToast('Exame anexado com sucesso e disponível no prontuário!', 'success');
+
+      // Reset form
+      setIsUploadModalOpen(false);
+      setUploadFile(null);
+      setUploadName('');
+      setUploadLab('');
+      setUploadNotes('');
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err: any) {
+      console.error('Erro ao anexar exame:', err);
+      addToast('Erro ao anexar exame. Tente novamente.', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Title & Stat Badges */}
@@ -199,6 +330,13 @@ export const ExamsView: React.FC<ExamsViewProps> = ({ user }) => {
               <span className="text-xs font-black text-amber-600 dark:text-amber-400">{countPending}</span>
             </div>
           </div>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="px-4 py-2 bg-vitta-accent hover:bg-vitta-accent/90 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-vitta-accent/20 flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <UploadCloud size={16} />
+            <span>Anexar Exame</span>
+          </button>
         </div>
       </div>
 
@@ -582,6 +720,206 @@ export const ExamsView: React.FC<ExamsViewProps> = ({ user }) => {
                   </div>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Upload Exam Modal with Visual Progress & 15MB Limit */}
+        {isUploadModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-vitta-card border border-vitta-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-vitta-border flex items-center justify-between bg-vitta-surface">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-vitta-accent/10 text-vitta-accent">
+                    <UploadCloud size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-vitta-text-primary">Anexar Novo Exame</h3>
+                    <p className="text-xs text-vitta-text-secondary">Envie laudos ou exames em PDF ou imagem (máx. 15MB)</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !isUploading && setIsUploadModalOpen(false)}
+                  disabled={isUploading}
+                  className="p-2 text-vitta-text-muted hover:text-vitta-text-primary rounded-xl hover:bg-vitta-surface-2 transition-colors disabled:opacity-50"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <form onSubmit={handleUploadExam} className="p-6 space-y-4">
+                {/* File Drop / Select Area */}
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-primary mb-1.5">
+                    Arquivo do Laudo / Exame *
+                  </label>
+                  <div
+                    onClick={() => !isUploading && fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-colors ${
+                      uploadFile
+                        ? 'border-vitta-accent bg-vitta-accent/5'
+                        : 'border-vitta-border hover:border-vitta-accent/50 hover:bg-vitta-surface'
+                    }`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,image/png,image/jpeg,image/webp,image/jpg"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      disabled={isUploading}
+                    />
+                    {uploadFile ? (
+                      <div className="flex items-center justify-between gap-3 text-left">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-vitta-accent/10 text-vitta-accent flex items-center justify-center shrink-0">
+                            <FileCheck2 size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-vitta-text-primary truncate">{uploadFile.name}</p>
+                            <p className="text-[11px] text-vitta-text-muted">
+                              {(uploadFile.size / (1024 * 1024)).toFixed(2)} MB • {uploadFile.type || 'Documento'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-vitta-accent underline shrink-0">Alterar</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <UploadCloud size={28} className="mx-auto text-vitta-accent" />
+                        <p className="text-xs font-bold text-vitta-text-primary">
+                          Clique ou arraste o laudo médico aqui
+                        </p>
+                        <p className="text-[11px] text-vitta-text-muted">
+                          Suporta PDF, JPG, PNG e WebP (limite máximo de 15MB)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Exam Name */}
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-primary mb-1">
+                    Nome do Exame *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={uploadName}
+                    onChange={(e) => setUploadName(e.target.value)}
+                    placeholder="Ex: Hemograma Completo, Ressonância Magnética..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-vitta-surface border border-vitta-border text-xs text-vitta-text-primary focus:border-vitta-accent outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Category */}
+                  <div>
+                    <label className="block text-xs font-bold text-vitta-text-primary mb-1">
+                      Categoria
+                    </label>
+                    <select
+                      value={uploadCategory}
+                      onChange={(e) => setUploadCategory(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-vitta-surface border border-vitta-border text-xs text-vitta-text-primary focus:border-vitta-accent outline-none"
+                    >
+                      <option value="Exame Laboratorial">Exame Laboratorial</option>
+                      <option value="Exame de Sangue">Exame de Sangue</option>
+                      <option value="Exame de Imagem">Exame de Imagem</option>
+                      <option value="Cardiológico">Cardiológico</option>
+                      <option value="Outro">Outro</option>
+                    </select>
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                    <label className="block text-xs font-bold text-vitta-text-primary mb-1">
+                      Data da Realização
+                    </label>
+                    <input
+                      type="date"
+                      value={uploadDate}
+                      onChange={(e) => setUploadDate(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-vitta-surface border border-vitta-border text-xs text-vitta-text-primary focus:border-vitta-accent outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Laboratory */}
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-primary mb-1">
+                    Laboratório / Clínica
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadLab}
+                    onChange={(e) => setUploadLab(e.target.value)}
+                    placeholder="Ex: Fleury, Dasa, Lavoisier..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-vitta-surface border border-vitta-border text-xs text-vitta-text-primary focus:border-vitta-accent outline-none"
+                  />
+                </div>
+
+                {/* Notes / Clinical Observations */}
+                <div>
+                  <label className="block text-xs font-bold text-vitta-text-primary mb-1">
+                    Observações / Indicações Clínicas (Opcional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={uploadNotes}
+                    onChange={(e) => setUploadNotes(e.target.value)}
+                    placeholder="Ex: Exame de rotina anual com jejum de 12 horas."
+                    className="w-full px-3.5 py-2 rounded-xl bg-vitta-surface border border-vitta-border text-xs text-vitta-text-primary focus:border-vitta-accent outline-none resize-none"
+                  />
+                </div>
+
+                {/* Visual Progress Bar when Uploading */}
+                {isUploading && (
+                  <div className="space-y-1.5 p-3 rounded-2xl bg-vitta-surface border border-vitta-border">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-vitta-accent flex items-center gap-1.5">
+                        <Clock size={13} className="animate-spin" /> Processando e enviando laudo...
+                      </span>
+                      <span className="font-black text-vitta-text-primary">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-vitta-border overflow-hidden">
+                      <div
+                        className="h-full bg-vitta-accent transition-all duration-300 rounded-full"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Modal Footer */}
+                <div className="pt-3 flex items-center justify-end gap-3 border-t border-vitta-border">
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadModalOpen(false)}
+                    disabled={isUploading}
+                    className="px-4 py-2.5 rounded-xl border border-vitta-border hover:bg-vitta-surface text-vitta-text-secondary text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUploading || !uploadFile}
+                    className="px-5 py-2.5 rounded-xl bg-vitta-accent hover:bg-vitta-accent/90 text-white text-xs font-bold transition-all shadow-md shadow-vitta-accent/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    <UploadCloud size={15} />
+                    <span>{isUploading ? 'Enviando...' : 'Salvar e Disponibilizar'}</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

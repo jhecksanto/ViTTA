@@ -105,3 +105,23 @@ export const processOfflineQueue = async (): Promise<{ successCount: number; fai
   console.log(`[OfflineQueue] Sync completed. Success: ${successCount}, Remaining: ${remainingItems.length}`);
   return { successCount, failureCount: remainingItems.length };
 };
+
+// Automatic listener to trigger queue sync immediately when network is reconnected
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[OfflineQueue] Reconnected to network. Triggering automatic queue sync...');
+    processOfflineQueue()
+      .then(({ successCount, failureCount }) => {
+        if (successCount > 0) {
+          window.dispatchEvent(
+            new CustomEvent('vitta-offline-synced', {
+              detail: { successCount, failureCount },
+            })
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('[OfflineQueue] Automatic online sync failed:', err);
+      });
+  });
+}

@@ -10,6 +10,7 @@ import { PartnersView } from "./components/Patient/PartnersView";
 import { OffersView } from "./components/Patient/OffersView";
 import { MyAppointmentsView } from "./components/Patient/MyAppointmentsView";
 import { ExamsView } from "./components/Patient/ExamsView";
+import { SubscriptionsView } from "./components/Patient/SubscriptionsView";
 import { SupportView } from "./components/System/SupportView";
 import { TermsAndPrivacyView } from "./components/System/TermsAndPrivacyView";
 import { ChatView } from "./components/System/ChatView";
@@ -17,6 +18,9 @@ import { NotificationsView } from "./components/System/NotificationsView";
 import { SettingsView } from "./components/System/SettingsView";
 import { MobileBottomNav } from "./components/Navigation/MobileBottomNav";
 import AnalyticsView from "./components/Admin/AnalyticsView";
+import { PayInvoiceModal } from "./components/Professional/PayInvoiceModal";
+import { RadioPlayerModal } from "./components/System/RadioPlayerModal";
+import { RadioView } from "./components/System/RadioView";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import healthIcon from "./assets/images/category_health_icon_1781741323843.jpg";
@@ -966,11 +970,12 @@ const BookingModal = ({
       // 1. Save to Firestore
       const aptRef = await addDoc(collection(db, "appointments"), {
         userId: user.uid,
+        patientId: user.uid,
         patientName: userData?.name || user.displayName || user.email,
         professionalId: professional.id,
         professionalName: professional.name,
         specialty: professional.specialty,
-        professionalUserId: professional.userId || "",
+        professionalUserId: professional.userId || professional.id || "",
         imageUrl:
           professional.imageUrl || "https://picsum.photos/seed/prof/400/300",
         date: selectedDate,
@@ -2867,6 +2872,40 @@ const HomeView = ({
   setActiveTab: (tab: string) => void;
   setPartnershipSubTab?: (subTab: any) => void;
 }) => {
+  const [isRadioOpen, setIsRadioOpen] = useState(false);
+
+  const handleResourceClick = (id: string) => {
+    if (id === "radio") {
+      setActiveTab("radio");
+      return;
+    }
+    if (id === "wallets") {
+      setActiveTab("patient-dashboard");
+      return;
+    }
+    if (id === "voucher") {
+      setActiveTab("offers");
+      return;
+    }
+    if (id === "pharmacies") {
+      setActiveTab("partners");
+      return;
+    }
+    if (id === "dashboard") {
+      setActiveTab(
+        userData?.role === "professional"
+          ? "professional-dashboard"
+          : "patient-dashboard"
+      );
+      return;
+    }
+    if (id === "profile") {
+      setActiveTab("settings");
+      return;
+    }
+    setActiveTab(id);
+  };
+
   const resources = [
     {
       id: "professionals",
@@ -3040,22 +3079,22 @@ const HomeView = ({
               id="home-cta-schedule"
               onClick={() => {
                 if (userData?.role === "professional") {
-                  setActiveTab("dashboard");
+                  setActiveTab("professional-dashboard");
                 } else {
                   setActiveTab("professionals");
                 }
               }}
-              className="px-5 py-3 bg-white text-vitta-accent font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-102 transition-all duration-200 active:scale-95"
+              className="px-4 py-3 bg-white text-vitta-accent font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-102 transition-all duration-200 active:scale-95 cursor-pointer"
             >
-              {userData?.role === "professional" ? "Painel Médico" : "Agendar Nova Consulta"}
+              {userData?.role === "professional" ? "Painel Médico" : "Nova Consulta"}
             </button>
             <button
               id="home-cta-plans"
               onClick={() => {
                 if (setPartnershipSubTab) setPartnershipSubTab("establishments");
-                setActiveTab("plans");
+                setActiveTab("partners");
               }}
-              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+              className="px-4 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200 cursor-pointer"
             >
               Convênios
             </button>
@@ -3065,16 +3104,16 @@ const HomeView = ({
                 if (setPartnershipSubTab) setPartnershipSubTab("vitta-health");
                 setActiveTab("plans");
               }}
-              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+              className="px-4 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200 cursor-pointer"
             >
               ViTTA Health
             </button>
             <button
               id="home-cta-radio"
               onClick={() => setActiveTab("radio")}
-              className="px-5 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200"
+              className="px-4 py-3 bg-white/15 hover:bg-white/20 text-white border border-white/20 font-bold text-sm rounded-xl backdrop-blur-sm hover:scale-102 transition-all duration-200 cursor-pointer"
             >
-              Ouvir Rádio ViTTA
+              Rádio ViTTA
             </button>
           </div>
         </div>
@@ -3101,7 +3140,7 @@ const HomeView = ({
                 key={resource.id}
                 id={`home-resource-card-${resource.id}`}
                 whileHover={{ y: -6, scale: 1.02 }}
-                onClick={() => setActiveTab(resource.id)}
+                onClick={() => handleResourceClick(resource.id)}
                 className={`group bg-vitta-surface p-6 rounded-2xl border border-vitta-border ${style.border} shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer flex flex-col justify-between h-[230px]`}
               >
                 <div className="space-y-3">
@@ -3136,6 +3175,11 @@ const HomeView = ({
           })}
         </div>
       </div>
+
+      <RadioPlayerModal
+        isOpen={isRadioOpen}
+        onClose={() => setIsRadioOpen(false)}
+      />
     </div>
   );
 };
@@ -4470,13 +4514,14 @@ const ProfessionalManualBookingModal = ({
     try {
       const aptRef = await addDoc(collection(db, "appointments"), {
         userId: finalUserId,
+        patientId: finalUserId,
         patientName: finalPatientName,
         patientEmail: finalPatientEmail,
         patientPhone: finalPatientPhone,
         professionalId: professional.id,
         professionalName: professional.name,
         specialty: professional.specialty,
-        professionalUserId: professional.userId || user?.uid || "",
+        professionalUserId: professional.userId || professional.id || user?.uid || "",
         imageUrl:
           professional.imageUrl || "https://picsum.photos/seed/prof/400/300",
         date: selectedDate,
@@ -4814,6 +4859,7 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
   const [professionalProfile, setProfessionalProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false);
+  const [isPayInvoiceModalOpen, setIsPayInvoiceModalOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [pixKey, setPixKey] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -5261,14 +5307,34 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
                   </p>
                 </div>
 
-                {setActiveTab && (
-                  <button
-                    onClick={() => setActiveTab("wallets")}
-                    className="w-full py-2.5 bg-vitta-accent/10 hover:bg-vitta-accent/20 text-vitta-accent rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>💳 Ver Detalhes na Carteira</span>
-                  </button>
-                )}
+                <div className="space-y-2">
+                  {totalUnpaidFees > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsPayInvoiceModalOpen(true)}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <CreditCard size={15} />
+                      <span>
+                        Pagar Fatura ({new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(totalUnpaidFees)})
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="w-full py-2.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                      <CheckCircle2 size={14} />
+                      <span>Fatura em Dia (Sem pendências)</span>
+                    </div>
+                  )}
+
+                  {setActiveTab && (
+                    <button
+                      onClick={() => setActiveTab("wallets")}
+                      className="w-full py-2 bg-vitta-surface-2 hover:bg-vitta-surface-3 text-vitta-text-secondary hover:text-vitta-text-primary border border-vitta-border rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Ver Detalhes na Carteira</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -5640,6 +5706,16 @@ const ProfessionalFinanceView = ({ user, setActiveTab }: { user: any; setActiveT
               </div>
             </div>
       </div>
+
+      {/* Modal de Pagamento de Fatura com Saldo em Conta ou PIX da Plataforma */}
+      <PayInvoiceModal
+        isOpen={isPayInvoiceModalOpen}
+        onClose={() => setIsPayInvoiceModalOpen(false)}
+        user={user}
+        walletBalance={walletBalance}
+        totalUnpaidFees={totalUnpaidFees}
+        unpaidItemsCount={cashTransactions.filter((t) => t.invoicePaid !== true).length}
+      />
     </div>
   );
 };
@@ -10264,8 +10340,31 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [activeTelemedicineApt, setActiveTelemedicineApt] = useState<any | null>(null);
+  const [appointmentToReview, setAppointmentToReview] = useState<any | null>(null);
   const [selectedProfForAgenda, setSelectedProfForAgenda] = useState<any | null>(null);
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
+  const [unreadAdminChatCount, setUnreadAdminChatCount] = useState(0);
+
+  // Sync Unread Support Chats count for Admin Menu Badge
+  useEffect(() => {
+    if (userData?.role !== "admin") {
+      setUnreadAdminChatCount(0);
+      return;
+    }
+
+    const unsub = onSnapshot(collection(db, "chats"), (snapshot) => {
+      let count = 0;
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.status !== "resolved" && typeof data.unreadCount === "number" && data.unreadCount > 0) {
+          count += data.unreadCount;
+        }
+      });
+      setUnreadAdminChatCount(count);
+    });
+
+    return () => unsub();
+  }, [userData?.role]);
 
   // Auth form state
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -10451,6 +10550,8 @@ export default function App() {
         { id: "partners", label: "Rede de Parceiros", icon: Store },
         { id: "offers", label: "Vouchers & Benefícios", icon: Tag },
         { id: "exams", label: "Exames & Laudos", icon: FileText },
+        { id: "plans", label: "Planos & Assinatura", icon: Crown },
+        { id: "radio", label: "Rádio ViTTA FM", icon: Radio },
       ],
     },
     ...(isProfessional
@@ -10479,7 +10580,7 @@ export default function App() {
               { id: "admin-vouchers", label: "Gestão de Cupons", icon: Ticket },
               { id: "admin-liberal", label: "Taxas & Configurações", icon: Percent },
               { id: "admin-audit", label: "Logs de Auditoria", icon: ClipboardList },
-              { id: "admin-chat", label: "Atendimento ao Cliente", icon: MessageSquare },
+              { id: "admin-chat", label: "Atendimento ao Cliente", icon: MessageSquare, badge: unreadAdminChatCount },
             ],
           },
         ]
@@ -10652,13 +10753,18 @@ export default function App() {
           />
         );
       case "professionals":
-        return <ProfessionalsView user={user} setActiveTab={setActiveTab} />;
+        return <ProfessionalsView user={user} userData={userData} setActiveTab={setActiveTab} />;
       case "partners":
         return <PartnersView />;
       case "offers":
         return <OffersView user={user} />;
       case "exams":
         return <ExamsView user={user} />;
+      case "plans":
+      case "subscriptions":
+        return <SubscriptionsView user={user} userData={userData} setActiveTab={setActiveTab} />;
+      case "radio":
+        return <RadioView />;
       case "professional-dashboard":
         return (
           <ProfessionalDashboardView
@@ -10909,12 +11015,33 @@ export default function App() {
           user={user}
           userData={userData}
           onLeave={() => {
+            const endedApt = activeTelemedicineApt;
             setActiveTelemedicineApt(null);
             if (typeof window !== "undefined" && window.location.search.includes("room=")) {
               const url = new URL(window.location.href);
               url.searchParams.delete("room");
               window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
             }
+            if (endedApt && userData?.role !== "professional" && (endedApt.professionalId || endedApt.professionalUserId)) {
+              setAppointmentToReview(endedApt);
+            }
+          }}
+        />
+      )}
+
+      {/* Review Modal for Patient after Telemedicine consultation */}
+      {appointmentToReview && (
+        <ReviewModal
+          isOpen={!!appointmentToReview}
+          onClose={() => setAppointmentToReview(null)}
+          userId={user?.uid || ""}
+          userName={userData?.name || user?.displayName || "Paciente"}
+          professionalId={appointmentToReview.professionalId || appointmentToReview.professionalUserId || ""}
+          professionalName={appointmentToReview.professionalName || "Profissional ViTTA"}
+          appointmentId={appointmentToReview.id}
+          onSuccess={() => {
+            setAppointmentToReview(null);
+            addToast("Avaliação registrada com sucesso!", "success");
           }}
         />
       )}
